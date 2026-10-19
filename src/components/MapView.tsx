@@ -213,19 +213,13 @@ export const MapView: React.FC<MapViewProps> = ({
         zoom={7}
         minZoom={6}
         maxZoom={18}
-        className="w-full h-full"
+        className={`w-full h-full ${isDarkTile ? 'dark-mode-tiles' : ''}`}
       >
-        {isDarkTile ? (
-          <TileLayer
-            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          />
-        ) : (
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-        )}
+        {/* 외부 상용 API 키나 인증 토큰 없이 100% 무료/무제한 동작하는 OpenStreetMap 기본 타일 레이어 + CSS 다크 필터 */}
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
 
         <MapClickHandler onMapClick={onMapClickForNewSpot} />
         <MapRecenter target={internalRecenter || recenterTarget || null} />

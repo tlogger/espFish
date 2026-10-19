@@ -8,6 +8,11 @@
   z-index: 10;
 }
 
+/* 야간 낚시 다크 모드 타일 필터 (API 키 필요 없는 완전 무료/무제한 클라이언트 필터) */
+.dark-mode-tiles .leaflet-tile-pane {
+  filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.35);
+}
+
 /* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 6px;

@@ -7,11 +7,13 @@ export interface CatchSyncResult {
   water_temp: number;
   wind_speed: number;
   wind_direction?: number;
+  current_velocity?: number;
+  current_direction?: number;
   temp?: number;
 }
 
 /**
- * 출조 날짜, 시각, 위경도 좌표를 기반으로 당시 환경(물때, 조위상태, 수온, 바람)을 계산 및 동기화
+ * 출조 날짜, 시각, 위경도 좌표를 기반으로 당시 환경(물때, 조위상태, 수온, 바람, 조류)을 계산 및 동기화
  */
 export async function syncCatchEnvironment(
   dateStr: string, // YYYY-MM-DD
@@ -36,6 +38,8 @@ export async function syncCatchEnvironment(
   let water_temp = 17.5;
   let wind_speed = 3.0;
   let wind_direction: number | undefined = 315;
+  let current_velocity: number | undefined = 0.3;
+  let current_direction: number | undefined = 180;
   let temp: number | undefined = 18.0;
 
   try {
@@ -52,11 +56,17 @@ export async function syncCatchEnvironment(
       if (wData.hourly.windDirection[targetHour] != null) wind_direction = wData.hourly.windDirection[targetHour];
       if (mData.hourly?.seaSurfaceTemp[targetHour] != null) water_temp = mData.hourly.seaSurfaceTemp[targetHour];
       else water_temp = mData.seaSurfaceTemp;
+      if (mData.hourly?.currentVelocity[targetHour] != null) current_velocity = mData.hourly.currentVelocity[targetHour];
+      else current_velocity = mData.currentVelocity;
+      if (mData.hourly?.currentDirection[targetHour] != null) current_direction = mData.hourly.currentDirection[targetHour];
+      else current_direction = mData.currentDirection;
     } else {
       // 과거 출조일: 해양 기본 관측값 및 계절 평년치 적용
       water_temp = mData.seaSurfaceTemp;
       wind_speed = wData.windSpeed;
       wind_direction = wData.windDirection;
+      current_velocity = mData.currentVelocity;
+      current_direction = mData.currentDirection;
       temp = wData.temp;
     }
   } catch (e) {
@@ -69,6 +79,8 @@ export async function syncCatchEnvironment(
     water_temp,
     wind_speed,
     wind_direction,
+    current_velocity,
+    current_direction,
     temp,
   };
 }

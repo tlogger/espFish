@@ -26,7 +26,6 @@ import {
   deleteCloudSpot,
   fetchCloudLogs,
   fetchCloudSpots,
-  getSavedCloudConfig,
   getSupabase,
   saveCloudCatchLog,
   saveCloudSpot,
@@ -342,20 +341,20 @@ export function App() {
             )}
             <button
               onClick={handleExecutePoiSearch}
-              className="absolute right-1 top-1 bottom-1 px-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-full text-[11px] font-bold flex items-center gap-0.5 transition"
-              title="지도 POI 검색"
+              className="absolute right-1 top-1 bottom-1 px-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-full text-[11px] font-bold flex items-center gap-0.5 transition"
+              title="지도 장소 검색"
             >
               {isSearchingPoi ? <Loader2 size={11} className="animate-spin" /> : <Navigation2 size={11} />}
-              <span>POI</span>
+              <span>검색</span>
             </button>
           </div>
 
-          {/* POI 검색 결과 드롭다운 팝오버 */}
+          {/* 장소 검색 결과 드롭다운 팝오버 */}
           {showPoiDropdown && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden text-xs max-h-72 overflow-y-auto">
               <div className="px-3 py-1.5 bg-slate-800 text-[11px] text-slate-300 font-semibold flex justify-between items-center border-b border-slate-700">
                 <span className="flex items-center gap-1">
-                  🌐 <strong>'{searchQuery}'</strong> 전국 장소·항구 POI 검색 결과
+                  🌐 <strong>'{searchQuery}'</strong> 전국 지명·항구 검색 결과
                 </span>
                 <button
                   onClick={() => setShowPoiDropdown(false)}
@@ -368,7 +367,7 @@ export function App() {
               {isSearchingPoi ? (
                 <div className="p-4 text-center text-slate-400 flex items-center justify-center gap-2">
                   <Loader2 size={14} className="animate-spin text-cyan-400" />
-                  <span>전국 해안/관공서/항구 POI 검색 중...</span>
+                  <span>전국 해안/관공서/항구 검색 중...</span>
                 </div>
               ) : poiResults.length === 0 ? (
                 <div className="p-4 text-center text-slate-400">
@@ -401,7 +400,7 @@ export function App() {
           )}
         </div>
 
-        {/* 툴바: 로그인 버튼, 단위 변환 및 포인트 추가 */}
+        {/* 툴바: 로그인 버튼, 단위 변환 토글 */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 text-xs">
           {/* 로그인 / 회원 정보 버튼 */}
           <button
@@ -450,20 +449,6 @@ export function App() {
               </button>
             ))}
           </div>
-
-          {/* 포인트 추가 버튼 */}
-          <button
-            onClick={() => {
-              setEditingSpot(null);
-              setNewSpotLat(37.2541);
-              setNewSpotLng(126.4982);
-              setIsSpotModalOpen(true);
-            }}
-            className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold shadow-md shadow-cyan-500/20 transition"
-          >
-            <Plus size={14} />
-            <span className="hidden sm:inline">포인트 등록</span>
-          </button>
         </div>
       </header>
 
@@ -610,9 +595,9 @@ export function App() {
           </div>
         )}
 
-        {/* 모바일 플로팅 포인트 등록 버튼 (드로워가 닫혀있을 때 우하단 표시) */}
+        {/* 플로팅 포인트 등록 버튼 (PC/모바일 공통: 모바일 드로어가 열려있을 때만 숨김) */}
         {!isMobileDrawerOpen && (
-          <div className="md:hidden fixed bottom-20 right-4 z-30">
+          <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-30">
             <button
               onClick={() => {
                 setEditingSpot(null);
@@ -620,7 +605,8 @@ export function App() {
                 setNewSpotLng(126.4982);
                 setIsSpotModalOpen(true);
               }}
-              className="px-4 py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold shadow-2xl flex items-center gap-1.5 border border-cyan-400/50 active:scale-95 transition"
+              className="px-4 py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold shadow-2xl flex items-center gap-1.5 border border-cyan-400/50 active:scale-95 transition"
+              title="새 낚시 포인트 등록"
             >
               <Plus size={16} />
               <span>포인트 등록</span>
@@ -659,6 +645,9 @@ export function App() {
           currentWeather={weather}
           currentTide={tide}
           currentWaterTemp={marine?.seaSurfaceTemp || 17.5}
+          currentVelocity={marine?.currentVelocity || 0.3}
+          windUnit={windUnit}
+          currentUnit={currentUnit}
           extractExifFromImage={extractExifFromImage}
           onSaveLog={handleSaveCatchLog}
         />

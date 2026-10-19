@@ -61,6 +61,8 @@ function toDbLogRecord(log: CatchLog): Record<string, unknown> {
     water_temp: log.water_temp,
     wind_speed: log.wind_speed,
     wind_direction: log.wind_direction ?? null,
+    current_velocity: log.current_velocity ?? null,
+    current_direction: log.current_direction ?? null,
     photo_url: log.photo_url ?? null,
     memo: log.memo ?? '',
     created_at: log.created_at || new Date().toISOString(),

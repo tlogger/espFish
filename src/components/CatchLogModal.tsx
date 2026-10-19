@@ -1,7 +1,8 @@
 import React from 'react';
 import { RefreshCw } from 'lucide-react';
-import type { CatchLog, FishingMethod, TideDayInfo, WeatherData } from '../types';
+import type { CatchLog, CurrentUnit, FishingMethod, TideDayInfo, WeatherData, WindUnit } from '../types';
 import { syncCatchEnvironment } from '../utils/catchSync';
+import { formatCurrentVelocity, formatWindSpeed } from '../utils/weatherApi';
 
 interface CatchLogModalProps {
   isOpen: boolean;
@@ -14,6 +15,9 @@ interface CatchLogModalProps {
   currentWeather: WeatherData | null;
   currentTide: TideDayInfo | null;
   currentWaterTemp: number;
+  currentVelocity?: number;
+  windUnit?: WindUnit;
+  currentUnit?: CurrentUnit;
   extractExifFromImage: (file: File) => Promise<{ lat?: number; lng?: number; dateStr?: string; timeStr?: string }>;
   onSaveLog: (logData: Omit<CatchLog, 'id' | 'created_at'>) => void;
 }
@@ -28,6 +32,9 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
   currentWeather,
   currentTide,
   currentWaterTemp,
+  currentVelocity = 0.3,
+  windUnit = 'ms',
+  currentUnit = 'ms',
   extractExifFromImage,
   onSaveLog,
 }) => {
@@ -41,11 +48,12 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
   const [catchLat, setCatchLat] = React.useState<number | undefined>();
   const [catchLng, setCatchLng] = React.useState<number | undefined>();
 
-  // 당시 환경 스냅샷 필드
+  // 당시 환경 스냅샷 필드 (풍속 및 조류 속도 기본 단위 m/s)
   const [catchMul, setCatchMul] = React.useState(currentTide?.mulText || '8물');
   const [tideState, setTideState] = React.useState('중들물 (조류 왕성)');
   const [waterTemp, setWaterTemp] = React.useState(currentWaterTemp || 18.0);
   const [windSpeed, setWindSpeed] = React.useState(currentWeather?.windSpeed || 2.5);
+  const [simCurrentVel, setSimCurrentVel] = React.useState<number>(currentVelocity);
   const [photoUrl, setPhotoUrl] = React.useState('');
   const [memo, setMemo] = React.useState('');
   const [isAnalyzing, setIsAnalyzing] = React.useState(false);
@@ -67,6 +75,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
       setTideState(editingLog.tide_state);
       setWaterTemp(editingLog.water_temp);
       setWindSpeed(editingLog.wind_speed);
+      if (editingLog.current_velocity != null) setSimCurrentVel(editingLog.current_velocity);
       setPhotoUrl(editingLog.photo_url || '');
       setMemo(editingLog.memo || '');
       setExifNotice('');
@@ -83,11 +92,12 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
       if (currentTide) setCatchMul(currentTide.mulText);
       if (currentWaterTemp) setWaterTemp(currentWaterTemp);
       if (currentWeather) setWindSpeed(currentWeather.windSpeed);
+      if (currentVelocity) setSimCurrentVel(currentVelocity);
       setPhotoUrl('');
       setMemo('');
       setExifNotice('');
     }
-  }, [editingLog, currentTide, currentWaterTemp, currentWeather, spotLat, spotLng, isOpen]);
+  }, [editingLog, currentTide, currentWaterTemp, currentWeather, currentVelocity, spotLat, spotLng, isOpen]);
 
   if (!isOpen) return null;
 
@@ -100,7 +110,10 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
       setTideState(syncRes.tide_state);
       setWaterTemp(syncRes.water_temp);
       setWindSpeed(syncRes.wind_speed);
-      setExifNotice((prev) => `${prev} 🔄 당시 환경(물때 ${syncRes.catch_mul}, ${syncRes.tide_state}, 수온 ${syncRes.water_temp}°C) 동기화 완료!`);
+      if (syncRes.current_velocity != null) {
+        setSimCurrentVel(syncRes.current_velocity);
+      }
+      setExifNotice((prev) => `${prev} 🔄 당시 환경(물때 ${syncRes.catch_mul}, ${syncRes.tide_state}, 수온 ${syncRes.water_temp}°C, 조류 ${formatCurrentVelocity(syncRes.current_velocity || 0, currentUnit)}) 동기화 완료!`);
     } finally {
       setIsSyncing(false);
     }
@@ -180,6 +193,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
       tide_state: tideState,
       water_temp: Number(waterTemp),
       wind_speed: Number(windSpeed),
+      current_velocity: Number(simCurrentVel),
       lat: catchLat,
       lng: catchLng,
       photo_url: photoUrl || 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=600&q=80',
@@ -407,7 +421,9 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                 />
               </div>
               <div>
-                <label className="text-slate-400 block mb-0.5">당시 풍속 (m/s)</label>
+                <label className="text-slate-400 block mb-0.5">
+                  당시 풍속 ({windUnit === 'knot' ? 'knot' : windUnit === 'kmh' ? 'km/h' : 'm/s'})
+                </label>
                 <input
                   type="number"
                   step="0.1"
@@ -415,6 +431,23 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                   onChange={(e) => setWindSpeed(parseFloat(e.target.value))}
                   className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-white"
                 />
+              </div>
+              <div className="col-span-2">
+                <label className="text-slate-400 block mb-0.5">
+                  당시 조류 속도 ({currentUnit === 'knot' ? 'knot' : currentUnit === 'cms' ? 'cm/s' : 'm/s'})
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="0.05"
+                    value={simCurrentVel}
+                    onChange={(e) => setSimCurrentVel(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-white"
+                  />
+                  <span className="text-emerald-400 text-xs shrink-0 font-medium">
+                    {formatCurrentVelocity(simCurrentVel, currentUnit)}
+                  </span>
+                </div>
               </div>
             </div>
           </div>

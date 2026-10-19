@@ -19,7 +19,7 @@ import {
   Waves,
   Wind
 } from 'lucide-react';
-import { Area, AreaChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type {
   BiteScoreBreakdown,
   CatchLog,
@@ -521,19 +521,29 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
             {/* 4대 실시간/예측 해양·기상 카드 그리드 */}
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {/* 바람 위젯 (풍향 + 풍속) */}
+              {/* 바람 위젯 (풍향 + 풍속 + 나침반 화살표) */}
               <div className="p-3 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
                 <div className="flex items-center justify-between text-slate-400 text-xs">
                   <span className="flex items-center gap-1">
                     <Wind size={14} className="text-cyan-400" /> 풍향 · 풍속
                   </span>
-                  <span className="text-[11px] font-mono">{Math.round(simWindDir)}°</span>
+                  <div className="flex items-center gap-1">
+                    {/* 나침반 화살표: 바람이 불어가는 방향 회전 */}
+                    <div
+                      className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-xs font-bold transition-transform duration-300"
+                      style={{ transform: `rotate(${simWindDir}deg)` }}
+                      title={`풍향 ${Math.round(simWindDir)}°`}
+                    >
+                      ↓
+                    </div>
+                    <span className="text-[11px] font-mono">{Math.round(simWindDir)}°</span>
+                  </div>
                 </div>
                 <div className="flex items-baseline justify-between mt-1">
                   <div className="text-lg font-bold text-cyan-300">
                     {formatWindSpeed(simWindSpeed, windUnit)}
                   </div>
-                  <div className="text-xs text-slate-300">
+                  <div className="text-xs text-slate-300 font-medium">
                     {getCompassDirection(simWindDir)}
                   </div>
                 </div>
@@ -566,19 +576,29 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 </div>
               </div>
 
-              {/* 조류 방향 / 유속 위젯 */}
+              {/* 조류 방향 / 유속 위젯 (나침반 화살표 포함) */}
               <div className="p-3 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
                 <div className="flex items-center justify-between text-slate-400 text-xs">
                   <span className="flex items-center gap-1">
                     <Compass size={14} className="text-emerald-400" /> 조류 / 해류
                   </span>
-                  <span className="text-[11px] font-mono">{Math.round(simCurrentDir)}°</span>
+                  <div className="flex items-center gap-1">
+                    {/* 나침반 화살표: 조류가 흘러가는 방향 회전 */}
+                    <div
+                      className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-xs font-bold transition-transform duration-300"
+                      style={{ transform: `rotate(${simCurrentDir}deg)` }}
+                      title={`조류방향 ${Math.round(simCurrentDir)}°`}
+                    >
+                      ↑
+                    </div>
+                    <span className="text-[11px] font-mono">{Math.round(simCurrentDir)}°</span>
+                  </div>
                 </div>
                 <div className="flex items-baseline justify-between mt-1">
                   <div className="text-lg font-bold text-emerald-300">
                     {formatCurrentVelocity(simCurrentVel, currentUnit)}
                   </div>
-                  <div className="text-xs text-slate-300">
+                  <div className="text-xs text-slate-300 font-medium">
                     {getCompassDirection(simCurrentDir)}
                   </div>
                 </div>
@@ -785,6 +805,35 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         }}
                       />
 
+                      {/* 황금 피딩 타임(Golden Feeding Times) 시간대 밴드 시각화 */}
+                      {tide.feedingTimes?.map((f, fIdx) => {
+                        const curveData = tide.hourly72Curve || tide.hourlyCurve;
+                        const matchStart = curveData.find((c) => c.timeStr === f.startTimeStr) || curveData.find((c) => c.hour === f.startHour);
+                        const matchEnd = curveData.find((c) => c.timeStr === f.endTimeStr) || curveData.find((c) => c.hour === f.endHour);
+
+                        if (!matchStart || !matchEnd) return null;
+
+                        return (
+                          <ReferenceArea
+                            key={`feeding-${fIdx}`}
+                            x1={matchStart.timeStr}
+                            x2={matchEnd.timeStr}
+                            stroke="#f59e0b"
+                            strokeOpacity={0.6}
+                            strokeDasharray="2 2"
+                            fill="#f59e0b"
+                            fillOpacity={0.18}
+                            label={{
+                              value: f.label.split(' ')[0] + ' ' + f.label.split(' ')[1],
+                              position: 'insideTop',
+                              fill: '#fbbf24',
+                              fontSize: 9,
+                              fontWeight: 'bold',
+                            }}
+                          />
+                        );
+                      })}
+
                       {/* 현재 시각 세로선 표시 */}
                       <ReferenceLine
                         x={
@@ -901,6 +950,11 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-900/60">
                       💨 풍속 {formatWindSpeed(log.wind_speed, windUnit)}
                     </span>
+                    {log.current_velocity != null && (
+                      <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-900/60 font-mono">
+                        🧭 조류 {formatCurrentVelocity(log.current_velocity, currentUnit)}
+                      </span>
+                    )}
                     {log.lat != null && log.lng != null && (
                       <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-900/60 font-mono">
                         📍 {log.lat.toFixed(4)}, {log.lng.toFixed(4)}

@@ -215,18 +215,34 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
 
   // 황금 피딩 타임(Golden Feeding Times) 자동 계산
   // 1. 아침 해창 피딩 (일출 전 40분 ~ 일출 후 60분)
-  // 2. 저녁 해창 피딩 (일몰 전 60분 ~ 일몰 후 40분)
-  // 3. 만조/간조 물돌이 전후 1시간 (중들물 ~ 만조 피딩)
-  const feedingTimes: { label: string; timeRange: string; reason: string }[] = [];
+  // 2. 들물(밀물) 본류대 피딩 (만조 2시간 전 ~ 만조 시점)
+  // 3. 저녁 해창 피딩 (일몰 전 60분 ~ 일몰 후 40분)
+  const feedingTimes: {
+    label: string;
+    timeRange: string;
+    reason: string;
+    startHour: number;
+    endHour: number;
+    startTimeStr: string;
+    endTimeStr: string;
+  }[] = [];
 
   const sr = todayTimes.sunrise;
   if (sr) {
     const srStart = new Date(sr.getTime() - 40 * 60000);
     const srEnd = new Date(sr.getTime() + 60 * 60000);
+    const sHour = srStart.getHours();
+    const eHour = srEnd.getHours();
+    const sTimeStr = `${padZero(srStart.getMonth() + 1)}/${padZero(srStart.getDate())} ${padZero(sHour)}:00`;
+    const eTimeStr = `${padZero(srEnd.getMonth() + 1)}/${padZero(srEnd.getDate())} ${padZero(eHour)}:00`;
     feedingTimes.push({
       label: '🌅 아침 해창 피딩',
       timeRange: `${formatTime(srStart)} ~ ${formatTime(srEnd)}`,
       reason: '일출 전후 먹이활동 집중 (시각 어종 활성)',
+      startHour: sHour,
+      endHour: Math.max(eHour, sHour + 1),
+      startTimeStr: sTimeStr,
+      endTimeStr: eTimeStr,
     });
   }
 
@@ -236,10 +252,16 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
     const [hHour, hMin] = firstHigh.time.split(':').map(Number);
     const hStartHour = (hHour - 2 + 24) % 24;
     const hStartStr = `${padZero(hStartHour)}:${padZero(hMin)}`;
+    const curMonth = padZero(baseDate.getMonth() + 1);
+    const curDay = padZero(baseDate.getDate());
     feedingTimes.push({
       label: '🌊 들물(밀물) 피딩',
       timeRange: `${hStartStr} ~ ${firstHigh.time}`,
       reason: `초들물~만조 조류 유입 (${firstHigh.height}cm 고조 전)`,
+      startHour: hStartHour,
+      endHour: hHour,
+      startTimeStr: `${curMonth}/${curDay} ${padZero(hStartHour)}:00`,
+      endTimeStr: `${curMonth}/${curDay} ${padZero(hHour)}:00`,
     });
   }
 
@@ -247,10 +269,18 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
   if (ss) {
     const ssStart = new Date(ss.getTime() - 60 * 60000);
     const ssEnd = new Date(ss.getTime() + 40 * 60000);
+    const sHour = ssStart.getHours();
+    const eHour = ssEnd.getHours();
+    const sTimeStr = `${padZero(ssStart.getMonth() + 1)}/${padZero(ssStart.getDate())} ${padZero(sHour)}:00`;
+    const eTimeStr = `${padZero(ssEnd.getMonth() + 1)}/${padZero(ssEnd.getDate())} ${padZero(eHour)}:00`;
     feedingTimes.push({
       label: '🌇 저녁 해질녘 피딩',
       timeRange: `${formatTime(ssStart)} ~ ${formatTime(ssEnd)}`,
       reason: '일몰 골든아워 (포식성 어종 연안 접근)',
+      startHour: sHour,
+      endHour: Math.max(eHour, sHour + 1),
+      startTimeStr: sTimeStr,
+      endTimeStr: eTimeStr,
     });
   }
 

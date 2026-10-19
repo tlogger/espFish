@@ -43,6 +43,8 @@ export interface CatchLog {
   water_temp: number; // 당시 수온 (°C)
   wind_speed: number; // 당시 풍속 (m/s)
   wind_direction?: number; // 당시 풍향 (0-360°)
+  current_velocity?: number; // 당시 조류 유속 (m/s)
+  current_direction?: number; // 당시 조류 방향 (0-360°)
   lat?: number; // 조과 히트 GPS 위도
   lng?: number; // 조과 히트 GPS 경도
   photo_url?: string; // 조과 인증 사진
@@ -125,7 +127,15 @@ export interface TideDayInfo {
   sunset: string; // HH:mm
   dawn: string; // HH:mm
   dusk: string; // HH:mm
-  feedingTimes?: { label: string; timeRange: string; reason: string }[];
+  feedingTimes?: {
+    label: string;
+    timeRange: string;
+    reason: string;
+    startHour: number;
+    endHour: number;
+    startTimeStr: string;
+    endTimeStr: string;
+  }[];
 }
 
 export interface BiteScoreBreakdown {
