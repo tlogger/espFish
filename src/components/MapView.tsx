@@ -71,6 +71,7 @@ interface MapViewProps {
   windUnit: WindUnit;
   currentUnit: CurrentUnit;
   recenterTarget?: { lat: number; lng: number; zoom?: number } | null;
+  isMobileDrawerOpen?: boolean;
 }
 
 export const MapView: React.FC<MapViewProps> = ({
@@ -84,57 +85,82 @@ export const MapView: React.FC<MapViewProps> = ({
   windUnit,
   currentUnit,
   recenterTarget,
+  isMobileDrawerOpen = false,
 }) => {
-  // 타임라인 미래 시뮬레이션 슬라이더 상태 (0 ~ 23시)
-  const currentHourNow = new Date().getHours();
-  const [selectedHour, setSelectedHour] = React.useState<number>(currentHourNow);
+  // 타임라인 미래 시뮬레이션: 현재 시각 기준 앞으로 0 ~ 48시간 (48h 오프셋)
+  const [timelineOffsetHours, setTimelineOffsetHours] = React.useState<number>(0);
   const [isPlaying, setIsPlaying] = React.useState(false);
 
-  // 재생 타이머
+  // 재생 타이머 (1초마다 +1시간 전진, 48시간 후 0으로 루프)
   React.useEffect(() => {
     let interval: any;
     if (isPlaying) {
       interval = setInterval(() => {
-        setSelectedHour((prev) => (prev + 1) % 24);
+        setTimelineOffsetHours((prev) => (prev >= 48 ? 0 : prev + 1));
       }, 1000);
     }
     return () => clearInterval(interval);
   }, [isPlaying]);
 
-  // 선택된 시간대의 데이터 추출
-  const isNow = selectedHour === currentHourNow;
+  // 대상 시뮬레이션 시각 Date 객체
+  const now = new Date();
+  const targetTime = new Date(now.getTime() + timelineOffsetHours * 3600 * 1000);
+  const isNow = timelineOffsetHours === 0;
+
+  // 대상 시각에 매칭되는 Open-Meteo hourly 데이터 인덱스 탐색
+  const targetHour = targetTime.getHours();
+  const targetYear = targetTime.getFullYear();
+  const targetMonth = String(targetTime.getMonth() + 1).padStart(2, '0');
+  const targetDate = String(targetTime.getDate()).padStart(2, '0');
+  const targetHourStr = String(targetHour).padStart(2, '0');
+  const targetTimePrefix = `${targetYear}-${targetMonth}-${targetDate}T${targetHourStr}:00`;
+
+  let weatherIdx = -1;
+  if (weather?.hourly?.time) {
+    weatherIdx = weather.hourly.time.findIndex((t) => t.startsWith(targetTimePrefix));
+  }
+
+  let marineIdx = -1;
+  if (marine?.hourly?.time) {
+    marineIdx = marine.hourly.time.findIndex((t) => t.startsWith(targetTimePrefix));
+  }
 
   const displayWindSpeed =
-    weather?.hourly?.windSpeed && weather.hourly.windSpeed[selectedHour] != null
-      ? weather.hourly.windSpeed[selectedHour]
+    weatherIdx >= 0 && weather?.hourly?.windSpeed && weather.hourly.windSpeed[weatherIdx] != null
+      ? weather.hourly.windSpeed[weatherIdx]
       : weather?.windSpeed ?? 0;
 
   const displayWindDir =
-    weather?.hourly?.windDirection && weather.hourly.windDirection[selectedHour] != null
-      ? weather.hourly.windDirection[selectedHour]
+    weatherIdx >= 0 && weather?.hourly?.windDirection && weather.hourly.windDirection[weatherIdx] != null
+      ? weather.hourly.windDirection[weatherIdx]
       : weather?.windDirection ?? 0;
 
   const displayTemp =
-    weather?.hourly?.temp && weather.hourly.temp[selectedHour] != null
-      ? weather.hourly.temp[selectedHour]
+    weatherIdx >= 0 && weather?.hourly?.temp && weather.hourly.temp[weatherIdx] != null
+      ? weather.hourly.temp[weatherIdx]
       : weather?.temp ?? 0;
 
   const displayWaterTemp =
-    marine?.hourly?.seaSurfaceTemp && marine.hourly.seaSurfaceTemp[selectedHour] != null
-      ? marine.hourly.seaSurfaceTemp[selectedHour]
+    marineIdx >= 0 && marine?.hourly?.seaSurfaceTemp && marine.hourly.seaSurfaceTemp[marineIdx] != null
+      ? marine.hourly.seaSurfaceTemp[marineIdx]
       : marine?.seaSurfaceTemp ?? 0;
 
   const displayCurrentVel =
-    marine?.hourly?.currentVelocity && marine.hourly.currentVelocity[selectedHour] != null
-      ? marine.hourly.currentVelocity[selectedHour]
+    marineIdx >= 0 && marine?.hourly?.currentVelocity && marine.hourly.currentVelocity[marineIdx] != null
+      ? marine.hourly.currentVelocity[marineIdx]
       : marine?.currentVelocity ?? 0;
 
   const displayCurrentDir =
-    marine?.hourly?.currentDirection && marine.hourly.currentDirection[selectedHour] != null
-      ? marine.hourly.currentDirection[selectedHour]
+    marineIdx >= 0 && marine?.hourly?.currentDirection && marine.hourly.currentDirection[marineIdx] != null
+      ? marine.hourly.currentDirection[marineIdx]
       : marine?.currentDirection ?? 0;
 
-  const matchedTidePoint = tide?.hourlyCurve.find((c) => c.hour === selectedHour);
+  // 오늘 0시 기준 경과 시간으로 72h 조위 곡선 매칭
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).getTime();
+  const diffHoursFromMidnight = Math.floor((targetTime.getTime() - todayStart) / 3600000);
+  const matchedTidePoint =
+    tide?.hourly72Curve?.find((c) => c.hour === diffHoursFromMidnight) ||
+    tide?.hourlyCurve[targetHour];
 
   return (
     <div className="relative w-full h-full bg-slate-950">
@@ -183,21 +209,28 @@ export const MapView: React.FC<MapViewProps> = ({
         })}
       </MapContainer>
 
-      {/* 선택된 포인트 지도 상단 실시간/미래 시뮬레이션 환경 오버레이 (Windy 스타일) */}
+      {/* 선택된 포인트 지도 상단 실시간/미래 시뮬레이션 환경 오버레이 (Windy 스타일 48h)
+          모바일에서 드로어가 열려 있을 때는 화면 잘림 방지를 위해 완전히 숨김 */}
       {selectedSpot && (
-        <div className="absolute top-4 left-4 z-20 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3.5 text-white shadow-2xl max-w-xs sm:max-w-sm space-y-3 pointer-events-auto">
+        <div
+          className={`${
+            isMobileDrawerOpen ? 'hidden md:block' : 'block'
+          } absolute top-4 left-4 z-20 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3.5 text-white shadow-2xl max-w-xs sm:max-w-sm space-y-3 pointer-events-auto transition-opacity duration-200`}
+        >
           <div className="flex justify-between items-start">
             <div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                  {isNow ? '실시간 환경' : `${selectedHour}:00 예측 시뮬레이션`}
+                  {isNow
+                    ? '실시간 환경'
+                    : `${targetMonth}/${targetDate} ${targetHourStr}:00 (+${timelineOffsetHours}h 예측)`}
                 </span>
                 {!isNow && (
                   <button
-                    onClick={() => setSelectedHour(currentHourNow)}
-                    className="text-[10px] text-cyan-400 hover:underline"
+                    onClick={() => setTimelineOffsetHours(0)}
+                    className="text-[10px] text-cyan-400 hover:underline font-semibold"
                   >
-                    현재시각으로 복귀
+                    현재시각 복귀
                   </button>
                 )}
               </div>
@@ -263,7 +296,7 @@ export const MapView: React.FC<MapViewProps> = ({
             </span>
           </div>
 
-          {/* Windy 스타일 24시간 타임라인 슬라이더 컨트롤 */}
+          {/* Windy 스타일 48시간 타임라인 슬라이더 컨트롤 */}
           <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
             <div className="flex justify-between items-center text-[11px]">
               <div className="flex items-center gap-1.5 font-bold text-cyan-300">
@@ -271,11 +304,13 @@ export const MapView: React.FC<MapViewProps> = ({
                   type="button"
                   onClick={() => setIsPlaying(!isPlaying)}
                   className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-white transition"
-                  title={isPlaying ? '정지' : '24시간 시뮬레이션 재생'}
+                  title={isPlaying ? '정지' : '48시간 시뮬레이션 재생'}
                 >
                   {isPlaying ? <Pause size={12} /> : <Play size={12} />}
                 </button>
-                <span>{selectedHour}:00 타임라인</span>
+                <span>
+                  {isNow ? '현재시각' : `+${timelineOffsetHours}시간 (${targetDate}일 ${targetHourStr}시)`}
+                </span>
               </div>
               <span className="text-[10px] text-slate-400">
                 {matchedTidePoint?.stateText || ''}
@@ -285,17 +320,17 @@ export const MapView: React.FC<MapViewProps> = ({
             <input
               type="range"
               min={0}
-              max={23}
-              value={selectedHour}
-              onChange={(e) => setSelectedHour(parseInt(e.target.value))}
+              max={48}
+              value={timelineOffsetHours}
+              onChange={(e) => setTimelineOffsetHours(parseInt(e.target.value))}
               className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
             />
             <div className="flex justify-between text-[9px] text-slate-500 font-mono">
-              <span>00시</span>
-              <span>06시</span>
-              <span>12시</span>
-              <span>18시</span>
-              <span>23시</span>
+              <span>현재</span>
+              <span>+12h</span>
+              <span>+24h(내일)</span>
+              <span>+36h</span>
+              <span>+48h(모레)</span>
             </div>
           </div>
         </div>

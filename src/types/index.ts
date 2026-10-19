@@ -90,13 +90,36 @@ export interface TidePoint {
   type?: 'HIGH' | 'LOW';
 }
 
+export interface TideCurvePoint {
+  hour: number;
+  timeStr: string; // HH:mm or MM/DD HH:mm
+  dateStr?: string; // MM/DD
+  dayLabel?: string; // 오늘, 내일, 모레
+  height: number;
+  stateText: string;
+  isSunrise?: boolean;
+  isSunset?: boolean;
+}
+
+export interface TideDaySummary {
+  dateStr: string; // MM/DD (요일)
+  dayLabel: string; // 오늘, 내일, 모레
+  mulText: string;
+  sunrise: string;
+  sunset: string;
+  highTides: { time: string; height: number }[];
+  lowTides: { time: string; height: number }[];
+}
+
 export interface TideDayInfo {
   lunarDateStr: string; // 음력 날짜
   mulText: string; // 물때 (예: 8물)
   mulNumber: number; // 1 ~ 15
   highTides: { time: string; height: number }[];
   lowTides: { time: string; height: number }[];
-  hourlyCurve: { hour: number; timeStr: string; height: number; stateText: string }[];
+  hourlyCurve: TideCurvePoint[];
+  hourly72Curve: TideCurvePoint[]; // 오늘 0시 기준 72시간 연속 조위 곡선
+  threeDays: TideDaySummary[]; // 오늘, 내일, 모레 3일간 요약
   sunrise: string; // HH:mm
   sunset: string; // HH:mm
   dawn: string; // HH:mm

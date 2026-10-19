@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
     "clsx": "^2.1.1",
     "exif-js": "^2.3.0",
     "exifr": "^7.1.3",

@@ -1,5 +1,5 @@
 import * as SunCalc from 'suncalc';
-import type { TideDayInfo } from '../types';
+import type { TideCurvePoint, TideDayInfo, TideDaySummary } from '../types';
 
 // 한국 연안 주요 표준항 좌표 및 대략적 조차(Harmonic Constant M2, S2 근사치)
 export interface HarborRef {
@@ -73,7 +73,6 @@ export function getMulInfo(moonAge: number): { mulNumber: number; mulText: strin
   const lunarDay = Math.floor(moonAge) + 1; // 음력 1일 ~ 30일
   
   // 8물제 (사리 = 7~8물, 조금 = 14물, 무시 = 15물)
-  // 음력 1일 = 7물(사리), 2일 = 8물 ... 8일 = 14물(조금), 9일 = 15물(무시), 10일 = 1물 ... 15일 = 6물, 16일 = 7물
   let mulNum = (lunarDay + 6) % 15;
   if (mulNum === 0) mulNum = 15;
 
@@ -90,96 +89,142 @@ function padZero(num: number): string {
   return num < 10 ? `0${num}` : `${num}`;
 }
 
-/** 특정 날짜, 포인트 좌표에 대한 물때, 일출일몰 및 24시간 조석 곡선 계산 */
-export function calculateTideDay(lat: number, lng: number, date: Date = new Date()): TideDayInfo {
+/** 특정 날짜, 포인트 좌표에 대한 물때, 일출일몰 및 72시간 연속 조석 곡선 계산 (오늘 0시 기준 3일간) */
+export function calculateTideDay(lat: number, lng: number, baseDate: Date = new Date()): TideDayInfo {
   const harbor = findNearestHarbor(lat, lng);
-  const moonAge = getMoonAge(date);
-  const { mulNumber, mulText, lunarDay } = getMulInfo(moonAge);
-
-  // SunCalc를 이용한 일출, 일몰, 박명 시각
-  const times = SunCalc.getTimes(date, lat, lng);
-  const formatTime = (d: Date | null | undefined) => (!d || isNaN(d.getTime())) ? '--:--' : `${padZero(d.getHours())}:${padZero(d.getMinutes())}`;
-
-  // 조석 계산 (하루 약 2회 만조, 2회 간조. 평균 주기 12시간 25분 = 12.42시간)
-  // 매일 만조는 전날보다 약 50분(0.83시간)씩 늦어짐
   const tideCycle = 12.42;
-  const firstHighHour = (harbor.highLagHours + (moonAge * 0.83)) % tideCycle;
-  
-  // 물때별 조차 크기 (사리 때 최대, 조금 때 최소)
-  // mulNumber 7~8일 때 factor ~ 1.0, 14~15일 때 factor ~ 0.4
-  const springFactor = 0.4 + 0.6 * (Math.sin(((mulNumber - 1) / 15) * Math.PI) ** 2);
-  const amplitude = (harbor.meanRange * springFactor) / 2;
-  const meanSeaLevel = harbor.meanRange * 0.6; // 기준 수위
 
-  const hourlyCurve: TideDayInfo['hourlyCurve'] = [];
-  const highTides: { time: string; height: number }[] = [];
-  const lowTides: { time: string; height: number }[] = [];
+  const formatTime = (d: Date | null | undefined) =>
+    !d || isNaN(d.getTime()) ? '--:--' : `${padZero(d.getHours())}:${padZero(d.getMinutes())}`;
 
-  for (let h = 0; h < 24; h++) {
-    for (let m = 0; m < 60; m += 30) {
-      const t = h + m / 60;
-      // cos 곡선 기반 조위 계산
-      const phase = ((t - firstHighHour) * 2 * Math.PI) / tideCycle;
-      const height = Math.round(meanSeaLevel + amplitude * Math.cos(phase));
-      
-      // 조석 상태 텍스트 판정 (들물 vs 썰물)
-      // phase 도함수: -sin(phase) > 0 이면 들물(상승), < 0 이면 썰물(하강)
-      const slope = -Math.sin(phase);
-      let stateText = '물돌이(정조)';
-      if (slope > 0.3) stateText = '들물(밀물)';
-      else if (slope < -0.3) stateText = '썰물(날물)';
+  // 오늘 00:00:00 기준 시점
+  const startOfDay = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 0, 0, 0);
 
-      if (m === 0) {
-        hourlyCurve.push({
-          hour: h,
-          timeStr: `${padZero(h)}:00`,
-          height,
-          stateText,
+  const dayLabels = ['오늘', '내일', '모레'];
+  const threeDays: TideDaySummary[] = [];
+
+  // 3일간 요약 데이터 산출 (오늘, 내일, 모레)
+  for (let d = 0; d < 3; d++) {
+    const curDate = new Date(startOfDay.getTime() + d * 24 * 3600 * 1000);
+    const moonAge = getMoonAge(curDate);
+    const { mulText, mulNumber } = getMulInfo(moonAge);
+    const times = SunCalc.getTimes(curDate, lat, lng);
+
+    const firstHighHour = (harbor.highLagHours + moonAge * 0.83) % tideCycle;
+    const springFactor = 0.4 + 0.6 * (Math.sin(((mulNumber - 1) / 15) * Math.PI) ** 2);
+    const amplitude = (harbor.meanRange * springFactor) / 2;
+    const meanSeaLevel = harbor.meanRange * 0.6;
+
+    const highs: { time: string; height: number }[] = [];
+    const lows: { time: string; height: number }[] = [];
+
+    const highCandidates = [firstHighHour, (firstHighHour + tideCycle) % 24, (firstHighHour + tideCycle * 2) % 24];
+    const lowCandidates = [
+      (firstHighHour + tideCycle / 2) % 24,
+      (firstHighHour + tideCycle * 1.5) % 24,
+      (firstHighHour + tideCycle * 2.5) % 24,
+    ];
+
+    highCandidates.sort((a, b) => a - b).forEach((hr) => {
+      if (hr >= 0 && hr < 24) {
+        const h = Math.floor(hr);
+        const m = Math.floor((hr - h) * 60);
+        highs.push({
+          time: `${padZero(h)}:${padZero(m)}`,
+          height: Math.round(meanSeaLevel + amplitude),
         });
       }
+    });
+
+    lowCandidates.sort((a, b) => a - b).forEach((hr) => {
+      if (hr >= 0 && hr < 24) {
+        const h = Math.floor(hr);
+        const m = Math.floor((hr - h) * 60);
+        lows.push({
+          time: `${padZero(h)}:${padZero(m)}`,
+          height: Math.max(10, Math.round(meanSeaLevel - amplitude)),
+        });
+      }
+    });
+
+    const dayName = `${padZero(curDate.getMonth() + 1)}/${padZero(curDate.getDate())} (${['일', '월', '화', '수', '목', '금', '토'][curDate.getDay()]})`;
+
+    threeDays.push({
+      dateStr: dayName,
+      dayLabel: dayLabels[d],
+      mulText,
+      sunrise: formatTime(times.sunrise),
+      sunset: formatTime(times.sunset),
+      highTides: highs.slice(0, 2),
+      lowTides: lows.slice(0, 2),
+    });
+  }
+
+  // 72시간 연속 시간별 조위 곡선 (0h ~ 71h)
+  const hourly72Curve: TideCurvePoint[] = [];
+  const hourlyCurve: TideCurvePoint[] = [];
+
+  for (let totalHour = 0; totalHour < 72; totalHour++) {
+    const curHourDate = new Date(startOfDay.getTime() + totalHour * 3600 * 1000);
+    const dayIdx = Math.floor(totalHour / 24);
+    const moonAge = getMoonAge(curHourDate);
+    const { mulNumber } = getMulInfo(moonAge);
+
+    const firstHighHour = (harbor.highLagHours + moonAge * 0.83) % tideCycle;
+    const springFactor = 0.4 + 0.6 * (Math.sin(((mulNumber - 1) / 15) * Math.PI) ** 2);
+    const amplitude = (harbor.meanRange * springFactor) / 2;
+    const meanSeaLevel = harbor.meanRange * 0.6;
+
+    // 현재 시각 기준 phase
+    const t = curHourDate.getHours();
+    const phase = ((t - firstHighHour) * 2 * Math.PI) / tideCycle;
+    const height = Math.round(meanSeaLevel + amplitude * Math.cos(phase));
+
+    const slope = -Math.sin(phase);
+    let stateText = '물돌이(정조)';
+    if (slope > 0.3) stateText = '들물(밀물)';
+    else if (slope < -0.3) stateText = '썰물(날물)';
+
+    const point: TideCurvePoint = {
+      hour: totalHour,
+      timeStr: `${padZero(curHourDate.getMonth() + 1)}/${padZero(curHourDate.getDate())} ${padZero(t)}:00`,
+      dateStr: `${padZero(curHourDate.getMonth() + 1)}/${padZero(curHourDate.getDate())}`,
+      dayLabel: dayLabels[dayIdx] || '예보',
+      height,
+      stateText,
+    };
+
+    hourly72Curve.push(point);
+
+    if (totalHour < 24) {
+      hourlyCurve.push({
+        hour: totalHour,
+        timeStr: `${padZero(t)}:00`,
+        dateStr: point.dateStr,
+        dayLabel: '오늘',
+        height,
+        stateText,
+      });
     }
   }
 
-  // 4대 만·간조 시각 산출 (대략 2회 고조, 2회 저조)
-  const highs = [firstHighHour, (firstHighHour + tideCycle) % 24, (firstHighHour + tideCycle * 2) % 24];
-  const lows = [
-    (firstHighHour + tideCycle / 2) % 24,
-    (firstHighHour + tideCycle * 1.5) % 24,
-    (firstHighHour + tideCycle * 2.5) % 24,
-  ];
-
-  highs.sort((a, b) => a - b).forEach((hr) => {
-    if (hr >= 0 && hr < 24) {
-      const h = Math.floor(hr);
-      const m = Math.floor((hr - h) * 60);
-      highTides.push({
-        time: `${padZero(h)}:${padZero(m)}`,
-        height: Math.round(meanSeaLevel + amplitude),
-      });
-    }
-  });
-
-  lows.sort((a, b) => a - b).forEach((hr) => {
-    if (hr >= 0 && hr < 24) {
-      const h = Math.floor(hr);
-      const m = Math.floor((hr - h) * 60);
-      lowTides.push({
-        time: `${padZero(h)}:${padZero(m)}`,
-        height: Math.max(10, Math.round(meanSeaLevel - amplitude)),
-      });
-    }
-  });
+  // 오늘 기준 대표 정보
+  const todayMoonAge = getMoonAge(baseDate);
+  const todayMul = getMulInfo(todayMoonAge);
+  const todayTimes = SunCalc.getTimes(baseDate, lat, lng);
 
   return {
-    lunarDateStr: `음력 ${lunarDay}일`,
-    mulText,
-    mulNumber,
-    highTides: highTides.slice(0, 2),
-    lowTides: lowTides.slice(0, 2),
+    lunarDateStr: `음력 ${todayMul.lunarDay}일`,
+    mulText: todayMul.mulText,
+    mulNumber: todayMul.mulNumber,
+    highTides: threeDays[0].highTides,
+    lowTides: threeDays[0].lowTides,
     hourlyCurve,
-    sunrise: formatTime(times.sunrise),
-    sunset: formatTime(times.sunset),
-    dawn: formatTime(times.dawn),
-    dusk: formatTime(times.dusk),
+    hourly72Curve,
+    threeDays,
+    sunrise: formatTime(todayTimes.sunrise),
+    sunset: formatTime(todayTimes.sunset),
+    dawn: formatTime(todayTimes.dawn),
+    dusk: formatTime(todayTimes.dusk),
   };
 }

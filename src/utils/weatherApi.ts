@@ -40,7 +40,7 @@ export function getCompassDirection(deg: number): string {
 
 /** Open-Meteo Weather Forecast API 호출 */
 export async function fetchWeatherData(lat: number, lng: number): Promise<WeatherData> {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=Asia%2FSeoul`;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&forecast_days=4&timezone=Asia%2FSeoul`;
 
   try {
     const res = await fetch(url);
@@ -58,11 +58,11 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
       windDirection: current.wind_direction_10m,
       windGust: Math.round(current.wind_gusts_10m * 10) / 10,
       hourly: {
-        time: data.hourly?.time?.slice(0, 24) || [],
-        temp: data.hourly?.temperature_2m?.slice(0, 24) || [],
-        windSpeed: data.hourly?.wind_speed_10m?.slice(0, 24) || [],
-        windDirection: data.hourly?.wind_direction_10m?.slice(0, 24) || [],
-        pop: data.hourly?.precipitation_probability?.slice(0, 24) || [],
+        time: data.hourly?.time?.slice(0, 96) || [],
+        temp: data.hourly?.temperature_2m?.slice(0, 96) || [],
+        windSpeed: data.hourly?.wind_speed_10m?.slice(0, 96) || [],
+        windDirection: data.hourly?.wind_direction_10m?.slice(0, 96) || [],
+        pop: data.hourly?.precipitation_probability?.slice(0, 96) || [],
       },
     };
   } catch (err) {
@@ -90,7 +90,7 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
 
 /** Open-Meteo Marine API 호출 (수온, 파고, 해류) */
 export async function fetchMarineData(lat: number, lng: number): Promise<MarineData> {
-  const url = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction,sea_surface_temperature&hourly=wave_height,sea_surface_temperature,ocean_current_velocity,ocean_current_direction&timezone=Asia%2FSeoul`;
+  const url = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction,sea_surface_temperature&hourly=wave_height,sea_surface_temperature,ocean_current_velocity,ocean_current_direction&forecast_days=4&timezone=Asia%2FSeoul`;
 
   try {
     const res = await fetch(url);
@@ -107,11 +107,11 @@ export async function fetchMarineData(lat: number, lng: number): Promise<MarineD
       currentVelocity: current.ocean_current_velocity != null ? Math.round(current.ocean_current_velocity * 100) / 100 : 0.35, // m/s
       currentDirection: current.ocean_current_direction ?? 135, // 남동류
       hourly: {
-        time: hourly?.time?.slice(0, 24) || [],
-        seaSurfaceTemp: hourly?.sea_surface_temperature?.slice(0, 24) || [],
-        waveHeight: hourly?.wave_height?.slice(0, 24) || [],
-        currentVelocity: hourly?.ocean_current_velocity?.slice(0, 24) || [],
-        currentDirection: hourly?.ocean_current_direction?.slice(0, 24) || [],
+        time: hourly?.time?.slice(0, 96) || [],
+        seaSurfaceTemp: hourly?.sea_surface_temperature?.slice(0, 96) || [],
+        waveHeight: hourly?.wave_height?.slice(0, 96) || [],
+        currentVelocity: hourly?.ocean_current_velocity?.slice(0, 96) || [],
+        currentDirection: hourly?.ocean_current_direction?.slice(0, 96) || [],
       },
     };
   } catch (err) {

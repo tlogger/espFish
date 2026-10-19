@@ -1,9 +1,10 @@
 import React from 'react';
-import { Filter, Loader2, Navigation2, Plus, Search, User, X } from 'lucide-react';
+import { ChevronUp, Cloud, Filter, Loader2, Navigation2, Plus, Search, User, X } from 'lucide-react';
 import { MapView } from './components/MapView';
 import { SpotDetailPanel } from './components/SpotDetailPanel';
 import { SpotFormModal } from './components/SpotFormModal';
 import { CatchLogModal } from './components/CatchLogModal';
+import { CloudSyncModal } from './components/CloudSyncModal';
 import type {
   BiteScoreBreakdown,
   CatchLog,
@@ -21,6 +22,16 @@ import { calculateBiteScore } from './utils/biteScore';
 import { extractExifFromImage } from './utils/exifExtractor';
 import { loadLogsFromStorage, loadSpotsFromStorage, saveLogsToStorage, saveSpotsToStorage } from './utils/storage';
 import { searchPoi, type PoiSearchResult } from './utils/poiSearch';
+import {
+  deleteCloudCatchLog,
+  deleteCloudSpot,
+  fetchCloudLogs,
+  fetchCloudSpots,
+  getSavedCloudConfig,
+  getSupabase,
+  saveCloudCatchLog,
+  saveCloudSpot,
+} from './utils/cloudDb';
 
 export function App() {
   const [spots, setSpots] = React.useState<FishingSpot[]>([]);
@@ -28,6 +39,13 @@ export function App() {
   const [selectedSpot, setSelectedSpot] = React.useState<FishingSpot | null>(null);
   const [editingSpot, setEditingSpot] = React.useState<FishingSpot | null>(null);
   const [editingCatchLog, setEditingCatchLog] = React.useState<CatchLog | null>(null);
+
+  // 모바일 드로워 표시 상태 (보일 때는 100% 화면 채우고, 숨길 때는 지도와 실시간 환경 복귀)
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = React.useState(true);
+
+  // 클라우드 DB 연동 상태
+  const [isCloudConnected, setIsCloudConnected] = React.useState(false);
+  const [isCloudModalOpen, setIsCloudModalOpen] = React.useState(false);
 
   // 환경 데이터 상태
   const [weather, setWeather] = React.useState<WeatherData | null>(null);
@@ -56,27 +74,80 @@ export function App() {
   const [newSpotLat, setNewSpotLat] = React.useState<number | undefined>();
   const [newSpotLng, setNewSpotLng] = React.useState<number | undefined>();
 
-  // 초기 스토리지 로드
-  React.useEffect(() => {
-    const loadedSpots = loadSpotsFromStorage();
-    const loadedLogs = loadLogsFromStorage();
-    setSpots(loadedSpots);
-    setCatchLogs(loadedLogs);
-    if (loadedSpots.length > 0) {
-      handleSelectSpot(loadedSpots[0]);
+  // 초기 스토리지 & 클라우드 DB 데이터 로드
+  const reloadData = React.useCallback(async () => {
+    const cloudConfig = getSavedCloudConfig();
+    setIsCloudConnected(Boolean(cloudConfig));
+
+    let currentSpots = loadSpotsFromStorage();
+    let currentLogs = loadLogsFromStorage();
+
+    if (cloudConfig) {
+      try {
+        const [cSpots, cLogs] = await Promise.all([fetchCloudSpots(), fetchCloudLogs()]);
+        if (cSpots && cSpots.length > 0) {
+          currentSpots = cSpots;
+          saveSpotsToStorage(cSpots);
+        }
+        if (cLogs && cLogs.length > 0) {
+          currentLogs = cLogs;
+          saveLogsToStorage(cLogs);
+        }
+      } catch (err) {
+        console.warn('Cloud fetch warning, using local cache:', err);
+      }
     }
-  }, []);
+
+    setSpots(currentSpots);
+    setCatchLogs(currentLogs);
+    if (currentSpots.length > 0 && !selectedSpot) {
+      handleSelectSpot(currentSpots[0]);
+    }
+  }, [selectedSpot]);
+
+  React.useEffect(() => {
+    reloadData();
+  }, [reloadData]);
+
+  // Supabase 실시간 동기화 구독 (PC ⇄ 모바일 실시간 전파)
+  React.useEffect(() => {
+    const client = getSupabase();
+    if (!client) return;
+
+    const channel = client
+      .channel('espfish_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fishing_spots' }, async () => {
+        const cSpots = await fetchCloudSpots();
+        if (cSpots) {
+          setSpots(cSpots);
+          saveSpotsToStorage(cSpots);
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'catch_logs' }, async () => {
+        const cLogs = await fetchCloudLogs();
+        if (cLogs) {
+          setCatchLogs(cLogs);
+          saveLogsToStorage(cLogs);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      client.removeChannel(channel);
+    };
+  }, [isCloudConnected]);
 
   // 포인트 선택 시 날씨/해양/물때/입질지수 Fetch & 연산
   const handleSelectSpot = async (spot: FishingSpot) => {
     setSelectedSpot(spot);
+    setIsMobileDrawerOpen(true); // 모바일에서 선택 시 드로워 열기
     setRecenterTarget({ lat: spot.lat, lng: spot.lng, zoom: 14 });
 
-    // 1. 한국형 물때 & 24시간 조석 곡선 & 일출일몰 즉시 계산
+    // 1. 한국형 물때 & 72시간 연속 조석 곡선 & 3일간 일출일몰 즉시 계산
     const tideData = calculateTideDay(spot.lat, spot.lng, new Date());
     setTide(tideData);
 
-    // 2. Open-Meteo Weather & Marine API 병렬 Fetch
+    // 2. Open-Meteo Weather & Marine API 병렬 Fetch (48h+ 예보 지원)
     try {
       const [weatherData, marineData] = await Promise.all([
         fetchWeatherData(spot.lat, spot.lng),
@@ -101,18 +172,19 @@ export function App() {
     setIsSpotModalOpen(true);
   };
 
-  // 새 포인트 저장 및 수정 핸들러
-  const handleSaveSpot = (spotData: Omit<FishingSpot, 'id' | 'user_id' | 'author_name' | 'created_at'>) => {
+  // 새 포인트 저장 및 수정 핸들러 (로컬 + 클라우드 자동 동기화)
+  const handleSaveSpot = async (spotData: Omit<FishingSpot, 'id' | 'user_id' | 'author_name' | 'created_at'>) => {
     if (editingSpot) {
       // 포인트 수정 (Update)
-      const updatedList = spots.map((s) =>
-        s.id === editingSpot.id ? { ...s, ...spotData } : s
-      );
+      const updatedSpot: FishingSpot = { ...editingSpot, ...spotData };
+      const updatedList = spots.map((s) => (s.id === editingSpot.id ? updatedSpot : s));
       setSpots(updatedList);
       saveSpotsToStorage(updatedList);
-      const updatedTarget = updatedList.find((s) => s.id === editingSpot.id);
-      if (updatedTarget) handleSelectSpot(updatedTarget);
+      handleSelectSpot(updatedSpot);
       setEditingSpot(null);
+
+      // 클라우드 업서트
+      saveCloudSpot(updatedSpot).catch((e) => console.warn('Cloud sync error:', e));
     } else {
       // 새 포인트 생성 (Create)
       const newSpot: FishingSpot = {
@@ -126,19 +198,25 @@ export function App() {
       setSpots(updated);
       saveSpotsToStorage(updated);
       handleSelectSpot(newSpot);
+
+      // 클라우드 업서트
+      saveCloudSpot(newSpot).catch((e) => console.warn('Cloud sync error:', e));
     }
   };
 
-  // 포인트 삭제 핸들러
+  // 포인트 삭제 핸들러 (로컬 + 클라우드 동기화)
   const handleDeleteSpot = (spotId: string) => {
     const updated = spots.filter((s) => s.id !== spotId);
     setSpots(updated);
     saveSpotsToStorage(updated);
+    deleteCloudSpot(spotId).catch((e) => console.warn('Cloud delete error:', e));
+
     if (selectedSpot?.id === spotId) {
       if (updated.length > 0) {
         handleSelectSpot(updated[0]);
       } else {
         setSelectedSpot(null);
+        setIsMobileDrawerOpen(false);
       }
     }
   };
@@ -149,16 +227,16 @@ export function App() {
     setIsSpotModalOpen(true);
   };
 
-  // 조과 기록 생성 및 수정 핸들러 (CRUD)
+  // 조과 기록 생성 및 수정 핸들러 (CRUD & 클라우드 동기화)
   const handleSaveCatchLog = (logData: Omit<CatchLog, 'id' | 'created_at'>) => {
     if (editingCatchLog) {
       // 조과 수정 (Update)
-      const updated = catchLogs.map((l) =>
-        l.id === editingCatchLog.id ? { ...l, ...logData } : l
-      );
+      const updatedLog: CatchLog = { ...editingCatchLog, ...logData };
+      const updated = catchLogs.map((l) => (l.id === editingCatchLog.id ? updatedLog : l));
       setCatchLogs(updated);
       saveLogsToStorage(updated);
       setEditingCatchLog(null);
+      saveCloudCatchLog(updatedLog).catch((e) => console.warn('Cloud sync error:', e));
     } else {
       // 새 조과 등록 (Create)
       const newLog: CatchLog = {
@@ -169,18 +247,20 @@ export function App() {
       const updated = [newLog, ...catchLogs];
       setCatchLogs(updated);
       saveLogsToStorage(updated);
+      saveCloudCatchLog(newLog).catch((e) => console.warn('Cloud sync error:', e));
     }
     setIsCatchLogModalOpen(false);
   };
 
-  // 조과 기록 삭제 핸들러 (Delete)
+  // 조과 기록 삭제 핸들러 (Delete & 클라우드 동기화)
   const handleDeleteCatchLog = (logId: string) => {
     const updated = catchLogs.filter((l) => l.id !== logId);
     setCatchLogs(updated);
     saveLogsToStorage(updated);
+    deleteCloudCatchLog(logId).catch((e) => console.warn('Cloud delete error:', e));
   };
 
-  // POI 장소/항구 검색 트리거
+  // POI 장소/항구 검색 트리거 (Photon + OSM 고속 검색)
   const handleExecutePoiSearch = async () => {
     if (!searchQuery || searchQuery.trim().length < 2) return;
     setIsSearchingPoi(true);
@@ -218,29 +298,27 @@ export function App() {
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* 글로벌 상단 헤더 & 내비게이션 바 */}
-      <header className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between shrink-0 z-30 shadow-md">
+      <header className="h-14 bg-slate-900 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 shadow-md gap-2">
         {/* 로고 & 슬로건 */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl filter drop-shadow">🎣</span>
-            <div className="flex flex-col">
-              <span className="text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500 bg-clip-text text-transparent">
-                EsperFish
-              </span>
-              <span className="text-[9px] text-slate-400 -mt-1 font-medium hidden sm:inline">
-                초능력자처럼 읽는 한국 연안 스마트 낚시
-              </span>
-            </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-2xl filter drop-shadow">🎣</span>
+          <div className="flex flex-col">
+            <span className="text-base sm:text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500 bg-clip-text text-transparent">
+              EsperFish
+            </span>
+            <span className="text-[9px] text-slate-400 -mt-1 font-medium hidden md:inline">
+              초능력자처럼 읽는 한국 연안 스마트 낚시
+            </span>
           </div>
         </div>
 
         {/* 검색 및 POI 검색 바 (중앙) */}
-        <div className="relative flex items-center gap-2 max-w-md w-full mx-4">
+        <div className="relative flex items-center gap-1.5 flex-1 max-w-sm sm:max-w-md mx-1 sm:mx-4">
           <div className="relative w-full">
-            <Search className="absolute left-3 top-2.5 text-slate-400" size={15} />
+            <Search className="absolute left-3 top-2.5 text-slate-400" size={14} />
             <input
               type="text"
-              placeholder="포인트, 어종, 또는 전국 항구·섬 POI 검색 (Enter)..."
+              placeholder="포인트, 어종, 강릉시청 등 지명·항구 검색 (Enter)..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -251,7 +329,7 @@ export function App() {
                   handleExecutePoiSearch();
                 }
               }}
-              className="w-full bg-slate-800/90 border border-slate-700/80 rounded-full pl-9 pr-16 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition"
+              className="w-full bg-slate-800/90 border border-slate-700/80 rounded-full pl-8 sm:pl-9 pr-14 sm:pr-16 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition"
             />
             {searchQuery && (
               <button
@@ -260,17 +338,17 @@ export function App() {
                   setShowPoiDropdown(false);
                   setPoiResults([]);
                 }}
-                className="absolute right-10 top-2 text-slate-400 hover:text-slate-200"
+                className="absolute right-9 top-2 text-slate-400 hover:text-slate-200"
               >
                 <X size={14} />
               </button>
             )}
             <button
               onClick={handleExecutePoiSearch}
-              className="absolute right-1 top-1 bottom-1 px-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-full text-[11px] font-bold flex items-center gap-1 transition"
+              className="absolute right-1 top-1 bottom-1 px-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-full text-[11px] font-bold flex items-center gap-0.5 transition"
               title="지도 POI 검색"
             >
-              {isSearchingPoi ? <Loader2 size={12} className="animate-spin" /> : <Navigation2 size={11} />}
+              {isSearchingPoi ? <Loader2 size={11} className="animate-spin" /> : <Navigation2 size={11} />}
               <span>POI</span>
             </button>
           </div>
@@ -293,11 +371,11 @@ export function App() {
               {isSearchingPoi ? (
                 <div className="p-4 text-center text-slate-400 flex items-center justify-center gap-2">
                   <Loader2 size={14} className="animate-spin text-cyan-400" />
-                  <span>전국 해안/항구 POI 검색 중...</span>
+                  <span>전국 해안/관공서/항구 POI 검색 중...</span>
                 </div>
               ) : poiResults.length === 0 ? (
                 <div className="p-4 text-center text-slate-400">
-                  일치하는 장소를 찾지 못했습니다. (지명이나 항구명을 확인해 주세요)
+                  일치하는 장소를 찾지 못했습니다.
                 </div>
               ) : (
                 poiResults.map((poi, idx) => (
@@ -312,13 +390,11 @@ export function App() {
                     <span className="text-cyan-400 mt-0.5 group-hover:scale-110 transition">📍</span>
                     <div className="flex-1 min-w-0">
                       <div className="font-bold text-white group-hover:text-cyan-300 transition truncate">
-                        {poi.display_name.split(',')[0]}
+                        {poi.display_name.split('(')[0]}
                       </div>
-                      <div className="text-[11px] text-slate-400 truncate">
-                        {poi.display_name}
-                      </div>
+                      <div className="text-[11px] text-slate-400 truncate">{poi.display_name}</div>
                       <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                        좌표: {poi.lat.toFixed(4)}, {poi.lng.toFixed(4)}
+                        좌표: {poi.lat.toFixed(4)}, {poi.lng.toFixed(4)} ({poi.type})
                       </div>
                     </div>
                   </button>
@@ -328,10 +404,26 @@ export function App() {
           )}
         </div>
 
-        {/* 단위 변환 및 유저 액션 툴바 */}
-        <div className="flex items-center gap-2 shrink-0 text-xs">
+        {/* 툴바: 클라우드 DB 연동 버튼, 단위 변환 및 포인트 추가 */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 text-xs">
+          {/* 클라우드 DB 동기화 버튼 (PC ⇄ 모바일) */}
+          <button
+            onClick={() => setIsCloudModalOpen(true)}
+            className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition ${
+              isCloudConnected
+                ? 'bg-emerald-950/70 border-emerald-600/80 text-emerald-300 hover:bg-emerald-900/60'
+                : 'bg-slate-800/90 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white'
+            }`}
+            title="클라우드 DB 동기화 (PC ⇄ 모바일)"
+          >
+            <Cloud size={14} className={isCloudConnected ? 'text-emerald-400' : 'text-slate-400'} />
+            <span className="hidden sm:inline">
+              {isCloudConnected ? '클라우드 연동됨' : '클라우드 동기화'}
+            </span>
+          </button>
+
           {/* 풍속 단위 변환 토글 */}
-          <div className="hidden md:flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-[11px]">
+          <div className="hidden lg:flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-[11px]">
             <span className="px-1.5 text-slate-400">바람:</span>
             {(['ms', 'knot', 'kmh'] as WindUnit[]).map((u) => (
               <button
@@ -347,7 +439,7 @@ export function App() {
           </div>
 
           {/* 조류 단위 변환 토글 */}
-          <div className="hidden lg:flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-[11px]">
+          <div className="hidden xl:flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-[11px]">
             <span className="px-1.5 text-slate-400">조류:</span>
             {(['knot', 'ms', 'cms'] as CurrentUnit[]).map((u) => (
               <button
@@ -370,9 +462,9 @@ export function App() {
               setNewSpotLng(126.4982);
               setIsSpotModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold shadow-md shadow-cyan-500/20 transition"
+            className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold shadow-md shadow-cyan-500/20 transition"
           >
-            <Plus size={15} />
+            <Plus size={14} />
             <span className="hidden sm:inline">포인트 등록</span>
           </button>
         </div>
@@ -417,7 +509,7 @@ export function App() {
             <span>내 포인트만 보기</span>
           </button>
           <span className="text-[11px] text-slate-500 hidden sm:inline">
-            총 {filteredSpots.length}개 포인트 표시 중
+            총 {filteredSpots.length}개 포인트
           </span>
         </div>
       </div>
@@ -437,12 +529,13 @@ export function App() {
             windUnit={windUnit}
             currentUnit={currentUnit}
             recenterTarget={recenterTarget}
+            isMobileDrawerOpen={Boolean(selectedSpot && isMobileDrawerOpen)}
           />
         </div>
 
-        {/* 우측 포인트 상세 & 기상/물때/조과 대시보드 (반응형: PC 사이드바 / 모바일 하단 슬라이드) */}
+        {/* PC 화면: 우측 사이드바 패널 (현 상태 유지) */}
         {selectedSpot && (
-          <aside className="w-full md:w-[440px] lg:w-[480px] h-[55vh] md:h-full shrink-0 z-20 transition-all duration-300">
+          <aside className="hidden md:block w-[440px] lg:w-[480px] h-full shrink-0 z-20 border-l border-slate-800 shadow-2xl">
             <SpotDetailPanel
               spot={selectedSpot}
               weather={weather}
@@ -466,6 +559,54 @@ export function App() {
               onClose={() => setSelectedSpot(null)}
             />
           </aside>
+        )}
+
+        {/* 모바일 화면 1: 드로어가 열려 있을 때 화면 전체(100%)를 채워 밑부분이 잘리지 않게 함 (실시간 환경 숨김) */}
+        {selectedSpot && isMobileDrawerOpen && (
+          <div className="md:hidden fixed inset-0 z-40 bg-slate-900 flex flex-col animate-fade-in">
+            <SpotDetailPanel
+              spot={selectedSpot}
+              weather={weather}
+              marine={marine}
+              tide={tide}
+              biteScore={biteScore}
+              catchLogs={spotLogs}
+              windUnit={windUnit}
+              currentUnit={currentUnit}
+              onOpenCatchLogModal={() => {
+                setEditingCatchLog(null);
+                setIsCatchLogModalOpen(true);
+              }}
+              onEditLog={(log) => {
+                setEditingCatchLog(log);
+                setIsCatchLogModalOpen(true);
+              }}
+              onDeleteLog={handleDeleteCatchLog}
+              onEditSpot={handleEditSpot}
+              onDeleteSpot={handleDeleteSpot}
+              onClose={() => {
+                setSelectedSpot(null);
+                setIsMobileDrawerOpen(false);
+              }}
+              onMinimize={() => setIsMobileDrawerOpen(false)}
+            />
+          </div>
+        )}
+
+        {/* 모바일 화면 2: 드로어를 숨겼을 때 하단 플로팅 바를 통해 원터치로 다시 열 수 있도록 지원 */}
+        {selectedSpot && !isMobileDrawerOpen && (
+          <div className="md:hidden fixed bottom-4 left-4 right-4 z-30 animate-fade-in">
+            <button
+              onClick={() => setIsMobileDrawerOpen(true)}
+              className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-cyan-600 via-teal-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold flex items-center justify-between shadow-2xl border border-cyan-400/40 transition active:scale-98"
+            >
+              <div className="flex items-center gap-2 truncate">
+                <span className="text-base">📍</span>
+                <span className="truncate">{selectedSpot.name} 포인트 상세정보 열기</span>
+              </div>
+              <ChevronUp size={18} className="shrink-0 text-cyan-200" />
+            </button>
+          </div>
         )}
       </main>
 
@@ -503,6 +644,15 @@ export function App() {
           onSaveLog={handleSaveCatchLog}
         />
       )}
+
+      {/* 클라우드 DB 동기화 설정 모달 (PC ⇄ 모바일) */}
+      <CloudSyncModal
+        isOpen={isCloudModalOpen}
+        onClose={() => setIsCloudModalOpen(false)}
+        localSpots={spots}
+        localLogs={catchLogs}
+        onSyncComplete={reloadData}
+      />
     </div>
   );
 }
