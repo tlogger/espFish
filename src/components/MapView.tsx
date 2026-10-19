@@ -210,12 +210,10 @@ export const MapView: React.FC<MapViewProps> = ({
       </MapContainer>
 
       {/* 선택된 포인트 지도 상단 실시간/미래 시뮬레이션 환경 오버레이 (Windy 스타일 48h)
-          모바일에서 드로어가 열려 있을 때는 화면 잘림 방지를 위해 완전히 숨김 */}
+          모바일 웹에서는 화면을 너무 가리므로 모바일에서는 완전히 제거(md:block)하고 포인트 상세 패널에서 환경 정보 제공 */}
       {selectedSpot && (
         <div
-          className={`${
-            isMobileDrawerOpen ? 'hidden md:block' : 'block'
-          } absolute top-4 left-4 z-20 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3.5 text-white shadow-2xl max-w-xs sm:max-w-sm space-y-3 pointer-events-auto transition-opacity duration-200`}
+          className="hidden md:block absolute top-4 left-4 z-20 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3.5 text-white shadow-2xl max-w-xs sm:max-w-sm space-y-3 pointer-events-auto transition-opacity duration-200"
         >
           <div className="flex justify-between items-start">
             <div>

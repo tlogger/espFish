@@ -63,6 +63,7 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
         windSpeed: data.hourly?.wind_speed_10m?.slice(0, 96) || [],
         windDirection: data.hourly?.wind_direction_10m?.slice(0, 96) || [],
         pop: data.hourly?.precipitation_probability?.slice(0, 96) || [],
+        weatherCode: data.hourly?.weather_code?.slice(0, 96) || [],
       },
     };
   } catch (err) {

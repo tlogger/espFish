@@ -7,7 +7,10 @@ import {
   Fish,
   MapPin,
   Navigation,
+  Pause,
+  Play,
   PlusCircle,
+  RotateCcw,
   Share2,
   Thermometer,
   Trash2,
@@ -25,7 +28,7 @@ import type {
   WeatherData,
   WindUnit
 } from '../types';
-import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWindyWebUrl } from '../utils/weatherApi';
+import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeatherText, getWindyWebUrl } from '../utils/weatherApi';
 
 interface SpotDetailPanelProps {
   spot: FishingSpot;
@@ -65,6 +68,21 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   const [activeTab, setActiveTab] = React.useState<'CONDITIONS' | 'TIDE' | 'LOGS' | 'DIRECTIONS'>('CONDITIONS');
   const [activePhotoIndex, setActivePhotoIndex] = React.useState(0);
 
+  // 48시간 미래 환경 타임라인 시뮬레이션 상태
+  const [timelineOffsetHours, setTimelineOffsetHours] = React.useState<number>(0);
+  const [isPlaying, setIsPlaying] = React.useState(false);
+
+  // 자동 재생 (1초마다 +1시간 전진, 48시간 초과 시 0으로 리셋)
+  React.useEffect(() => {
+    let interval: any;
+    if (isPlaying) {
+      interval = setInterval(() => {
+        setTimelineOffsetHours((prev) => (prev >= 48 ? 0 : prev + 1));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying]);
+
   const windyUrl = getWindyWebUrl(spot.lat, spot.lng);
 
   // 네비 목적지 명칭: 사용자가 지정한 navi_name이 있으면 그것을 우선 사용, 없으면 spot.name
@@ -78,11 +96,77 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   // 네이버 지도 길찾기 URL (네이버 지도 공식 웹 URL 규격: lat,lng,title)
   const naverNaviUrl = `https://map.naver.com/v5/search/${encodeURIComponent(destinationName)}?c=${spot.lng},${spot.lat},15,0,0,0,dh`;
 
-  // 현재 시각 (HH:00) 기준 곡선 상의 최근접 시간대 찾기
+  // 현재 시각 및 시뮬레이션 대상 시각 Date 객체
   const now = new Date();
   const currentHour = now.getHours();
   const currentHourStr = `${currentHour < 10 ? '0' : ''}${currentHour}:00`;
   const currentTidePoint = tide?.hourlyCurve.find((c) => c.hour === currentHour);
+
+  const targetTime = new Date(now.getTime() + timelineOffsetHours * 3600 * 1000);
+  const isNow = timelineOffsetHours === 0;
+
+  const targetHour = targetTime.getHours();
+  const targetYear = targetTime.getFullYear();
+  const targetMonth = String(targetTime.getMonth() + 1).padStart(2, '0');
+  const targetDate = String(targetTime.getDate()).padStart(2, '0');
+  const targetHourStr = String(targetHour).padStart(2, '0');
+  const targetTimePrefix = `${targetYear}-${targetMonth}-${targetDate}T${targetHourStr}:00`;
+
+  let weatherIdx = -1;
+  if (weather?.hourly?.time) {
+    weatherIdx = weather.hourly.time.findIndex((t) => t.startsWith(targetTimePrefix));
+  }
+
+  let marineIdx = -1;
+  if (marine?.hourly?.time) {
+    marineIdx = marine.hourly.time.findIndex((t) => t.startsWith(targetTimePrefix));
+  }
+
+  // 시뮬레이션 시각에 따른 기상 / 해양 지표
+  const simWindSpeed =
+    weatherIdx >= 0 && weather?.hourly?.windSpeed && weather.hourly.windSpeed[weatherIdx] != null
+      ? weather.hourly.windSpeed[weatherIdx]
+      : weather?.windSpeed ?? 0;
+
+  const simWindDir =
+    weatherIdx >= 0 && weather?.hourly?.windDirection && weather.hourly.windDirection[weatherIdx] != null
+      ? weather.hourly.windDirection[weatherIdx]
+      : weather?.windDirection ?? 0;
+
+  const simTemp =
+    weatherIdx >= 0 && weather?.hourly?.temp && weather.hourly.temp[weatherIdx] != null
+      ? weather.hourly.temp[weatherIdx]
+      : weather?.temp ?? 0;
+
+  const simWaterTemp =
+    marineIdx >= 0 && marine?.hourly?.seaSurfaceTemp && marine.hourly.seaSurfaceTemp[marineIdx] != null
+      ? marine.hourly.seaSurfaceTemp[marineIdx]
+      : marine?.seaSurfaceTemp ?? 0;
+
+  const simCurrentVel =
+    marineIdx >= 0 && marine?.hourly?.currentVelocity && marine.hourly.currentVelocity[marineIdx] != null
+      ? marine.hourly.currentVelocity[marineIdx]
+      : marine?.currentVelocity ?? 0;
+
+  const simCurrentDir =
+    marineIdx >= 0 && marine?.hourly?.currentDirection && marine.hourly.currentDirection[marineIdx] != null
+      ? marine.hourly.currentDirection[marineIdx]
+      : marine?.currentDirection ?? 0;
+
+  const simWaveHeight =
+    marineIdx >= 0 && marine?.hourly?.waveHeight && marine.hourly.waveHeight[marineIdx] != null
+      ? marine.hourly.waveHeight[marineIdx]
+      : marine?.waveHeight ?? 0;
+
+  const simWeatherText =
+    weatherIdx >= 0 && weather?.hourly?.weatherCode && weather.hourly.weatherCode[weatherIdx] != null
+      ? getWeatherText(weather.hourly.weatherCode[weatherIdx])
+      : weather?.weatherText ?? '--';
+
+  const simPop =
+    weatherIdx >= 0 && weather?.hourly?.pop && weather.hourly.pop[weatherIdx] != null
+      ? weather.hourly.pop[weatherIdx]
+      : 0;
 
   return (
     <div className="flex flex-col h-full bg-slate-900 border-l border-slate-800 text-white overflow-hidden shadow-2xl">
@@ -306,22 +390,78 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {activeTab === 'CONDITIONS' && (
           <div className="space-y-4">
-            {/* 4대 실시간 해양·기상 카드 그리드 */}
+            {/* 48시간 미래 환경 타임라인 시뮬레이터 (모바일 및 패널 전용 통합) */}
+            <div className="p-3.5 bg-slate-950/90 border border-cyan-500/30 rounded-2xl shadow-lg space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                    {isNow
+                      ? '⏱️ 실시간 환경'
+                      : `⏱️ ${targetMonth}/${targetDate} ${targetHourStr}:00 (+${timelineOffsetHours}시간 예측)`}
+                  </span>
+                  {!isNow && (
+                    <button
+                      onClick={() => setTimelineOffsetHours(0)}
+                      className="flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-200 font-semibold"
+                    >
+                      <RotateCcw size={11} /> 현재 시각 복귀
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => setIsPlaying(!isPlaying)}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition shadow ${
+                    isPlaying
+                      ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                      : 'bg-cyan-600 hover:bg-cyan-500 text-white'
+                  }`}
+                  title={isPlaying ? '시뮬레이션 일시정지' : '미래 예측 자동 재생'}
+                >
+                  {isPlaying ? <Pause size={12} /> : <Play size={12} />}
+                  <span>{isPlaying ? '일시정지' : '재생'}</span>
+                </button>
+              </div>
+
+              {/* 타임라인 슬라이더 바 (0h ~ 48h) */}
+              <div className="space-y-1">
+                <input
+                  type="range"
+                  min="0"
+                  max="48"
+                  step="1"
+                  value={timelineOffsetHours}
+                  onChange={(e) => {
+                    setTimelineOffsetHours(Number(e.target.value));
+                    if (isPlaying) setIsPlaying(false);
+                  }}
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                />
+                <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                  <span>현재 (0h)</span>
+                  <span>+12h</span>
+                  <span>내일 (+24h)</span>
+                  <span>+36h</span>
+                  <span>모레 (+48h)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 4대 실시간/예측 해양·기상 카드 그리드 */}
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {/* 바람 위젯 */}
+              {/* 바람 위젯 (풍향 + 풍속) */}
               <div className="p-3 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
                 <div className="flex items-center justify-between text-slate-400 text-xs">
                   <span className="flex items-center gap-1">
                     <Wind size={14} className="text-cyan-400" /> 풍향 · 풍속
                   </span>
-                  <span className="text-[11px] font-mono">{weather?.windDirection}°</span>
+                  <span className="text-[11px] font-mono">{Math.round(simWindDir)}°</span>
                 </div>
                 <div className="flex items-baseline justify-between mt-1">
                   <div className="text-lg font-bold text-cyan-300">
-                    {weather ? formatWindSpeed(weather.windSpeed, windUnit) : '--'}
+                    {formatWindSpeed(simWindSpeed, windUnit)}
                   </div>
                   <div className="text-xs text-slate-300">
-                    {weather ? getCompassDirection(weather.windDirection) : '--'}
+                    {getCompassDirection(simWindDir)}
                   </div>
                 </div>
                 <div className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-700/50">
@@ -332,7 +472,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 </div>
               </div>
 
-              {/* 수온 및 체감온도/습도 위젯 */}
+              {/* 수온 및 기온 위젯 */}
               <div className="p-3 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
                 <div className="flex items-center justify-between text-slate-400 text-xs">
                   <span className="flex items-center gap-1">
@@ -341,17 +481,15 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 </div>
                 <div className="flex items-baseline justify-between mt-1">
                   <div className="text-lg font-bold text-rose-300">
-                    {marine ? `${marine.seaSurfaceTemp}°C` : '--'}
+                    {simWaterTemp.toFixed(1)}°C
                   </div>
                   <span className="text-xs text-slate-300">
-                    기온 {weather ? `${weather.temp}°C` : '--'}
+                    기온 {simTemp.toFixed(1)}°C
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-700/50">
-                  <span>체감온도:</span>
-                  <span className="text-slate-200 font-medium">
-                    {weather ? `${weather.apparentTemp}°C (습도 ${weather.humidity}%)` : '--'}
-                  </span>
+                  <span>강수확률:</span>
+                  <span className="text-cyan-300 font-medium">{simPop}%</span>
                 </div>
               </div>
 
@@ -361,38 +499,42 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   <span className="flex items-center gap-1">
                     <Compass size={14} className="text-emerald-400" /> 조류 / 해류
                   </span>
-                  <span className="text-[11px] font-mono">{marine?.currentDirection}°</span>
+                  <span className="text-[11px] font-mono">{Math.round(simCurrentDir)}°</span>
                 </div>
                 <div className="flex items-baseline justify-between mt-1">
                   <div className="text-lg font-bold text-emerald-300">
-                    {marine ? formatCurrentVelocity(marine.currentVelocity, currentUnit) : '--'}
+                    {formatCurrentVelocity(simCurrentVel, currentUnit)}
                   </div>
                   <div className="text-xs text-slate-300">
-                    {marine ? getCompassDirection(marine.currentDirection) : '--'}
+                    {getCompassDirection(simCurrentDir)}
                   </div>
                 </div>
-                <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-700/50">
-                  <span>들물·썰물 유속 흐름</span>
+                <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-700/50 flex justify-between">
+                  <span>유속 흐름</span>
+                  <span className="text-emerald-400 font-mono text-[10px]">
+                    {simCurrentVel > 0.5 ? '빠른 본류대' : simCurrentVel > 0.2 ? '완만한 조류' : '정조/약류'}
+                  </span>
                 </div>
               </div>
 
-              {/* 파고 / 파향 위젯 */}
+              {/* 파고 / 날씨 위젯 (슬라이더 시각 동적 연동) */}
               <div className="p-3 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
                 <div className="flex items-center justify-between text-slate-400 text-xs">
                   <span className="flex items-center gap-1">
-                    <Waves size={14} className="text-blue-400" /> 파고 · 파주기
+                    <Waves size={14} className="text-blue-400" /> 파고 · 날씨
                   </span>
                 </div>
                 <div className="flex items-baseline justify-between mt-1">
                   <div className="text-lg font-bold text-blue-300">
-                    {marine ? `${marine.waveHeight} m` : '--'}
+                    {simWaveHeight.toFixed(1)} m
                   </div>
                   <span className="text-xs text-slate-300">
-                    {marine ? `${marine.wavePeriod}초 주기` : '--'}
+                    {marine?.wavePeriod ? `${marine.wavePeriod}초 주기` : '--'}
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-700/50">
-                  <span>날씨: {weather?.weatherText}</span>
+                <div className="text-[11px] text-slate-300 pt-1 border-t border-slate-700/50 flex justify-between">
+                  <span className="text-slate-400">날씨:</span>
+                  <span className="font-semibold text-cyan-300 truncate">{simWeatherText}</span>
                 </div>
               </div>
             </div>

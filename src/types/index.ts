@@ -59,13 +59,14 @@ export interface WeatherData {
   windSpeed: number; // m/s
   windDirection: number; // 0-360°
   windGust: number; // m/s
-  hourly: {
-    time: string[];
-    temp: number[];
-    windSpeed: number[];
-    windDirection: number[];
-    pop: number[]; // 강수확률
-  };
+    hourly: {
+      time: string[];
+      temp: number[];
+      windSpeed: number[];
+      windDirection: number[];
+      pop: number[]; // 강수확률
+      weatherCode?: number[];
+    };
 }
 
 export interface MarineData {

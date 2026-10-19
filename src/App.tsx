@@ -1,10 +1,10 @@
 import React from 'react';
-import { ChevronUp, Cloud, Filter, Loader2, Navigation2, Plus, Search, User, X } from 'lucide-react';
+import { ChevronUp, Filter, Loader2, LogIn, Navigation2, Plus, Search, User, X } from 'lucide-react';
 import { MapView } from './components/MapView';
 import { SpotDetailPanel } from './components/SpotDetailPanel';
 import { SpotFormModal } from './components/SpotFormModal';
 import { CatchLogModal } from './components/CatchLogModal';
-import { CloudSyncModal } from './components/CloudSyncModal';
+import { getSavedAuthUser, LoginModal } from './components/LoginModal';
 import type {
   BiteScoreBreakdown,
   CatchLog,
@@ -42,9 +42,9 @@ export function App() {
   // 모바일 드로워 표시 상태 (보일 때는 100% 화면 채우고, 숨길 때는 지도와 실시간 환경 복귀)
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = React.useState(true);
 
-  // 클라우드 DB 연동 상태
-  const [isCloudConnected, setIsCloudConnected] = React.useState(true);
-  const [isCloudModalOpen, setIsCloudModalOpen] = React.useState(false);
+  // 로그인 상태 관리 (Email & ID 확인, PW 불필요)
+  const [currentUser, setCurrentUser] = React.useState<{ id: string; email: string } | null>(() => getSavedAuthUser());
+  const [isLoginModalOpen, setIsLoginModalOpen] = React.useState(false);
 
   // 환경 데이터 상태
   const [weather, setWeather] = React.useState<WeatherData | null>(null);
@@ -52,9 +52,9 @@ export function App() {
   const [tide, setTide] = React.useState<TideDayInfo | null>(null);
   const [biteScore, setBiteScore] = React.useState<BiteScoreBreakdown | null>(null);
 
-  // 단위 변환 설정 상태
+  // 단위 변환 설정 상태 (바람 및 조류 초기 단위는 m/s로 통일)
   const [windUnit, setWindUnit] = React.useState<WindUnit>('ms');
-  const [currentUnit, setCurrentUnit] = React.useState<CurrentUnit>('knot');
+  const [currentUnit, setCurrentUnit] = React.useState<CurrentUnit>('ms');
 
   // 필터 및 검색 상태
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -75,9 +75,6 @@ export function App() {
 
   // 기기 로컬 저장소 대신 오직 Supabase DB에서만 포인트 및 조과 데이터 로드
   const reloadData = React.useCallback(async () => {
-    const cloudConfig = getSavedCloudConfig();
-    setIsCloudConnected(Boolean(cloudConfig));
-
     try {
       const [cSpots, cLogs] = await Promise.all([
         fetchCloudSpots(),
@@ -124,7 +121,7 @@ export function App() {
     return () => {
       client.removeChannel(channel);
     };
-  }, [isCloudConnected]);
+  }, []);
 
   // 포인트 선택 시 날씨/해양/물때/입질지수 Fetch & 연산
   const handleSelectSpot = async (spot: FishingSpot) => {
@@ -175,8 +172,8 @@ export function App() {
         const newSpot: FishingSpot = {
           ...spotData,
           id: `spot-${Date.now()}`,
-          user_id: 'user-me',
-          author_name: '나의 포인트',
+          user_id: currentUser ? currentUser.id : 'user-me',
+          author_name: currentUser ? currentUser.id : '나의 포인트',
           created_at: new Date().toISOString(),
         };
         await saveCloudSpot(newSpot);
@@ -228,6 +225,8 @@ export function App() {
         const newLog: CatchLog = {
           ...logData,
           id: `log-${Date.now()}`,
+          user_id: currentUser ? currentUser.id : (logData.user_id || 'user-me'),
+          user_name: currentUser ? currentUser.id : (logData.user_name || '나의 조과'),
           created_at: new Date().toISOString(),
         };
         await saveCloudCatchLog(newLog);
@@ -397,21 +396,21 @@ export function App() {
           )}
         </div>
 
-        {/* 툴바: 클라우드 DB 연동 버튼, 단위 변환 및 포인트 추가 */}
+        {/* 툴바: 로그인 버튼, 단위 변환 및 포인트 추가 */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 text-xs">
-          {/* 클라우드 DB 동기화 버튼 (PC ⇄ 모바일) */}
+          {/* 로그인 / 회원 정보 버튼 */}
           <button
-            onClick={() => setIsCloudModalOpen(true)}
-            className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition ${
-              isCloudConnected
-                ? 'bg-emerald-950/70 border-emerald-600/80 text-emerald-300 hover:bg-emerald-900/60'
-                : 'bg-cyan-950/60 border-cyan-700/70 text-cyan-300 hover:bg-cyan-900/60'
+            onClick={() => setIsLoginModalOpen(true)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition ${
+              currentUser
+                ? 'bg-slate-800/90 border-slate-700 text-cyan-300 hover:bg-slate-700 hover:text-white'
+                : 'bg-gradient-to-r from-cyan-600/30 to-blue-600/30 border-cyan-500/50 text-cyan-300 hover:bg-cyan-600/40 hover:text-white shadow-sm'
             }`}
-            title="클라우드 DB 동기화 (PC ⇄ 모바일)"
+            title={currentUser ? `로그인됨: ${currentUser.id}` : '로그인하기 (Email & ID)'}
           >
-            <Cloud size={14} className={isCloudConnected ? 'text-emerald-400' : 'text-cyan-400'} />
-            <span className="hidden sm:inline">
-              {isCloudConnected ? 'Supabase 연동됨' : '클라우드 동기화 중'}
+            {currentUser ? <User size={14} className="text-cyan-400" /> : <LogIn size={14} className="text-cyan-400" />}
+            <span>
+              {currentUser ? currentUser.id : '로그인'}
             </span>
           </button>
 
@@ -638,13 +637,13 @@ export function App() {
         />
       )}
 
-      {/* 클라우드 DB 동기화 설정 모달 (PC ⇄ 모바일) */}
-      <CloudSyncModal
-        isOpen={isCloudModalOpen}
-        onClose={() => setIsCloudModalOpen(false)}
-        localSpots={spots}
-        localLogs={catchLogs}
-        onSyncComplete={reloadData}
+      {/* 간편 로그인 모달 (Email & ID 확인) */}
+      <LoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+        currentUser={currentUser}
+        onLogin={(user) => setCurrentUser(user)}
+        onLogout={() => setCurrentUser(null)}
       />
     </div>
   );
