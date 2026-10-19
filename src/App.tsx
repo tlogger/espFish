@@ -20,7 +20,6 @@ import { calculateTideDay } from './utils/tideEngine';
 import { fetchMarineData, fetchWeatherData } from './utils/weatherApi';
 import { calculateBiteScore } from './utils/biteScore';
 import { extractExifFromImage } from './utils/exifExtractor';
-import { loadLogsFromStorage, loadSpotsFromStorage, saveLogsToStorage, saveSpotsToStorage } from './utils/storage';
 import { searchPoi, type PoiSearchResult } from './utils/poiSearch';
 import {
   deleteCloudCatchLog,
@@ -44,7 +43,7 @@ export function App() {
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = React.useState(true);
 
   // 클라우드 DB 연동 상태
-  const [isCloudConnected, setIsCloudConnected] = React.useState(false);
+  const [isCloudConnected, setIsCloudConnected] = React.useState(true);
   const [isCloudModalOpen, setIsCloudModalOpen] = React.useState(false);
 
   // 환경 데이터 상태
@@ -74,35 +73,23 @@ export function App() {
   const [newSpotLat, setNewSpotLat] = React.useState<number | undefined>();
   const [newSpotLng, setNewSpotLng] = React.useState<number | undefined>();
 
-  // 초기 스토리지 & 클라우드 DB 데이터 로드 (내장 클라우드 + 전용 Supabase 자동 병합)
+  // 기기 로컬 저장소 대신 오직 Supabase DB에서만 포인트 및 조과 데이터 로드
   const reloadData = React.useCallback(async () => {
     const cloudConfig = getSavedCloudConfig();
     setIsCloudConnected(Boolean(cloudConfig));
 
-    let currentSpots = loadSpotsFromStorage();
-    let currentLogs = loadLogsFromStorage();
-
     try {
       const [cSpots, cLogs] = await Promise.all([
-        fetchCloudSpots(currentSpots),
-        fetchCloudLogs(currentLogs),
+        fetchCloudSpots(),
+        fetchCloudLogs(),
       ]);
-      if (cSpots && cSpots.length > 0) {
-        currentSpots = cSpots;
-        saveSpotsToStorage(cSpots);
-      }
-      if (cLogs && cLogs.length > 0) {
-        currentLogs = cLogs;
-        saveLogsToStorage(cLogs);
+      setSpots(cSpots);
+      setCatchLogs(cLogs);
+      if (cSpots.length > 0 && !selectedSpot) {
+        handleSelectSpot(cSpots[0]);
       }
     } catch (err) {
-      console.warn('Cloud fetch warning, using local cache:', err);
-    }
-
-    setSpots(currentSpots);
-    setCatchLogs(currentLogs);
-    if (currentSpots.length > 0 && !selectedSpot) {
-      handleSelectSpot(currentSpots[0]);
+      console.error('Supabase 데이터 로드 실패:', err);
     }
   }, [selectedSpot]);
 
@@ -113,22 +100,23 @@ export function App() {
   // Supabase 실시간 동기화 구독 (PC ⇄ 모바일 실시간 전파)
   React.useEffect(() => {
     const client = getSupabase();
-    if (!client) return;
 
     const channel = client
       .channel('espfish_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fishing_spots' }, async () => {
-        const cSpots = await fetchCloudSpots();
-        if (cSpots) {
+        try {
+          const cSpots = await fetchCloudSpots();
           setSpots(cSpots);
-          saveSpotsToStorage(cSpots);
+        } catch (e) {
+          console.error('Realtime spot reload error:', e);
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'catch_logs' }, async () => {
-        const cLogs = await fetchCloudLogs();
-        if (cLogs) {
+        try {
+          const cLogs = await fetchCloudLogs();
           setCatchLogs(cLogs);
-          saveLogsToStorage(cLogs);
+        } catch (e) {
+          console.error('Realtime log reload error:', e);
         }
       })
       .subscribe();
@@ -173,52 +161,53 @@ export function App() {
     setIsSpotModalOpen(true);
   };
 
-  // 새 포인트 저장 및 수정 핸들러 (로컬 + 클라우드 자동 동기화)
+  // 새 포인트 저장 및 수정 핸들러 (오직 Supabase DB에 직접 저장)
   const handleSaveSpot = async (spotData: Omit<FishingSpot, 'id' | 'user_id' | 'author_name' | 'created_at'>) => {
-    if (editingSpot) {
-      // 포인트 수정 (Update)
-      const updatedSpot: FishingSpot = { ...editingSpot, ...spotData };
-      const updatedList = spots.map((s) => (s.id === editingSpot.id ? updatedSpot : s));
-      setSpots(updatedList);
-      saveSpotsToStorage(updatedList);
-      handleSelectSpot(updatedSpot);
-      setEditingSpot(null);
-
-      // 클라우드 업서트
-      saveCloudSpot(updatedSpot).catch((e) => console.warn('Cloud sync error:', e));
-    } else {
-      // 새 포인트 생성 (Create)
-      const newSpot: FishingSpot = {
-        ...spotData,
-        id: `spot-${Date.now()}`,
-        user_id: 'user-me',
-        author_name: '나의 포인트',
-        created_at: new Date().toISOString(),
-      };
-      const updated = [newSpot, ...spots];
-      setSpots(updated);
-      saveSpotsToStorage(updated);
-      handleSelectSpot(newSpot);
-
-      // 클라우드 업서트
-      saveCloudSpot(newSpot).catch((e) => console.warn('Cloud sync error:', e));
+    try {
+      if (editingSpot) {
+        const updatedSpot: FishingSpot = { ...editingSpot, ...spotData };
+        await saveCloudSpot(updatedSpot);
+        const cSpots = await fetchCloudSpots();
+        setSpots(cSpots);
+        handleSelectSpot(updatedSpot);
+        setEditingSpot(null);
+      } else {
+        const newSpot: FishingSpot = {
+          ...spotData,
+          id: `spot-${Date.now()}`,
+          user_id: 'user-me',
+          author_name: '나의 포인트',
+          created_at: new Date().toISOString(),
+        };
+        await saveCloudSpot(newSpot);
+        const cSpots = await fetchCloudSpots();
+        setSpots(cSpots);
+        handleSelectSpot(newSpot);
+      }
+    } catch (e: any) {
+      console.error('Supabase spot save error:', e);
+      alert(`Supabase DB 저장에 실패했습니다: ${e?.message || '연결 또는 권한을 확인하세요.'}`);
     }
   };
 
-  // 포인트 삭제 핸들러 (로컬 + 클라우드 동기화)
-  const handleDeleteSpot = (spotId: string) => {
-    const updated = spots.filter((s) => s.id !== spotId);
-    setSpots(updated);
-    saveSpotsToStorage(updated);
-    deleteCloudSpot(spotId).catch((e) => console.warn('Cloud delete error:', e));
+  // 포인트 삭제 핸들러 (오직 Supabase DB에서 직접 삭제)
+  const handleDeleteSpot = async (spotId: string) => {
+    try {
+      await deleteCloudSpot(spotId);
+      const updated = await fetchCloudSpots();
+      setSpots(updated);
 
-    if (selectedSpot?.id === spotId) {
-      if (updated.length > 0) {
-        handleSelectSpot(updated[0]);
-      } else {
-        setSelectedSpot(null);
-        setIsMobileDrawerOpen(false);
+      if (selectedSpot?.id === spotId) {
+        if (updated.length > 0) {
+          handleSelectSpot(updated[0]);
+        } else {
+          setSelectedSpot(null);
+          setIsMobileDrawerOpen(false);
+        }
       }
+    } catch (e: any) {
+      console.error('Supabase spot delete error:', e);
+      alert(`Supabase DB 삭제에 실패했습니다: ${e?.message || ''}`);
     }
   };
 
@@ -228,37 +217,40 @@ export function App() {
     setIsSpotModalOpen(true);
   };
 
-  // 조과 기록 생성 및 수정 핸들러 (CRUD & 클라우드 동기화)
-  const handleSaveCatchLog = (logData: Omit<CatchLog, 'id' | 'created_at'>) => {
-    if (editingCatchLog) {
-      // 조과 수정 (Update)
-      const updatedLog: CatchLog = { ...editingCatchLog, ...logData };
-      const updated = catchLogs.map((l) => (l.id === editingCatchLog.id ? updatedLog : l));
-      setCatchLogs(updated);
-      saveLogsToStorage(updated);
-      setEditingCatchLog(null);
-      saveCloudCatchLog(updatedLog).catch((e) => console.warn('Cloud sync error:', e));
-    } else {
-      // 새 조과 등록 (Create)
-      const newLog: CatchLog = {
-        ...logData,
-        id: `log-${Date.now()}`,
-        created_at: new Date().toISOString(),
-      };
-      const updated = [newLog, ...catchLogs];
-      setCatchLogs(updated);
-      saveLogsToStorage(updated);
-      saveCloudCatchLog(newLog).catch((e) => console.warn('Cloud sync error:', e));
+  // 조과 기록 생성 및 수정 핸들러 (오직 Supabase DB에 직접 저장)
+  const handleSaveCatchLog = async (logData: Omit<CatchLog, 'id' | 'created_at'>) => {
+    try {
+      if (editingCatchLog) {
+        const updatedLog: CatchLog = { ...editingCatchLog, ...logData };
+        await saveCloudCatchLog(updatedLog);
+        setEditingCatchLog(null);
+      } else {
+        const newLog: CatchLog = {
+          ...logData,
+          id: `log-${Date.now()}`,
+          created_at: new Date().toISOString(),
+        };
+        await saveCloudCatchLog(newLog);
+      }
+      const cLogs = await fetchCloudLogs();
+      setCatchLogs(cLogs);
+      setIsCatchLogModalOpen(false);
+    } catch (e: any) {
+      console.error('Supabase catch log save error:', e);
+      alert(`Supabase DB 조과 저장에 실패했습니다: ${e?.message || ''}`);
     }
-    setIsCatchLogModalOpen(false);
   };
 
-  // 조과 기록 삭제 핸들러 (Delete & 클라우드 동기화)
-  const handleDeleteCatchLog = (logId: string) => {
-    const updated = catchLogs.filter((l) => l.id !== logId);
-    setCatchLogs(updated);
-    saveLogsToStorage(updated);
-    deleteCloudCatchLog(logId).catch((e) => console.warn('Cloud delete error:', e));
+  // 조과 기록 삭제 핸들러 (오직 Supabase DB에서 직접 삭제)
+  const handleDeleteCatchLog = async (logId: string) => {
+    try {
+      await deleteCloudCatchLog(logId);
+      const cLogs = await fetchCloudLogs();
+      setCatchLogs(cLogs);
+    } catch (e: any) {
+      console.error('Supabase catch log delete error:', e);
+      alert(`Supabase DB 조과 삭제에 실패했습니다: ${e?.message || ''}`);
+    }
   };
 
   // POI 장소/항구 검색 트리거 (Photon + OSM 고속 검색)
