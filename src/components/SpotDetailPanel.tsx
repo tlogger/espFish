@@ -461,62 +461,32 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 </div>
               )}
 
-              {/* 3일간 (오늘, 내일, 모레) 만조/간조 및 일출/일몰 요약 카드 */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs pt-2 border-t border-slate-800">
-                {tide.threeDays ? (
-                  tide.threeDays.map((daySummary, idx) => (
-                    <div
-                      key={idx}
-                      className={`p-2.5 rounded-xl border space-y-1.5 ${
-                        idx === 0
-                          ? 'bg-slate-900/90 border-cyan-500/50 ring-1 ring-cyan-500/30'
-                          : 'bg-slate-900/60 border-slate-800'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <div className="font-bold text-slate-100 flex items-center gap-1">
-                          <span className={idx === 0 ? 'text-cyan-400 font-extrabold' : 'text-slate-300'}>
-                            {daySummary.dayLabel}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-normal">
-                            ({daySummary.dateStr.split(' ')[0]})
-                          </span>
-                        </div>
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
-                          {daySummary.mulText}
-                        </span>
-                      </div>
-
-                      <div className="text-[10px] text-slate-400 flex justify-between">
-                        <span className="text-amber-300">🌅 {daySummary.sunrise}</span>
-                        <span className="text-indigo-300">🌇 {daySummary.sunset}</span>
-                      </div>
-
-                      <div className="pt-1 border-t border-slate-800/80 space-y-1 text-[11px]">
-                        <div>
-                          <div className="text-[10px] text-rose-400 font-semibold mb-0.5">고조 (만조)</div>
-                          {daySummary.highTides.map((h, i) => (
-                            <div key={i} className="flex justify-between text-slate-300 text-[10px]">
-                              <span>{h.time}</span>
-                              <span className="font-mono text-rose-300 font-bold">{h.height}cm</span>
-                            </div>
-                          ))}
-                        </div>
-                        <div>
-                          <div className="text-[10px] text-blue-400 font-semibold mb-0.5">저조 (간조)</div>
-                          {daySummary.lowTides.map((l, i) => (
-                            <div key={i} className="flex justify-between text-slate-300 text-[10px]">
-                              <span>{l.time}</span>
-                              <span className="font-mono text-blue-300 font-bold">{l.height}cm</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+              {/* 오늘 만조 / 간조 시각표 및 조위 정보 */}
+              <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-800">
+                <div className="p-2.5 rounded bg-rose-950/40 border border-rose-900/50">
+                  <div className="text-rose-400 font-semibold mb-1.5 flex items-center justify-between">
+                    <span>🔴 고조 (만조)</span>
+                    <span className="text-[10px] text-slate-400">조위(cm)</span>
+                  </div>
+                  {tide.highTides.map((t, idx) => (
+                    <div key={idx} className="flex justify-between items-center text-slate-200 py-0.5">
+                      <span className="font-medium">{t.time}</span>
+                      <span className="font-mono font-bold text-rose-300">{t.height} cm</span>
                     </div>
-                  ))
-                ) : (
-                  <div className="col-span-3 text-slate-400">물때 요약 계산 중...</div>
-                )}
+                  ))}
+                </div>
+                <div className="p-2.5 rounded bg-blue-950/40 border border-blue-900/50">
+                  <div className="text-blue-400 font-semibold mb-1.5 flex items-center justify-between">
+                    <span>🔵 저조 (간조)</span>
+                    <span className="text-[10px] text-slate-400">조위(cm)</span>
+                  </div>
+                  {tide.lowTides.map((t, idx) => (
+                    <div key={idx} className="flex justify-between items-center text-slate-200 py-0.5">
+                      <span className="font-medium">{t.time}</span>
+                      <span className="font-mono font-bold text-blue-300">{t.height} cm</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 

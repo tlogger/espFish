@@ -2,6 +2,7 @@ import React from 'react';
 import { Check, Cloud, Copy, Database, HelpCircle, Loader2, QrCode, RefreshCw, Smartphone, Trash2, X } from 'lucide-react';
 import {
   clearCloudConfig,
+  DEFAULT_SUPABASE_KEY,
   generateMobilePairingUrl,
   getSavedCloudConfig,
   saveCloudConfig,
@@ -83,7 +84,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
   onSyncComplete,
 }) => {
   const [url, setUrl] = React.useState('');
-  const [anonKey, setAnonKey] = React.useState('');
+  const [anonKey, setAnonKey] = React.useState(DEFAULT_SUPABASE_KEY);
   const [isConnected, setIsConnected] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [message, setMessage] = React.useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -99,6 +100,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
         setAnonKey(config.anonKey);
         setIsConnected(true);
       } else {
+        setAnonKey(DEFAULT_SUPABASE_KEY);
         setIsConnected(false);
       }
       setMessage(null);
@@ -203,14 +205,14 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                   className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                     isConnected
                       ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                      : 'bg-slate-800 text-slate-400'
+                      : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                   }`}
                 >
-                  {isConnected ? '● 클라우드 연결됨' : '○ 로컬 브라우저 모드'}
+                  {isConnected ? '● 전용 Supabase 연결됨' : '● 기본 클라우드 동기화 활성'}
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                무료 Supabase 데이터베이스를 연동하여 PC와 스마트폰 간 데이터를 실시간 공유합니다.
+                기본 무료 클라우드로 자동 동기화되며, 전용 Supabase Project URL을 입력하면 실시간 DB로 전환됩니다.
               </p>
             </div>
           </div>
@@ -238,22 +240,14 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
           {/* 간편 안내 박스 */}
           <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl space-y-1.5 text-slate-300">
             <div className="font-bold text-cyan-300 flex items-center gap-1.5">
-              <HelpCircle size={14} /> 무료 Supabase 연동 방법 (1분 소요):
+              <HelpCircle size={14} /> 전용 Supabase 연동 마무리 안내 (Publishable Key 입력 완료됨):
             </div>
             <ol className="list-decimal list-inside space-y-1 text-slate-400 pl-1">
               <li>
-                <a
-                  href="https://supabase.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-cyan-400 underline font-semibold"
-                >
-                  supabase.com
-                </a>
-                에서 무료 회원가입 후 [New Project] 생성
+                현재 내장 클라우드 스토어를 통해 <strong>PC ⇄ 모바일 새로고침 시 포인트 및 조과가 즉시 동기화</strong>됩니다.
               </li>
               <li>
-                좌측 메뉴 <strong>SQL Editor</strong>에서 [New query]를 누르고{' '}
+                전용 Supabase(<code>tlogger&apos;s Project</code>)의 좌측 메뉴 <strong>SQL Editor</strong>에서{' '}
                 <button
                   type="button"
                   onClick={() => setShowSql(!showSql)}
@@ -264,7 +258,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                 하여 Run 실행
               </li>
               <li>
-                좌측 메뉴 <strong>Project Settings &gt; API</strong>에서 <code>Project URL</code>과 <code>anon public key</code>를 복사하여 아래에 입력
+                좌측 메뉴 <strong>Project Settings &gt; Data API</strong>에서 <code>Project URL</code> (예: <code>https://xxxx.supabase.co</code>)을 복사하여 아래에 입력
               </li>
             </ol>
           </div>
@@ -296,7 +290,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
               </label>
               <input
                 type="url"
-                placeholder="https://your-project.supabase.co"
+                placeholder="https://your-project-id.supabase.co"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
@@ -306,11 +300,11 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
 
             <div>
               <label className="block text-slate-300 font-semibold mb-1">
-                Supabase anon public Key
+                Supabase Publishable / Anon Key (기본 세팅됨)
               </label>
               <input
                 type="text"
-                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                placeholder="sb_publishable_..."
                 value={anonKey}
                 onChange={(e) => setAnonKey(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
@@ -325,7 +319,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                 className="flex-1 py-2.5 px-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded-lg transition flex items-center justify-center gap-1.5 shadow-md shadow-cyan-600/20"
               >
                 {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Database size={14} />}
-                <span>{isConnected ? '설정 재연결 및 검증' : '클라우드 DB 연결하기'}</span>
+                <span>{isConnected ? '설정 재연결 및 검증' : '전용 Supabase DB 연결하기'}</span>
               </button>
 
               {isConnected && (
@@ -333,7 +327,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                   type="button"
                   onClick={handleDisconnect}
                   className="px-3 py-2.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded-lg transition"
-                  title="클라우드 연동 해제"
+                  title="전용 Supabase 연동 해제"
                 >
                   <Trash2 size={14} />
                 </button>
@@ -341,39 +335,41 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
             </div>
           </form>
 
-          {/* 연결된 상태일 때 원클릭 동기화 및 모바일 페어링 기능 */}
-          {isConnected && (
-            <div className="pt-3 border-t border-slate-800 space-y-2.5">
-              <div className="flex justify-between items-center">
-                <span className="font-bold text-slate-200">📱 모바일 기기와 1초 연동:</span>
-                <button
-                  onClick={handleCopyMobileLink}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded text-[11px] font-semibold border border-slate-700 transition"
-                >
-                  {copiedMobileLink ? <Check size={12} className="text-emerald-400" /> : <Smartphone size={12} />}
-                  <span>{copiedMobileLink ? '연동 링크 복사 완료!' : '모바일 자동 연동 링크 복사'}</span>
-                </button>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                복사된 링크를 카카오톡이나 메시지로 스마트폰에 보내 열면, 별도 입력 없이 모바일 기기에서도 동일한 DB로 즉시 연동됩니다.
-              </p>
+          {/* 원클릭 동기화 및 모바일 페어링 기능 */}
+          <div className="pt-3 border-t border-slate-800 space-y-2.5">
+            {isConnected && (
+              <>
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-slate-200">📱 모바일 기기와 1초 연동:</span>
+                  <button
+                    onClick={handleCopyMobileLink}
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded text-[11px] font-semibold border border-slate-700 transition"
+                  >
+                    {copiedMobileLink ? <Check size={12} className="text-emerald-400" /> : <Smartphone size={12} />}
+                    <span>{copiedMobileLink ? '연동 링크 복사 완료!' : '모바일 자동 연동 링크 복사'}</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  복사된 링크를 카카오톡이나 메시지로 스마트폰에 보내 열면, 별도 입력 없이 모바일 기기에서도 동일한 전용 DB로 즉시 연동됩니다.
+                </p>
+              </>
+            )}
 
-              <div className="pt-2 flex justify-between items-center">
-                <span className="text-slate-400">
-                  현재 로컬 포인트: <strong>{localSpots.length}개</strong>, 조과: <strong>{localLogs.length}건</strong>
-                </span>
-                <button
-                  type="button"
-                  onClick={handleUploadLocal}
-                  disabled={isLoading}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs transition shadow"
-                >
-                  <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
-                  <span>로컬 데이터 클라우드로 올리기</span>
-                </button>
-              </div>
+            <div className="pt-1 flex justify-between items-center">
+              <span className="text-slate-400">
+                현재 기기 포인트: <strong>{localSpots.length}개</strong>, 조과: <strong>{localLogs.length}건</strong>
+              </span>
+              <button
+                type="button"
+                onClick={handleUploadLocal}
+                disabled={isLoading}
+                className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs transition shadow"
+              >
+                <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
+                <span>현재 기기 데이터 클라우드로 즉시 동기화</span>
+              </button>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

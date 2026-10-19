@@ -74,7 +74,7 @@ export function App() {
   const [newSpotLat, setNewSpotLat] = React.useState<number | undefined>();
   const [newSpotLng, setNewSpotLng] = React.useState<number | undefined>();
 
-  // 초기 스토리지 & 클라우드 DB 데이터 로드
+  // 초기 스토리지 & 클라우드 DB 데이터 로드 (내장 클라우드 + 전용 Supabase 자동 병합)
   const reloadData = React.useCallback(async () => {
     const cloudConfig = getSavedCloudConfig();
     setIsCloudConnected(Boolean(cloudConfig));
@@ -82,20 +82,21 @@ export function App() {
     let currentSpots = loadSpotsFromStorage();
     let currentLogs = loadLogsFromStorage();
 
-    if (cloudConfig) {
-      try {
-        const [cSpots, cLogs] = await Promise.all([fetchCloudSpots(), fetchCloudLogs()]);
-        if (cSpots && cSpots.length > 0) {
-          currentSpots = cSpots;
-          saveSpotsToStorage(cSpots);
-        }
-        if (cLogs && cLogs.length > 0) {
-          currentLogs = cLogs;
-          saveLogsToStorage(cLogs);
-        }
-      } catch (err) {
-        console.warn('Cloud fetch warning, using local cache:', err);
+    try {
+      const [cSpots, cLogs] = await Promise.all([
+        fetchCloudSpots(currentSpots),
+        fetchCloudLogs(currentLogs),
+      ]);
+      if (cSpots && cSpots.length > 0) {
+        currentSpots = cSpots;
+        saveSpotsToStorage(cSpots);
       }
+      if (cLogs && cLogs.length > 0) {
+        currentLogs = cLogs;
+        saveLogsToStorage(cLogs);
+      }
+    } catch (err) {
+      console.warn('Cloud fetch warning, using local cache:', err);
     }
 
     setSpots(currentSpots);
@@ -412,13 +413,13 @@ export function App() {
             className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition ${
               isCloudConnected
                 ? 'bg-emerald-950/70 border-emerald-600/80 text-emerald-300 hover:bg-emerald-900/60'
-                : 'bg-slate-800/90 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white'
+                : 'bg-cyan-950/60 border-cyan-700/70 text-cyan-300 hover:bg-cyan-900/60'
             }`}
             title="클라우드 DB 동기화 (PC ⇄ 모바일)"
           >
-            <Cloud size={14} className={isCloudConnected ? 'text-emerald-400' : 'text-slate-400'} />
+            <Cloud size={14} className={isCloudConnected ? 'text-emerald-400' : 'text-cyan-400'} />
             <span className="hidden sm:inline">
-              {isCloudConnected ? '클라우드 연동됨' : '클라우드 동기화'}
+              {isCloudConnected ? 'Supabase 연동됨' : '클라우드 동기화 중'}
             </span>
           </button>
 
