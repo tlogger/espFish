@@ -724,12 +724,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 </div>
               </div>
 
-              {/* 오늘의 황금 피딩 타임 카드 */}
+              {/* 다가오는 미래 황금 피딩 타임 카드 */}
               {tide.feedingTimes && tide.feedingTimes.length > 0 && (
                 <div className="pt-2 border-t border-slate-800 space-y-1.5">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
                     <Clock size={13} />
-                    <span>🔥 오늘의 황금 피딩 타임 (집중 공략 시간대)</span>
+                    <span>🔥 다가오는 황금 피딩 타임 (현재 시각 이후 입질 찬스)</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                     {tide.feedingTimes.map((f, idx) => (

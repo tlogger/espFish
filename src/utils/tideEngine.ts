@@ -213,11 +213,9 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
   const todayMul = getMulInfo(todayMoonAge);
   const todayTimes = SunCalc.getTimes(baseDate, lat, lng);
 
-  // 황금 피딩 타임(Golden Feeding Times) 자동 계산
-  // 1. 아침 해창 피딩 (일출 전 40분 ~ 일출 후 60분)
-  // 2. 들물(밀물) 본류대 피딩 (만조 2시간 전 ~ 만조 시점)
-  // 3. 저녁 해창 피딩 (일몰 전 60분 ~ 일몰 후 40분)
-  const feedingTimes: {
+  // 미래 황금 피딩 타임(Golden Feeding Times) 계산 (현재 시각 이후의 피딩 타임만 추출)
+  // 오늘뿐만 아니라 오늘 밤, 내일, 모레까지 3일간 계산하여 현재 시각 이후의 미래 피딩 타임들을 순서대로 제공
+  const allFeedingTimes: {
     label: string;
     timeRange: string;
     reason: string;
@@ -225,64 +223,96 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
     endHour: number;
     startTimeStr: string;
     endTimeStr: string;
+    endTimestamp: number;
+    dayLabel: string;
   }[] = [];
 
-  const sr = todayTimes.sunrise;
-  if (sr) {
-    const srStart = new Date(sr.getTime() - 40 * 60000);
-    const srEnd = new Date(sr.getTime() + 60 * 60000);
-    const sHour = srStart.getHours();
-    const eHour = srEnd.getHours();
-    const sTimeStr = `${padZero(srStart.getMonth() + 1)}/${padZero(srStart.getDate())} ${padZero(sHour)}:00`;
-    const eTimeStr = `${padZero(srEnd.getMonth() + 1)}/${padZero(srEnd.getDate())} ${padZero(eHour)}:00`;
-    feedingTimes.push({
-      label: '🌅 아침 해창 피딩',
-      timeRange: `${formatTime(srStart)} ~ ${formatTime(srEnd)}`,
-      reason: '일출 전후 먹이활동 집중 (시각 어종 활성)',
-      startHour: sHour,
-      endHour: Math.max(eHour, sHour + 1),
-      startTimeStr: sTimeStr,
-      endTimeStr: eTimeStr,
-    });
+  for (let d = 0; d < 3; d++) {
+    const dayDate = new Date(startOfDay.getTime() + d * 24 * 3600 * 1000);
+    const dayTimes = SunCalc.getTimes(dayDate, lat, lng);
+    const daySummary = threeDays[d];
+    const prefix = d === 0 ? '오늘' : d === 1 ? '내일' : '모레';
+
+    // 1. 아침 해창 피딩 (일출 전 40분 ~ 일출 후 60분)
+    if (dayTimes.sunrise) {
+      const srStart = new Date(dayTimes.sunrise.getTime() - 40 * 60000);
+      const srEnd = new Date(dayTimes.sunrise.getTime() + 60 * 60000);
+      const sHour = srStart.getHours() + d * 24;
+      const eHour = srEnd.getHours() + d * 24;
+      const sTimeStr = `${padZero(srStart.getMonth() + 1)}/${padZero(srStart.getDate())} ${padZero(srStart.getHours())}:00`;
+      const eTimeStr = `${padZero(srEnd.getMonth() + 1)}/${padZero(srEnd.getDate())} ${padZero(srEnd.getHours())}:00`;
+
+      allFeedingTimes.push({
+        label: `🌅 ${prefix} 아침 해창`,
+        timeRange: `${d > 0 ? `(${prefix}) ` : ''}${formatTime(srStart)} ~ ${formatTime(srEnd)}`,
+        reason: '일출 전후 먹이활동 집중 (시각 어종 활성)',
+        startHour: sHour,
+        endHour: Math.max(eHour, sHour + 1),
+        startTimeStr: sTimeStr,
+        endTimeStr: eTimeStr,
+        endTimestamp: srEnd.getTime(),
+        dayLabel: prefix,
+      });
+    }
+
+    // 2. 들물(밀물) 본류대 피딩 (각 만조 2시간 전 ~ 만조 시점)
+    if (daySummary && daySummary.highTides) {
+      daySummary.highTides.forEach((ht, htIdx) => {
+        const [hHour, hMin] = ht.time.split(':').map(Number);
+        const htDate = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), hHour, hMin, 0);
+        const htStartDate = new Date(htDate.getTime() - 2 * 3600 * 1000);
+
+        const sHour = (hHour - 2 + 24) % 24 + d * 24;
+        const eHour = hHour + d * 24;
+        const sTimeStr = `${padZero(htStartDate.getMonth() + 1)}/${padZero(htStartDate.getDate())} ${padZero(htStartDate.getHours())}:00`;
+        const eTimeStr = `${padZero(htDate.getMonth() + 1)}/${padZero(htDate.getDate())} ${padZero(htDate.getHours())}:00`;
+
+        allFeedingTimes.push({
+          label: `🌊 ${prefix} 들물 피딩${daySummary.highTides.length > 1 ? ` (${htIdx + 1}차)` : ''}`,
+          timeRange: `${d > 0 ? `(${prefix}) ` : ''}${formatTime(htStartDate)} ~ ${formatTime(htDate)}`,
+          reason: `만조 전 조류 유입 활성 (${ht.height}cm 고조 전)`,
+          startHour: sHour,
+          endHour: Math.max(eHour, sHour + 1),
+          startTimeStr: sTimeStr,
+          endTimeStr: eTimeStr,
+          endTimestamp: htDate.getTime(),
+          dayLabel: prefix,
+        });
+      });
+    }
+
+    // 3. 저녁 해질녘 피딩 (일몰 전 60분 ~ 일몰 후 40분)
+    if (dayTimes.sunset) {
+      const ssStart = new Date(dayTimes.sunset.getTime() - 60 * 60000);
+      const ssEnd = new Date(dayTimes.sunset.getTime() + 40 * 60000);
+      const sHour = ssStart.getHours() + d * 24;
+      const eHour = ssEnd.getHours() + d * 24;
+      const sTimeStr = `${padZero(ssStart.getMonth() + 1)}/${padZero(ssStart.getDate())} ${padZero(ssStart.getHours())}:00`;
+      const eTimeStr = `${padZero(ssEnd.getMonth() + 1)}/${padZero(ssEnd.getDate())} ${padZero(ssEnd.getHours())}:00`;
+
+      allFeedingTimes.push({
+        label: `🌇 ${prefix} 저녁 일몰`,
+        timeRange: `${d > 0 ? `(${prefix}) ` : ''}${formatTime(ssStart)} ~ ${formatTime(ssEnd)}`,
+        reason: '일몰 골든아워 (포식성 어종 연안 접근)',
+        startHour: sHour,
+        endHour: Math.max(eHour, sHour + 1),
+        startTimeStr: sTimeStr,
+        endTimeStr: eTimeStr,
+        endTimestamp: ssEnd.getTime(),
+        dayLabel: prefix,
+      });
+    }
   }
 
-  // 오늘 주간 고조(만조) 2시간 전 초·중들물 피딩
-  if (threeDays[0].highTides.length > 0) {
-    const firstHigh = threeDays[0].highTides[0];
-    const [hHour, hMin] = firstHigh.time.split(':').map(Number);
-    const hStartHour = (hHour - 2 + 24) % 24;
-    const hStartStr = `${padZero(hStartHour)}:${padZero(hMin)}`;
-    const curMonth = padZero(baseDate.getMonth() + 1);
-    const curDay = padZero(baseDate.getDate());
-    feedingTimes.push({
-      label: '🌊 들물(밀물) 피딩',
-      timeRange: `${hStartStr} ~ ${firstHigh.time}`,
-      reason: `초들물~만조 조류 유입 (${firstHigh.height}cm 고조 전)`,
-      startHour: hStartHour,
-      endHour: hHour,
-      startTimeStr: `${curMonth}/${curDay} ${padZero(hStartHour)}:00`,
-      endTimeStr: `${curMonth}/${curDay} ${padZero(hHour)}:00`,
-    });
-  }
+  // 시간순 정렬 및 현재 시각(baseDate) 기준 종료되지 않은 미래 피딩 타임만 필터링
+  const nowMs = baseDate.getTime();
+  const futureFeedingTimes = allFeedingTimes
+    .filter((f) => f.endTimestamp > nowMs)
+    .sort((a, b) => a.endTimestamp - b.endTimestamp)
+    .slice(0, 4); // 가장 가까운 다음 4개 피딩 타임 카드 제공
 
-  const ss = todayTimes.sunset;
-  if (ss) {
-    const ssStart = new Date(ss.getTime() - 60 * 60000);
-    const ssEnd = new Date(ss.getTime() + 40 * 60000);
-    const sHour = ssStart.getHours();
-    const eHour = ssEnd.getHours();
-    const sTimeStr = `${padZero(ssStart.getMonth() + 1)}/${padZero(ssStart.getDate())} ${padZero(sHour)}:00`;
-    const eTimeStr = `${padZero(ssEnd.getMonth() + 1)}/${padZero(ssEnd.getDate())} ${padZero(eHour)}:00`;
-    feedingTimes.push({
-      label: '🌇 저녁 해질녘 피딩',
-      timeRange: `${formatTime(ssStart)} ~ ${formatTime(ssEnd)}`,
-      reason: '일몰 골든아워 (포식성 어종 연안 접근)',
-      startHour: sHour,
-      endHour: Math.max(eHour, sHour + 1),
-      startTimeStr: sTimeStr,
-      endTimeStr: eTimeStr,
-    });
-  }
+  // 만약 3일치 전체가 필터링되었을 경우(드문 경우)를 대비해 안전 폴백
+  const feedingTimes = futureFeedingTimes.length > 0 ? futureFeedingTimes : allFeedingTimes.slice(0, 3);
 
   return {
     lunarDateStr: `음력 ${todayMul.lunarDay}일`,
