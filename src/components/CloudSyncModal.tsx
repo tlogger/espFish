@@ -3,6 +3,7 @@ import { Check, Cloud, Copy, Database, HelpCircle, Loader2, QrCode, RefreshCw, S
 import {
   clearCloudConfig,
   DEFAULT_SUPABASE_KEY,
+  DEFAULT_SUPABASE_URL,
   generateMobilePairingUrl,
   getSavedCloudConfig,
   saveCloudConfig,
@@ -83,12 +84,12 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
   localLogs,
   onSyncComplete,
 }) => {
-  const [url, setUrl] = React.useState('');
+  const [url, setUrl] = React.useState(DEFAULT_SUPABASE_URL);
   const [anonKey, setAnonKey] = React.useState(DEFAULT_SUPABASE_KEY);
-  const [isConnected, setIsConnected] = React.useState(false);
+  const [isConnected, setIsConnected] = React.useState(true);
   const [isLoading, setIsLoading] = React.useState(false);
   const [message, setMessage] = React.useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const [showSql, setShowSql] = React.useState(false);
+  const [showSql, setShowSql] = React.useState(true);
   const [copiedSql, setCopiedSql] = React.useState(false);
   const [copiedMobileLink, setCopiedMobileLink] = React.useState(false);
 
@@ -100,8 +101,9 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
         setAnonKey(config.anonKey);
         setIsConnected(true);
       } else {
+        setUrl(DEFAULT_SUPABASE_URL);
         setAnonKey(DEFAULT_SUPABASE_KEY);
-        setIsConnected(false);
+        setIsConnected(true);
       }
       setMessage(null);
     }

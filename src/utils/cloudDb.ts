@@ -5,7 +5,8 @@ import { INITIAL_CATCH_LOGS, INITIAL_SPOTS } from './storage';
 const STORAGE_KEY_URL = 'espfish_supabase_url';
 const STORAGE_KEY_ANON = 'espfish_supabase_anon_key';
 
-// 사용자가 생성한 Supabase Publishable Key 기본값
+// 사용자가 생성한 Supabase Project URL 및 Publishable Key 기본값 (tlogger's Project)
+export const DEFAULT_SUPABASE_URL = 'https://johtqemdlprtbpohdkgu.supabase.co';
 export const DEFAULT_SUPABASE_KEY = 'sb_publishable_Aj8gNxqXefjkBg6H6zsCxw_icac_-2G';
 
 // 별도 설정 전에도 PC ⇄ 모바일 간 즉시 동기화를 지원하는 무료 클라우드 REST 스토어 엔드포인트
@@ -26,7 +27,7 @@ interface BuiltinCloudPayload {
   updatedAt?: string;
 }
 
-/** 저장된 클라우드 DB 설정 가져오기 (환경변수 또는 localStorage) */
+/** 저장된 클라우드 DB 설정 가져오기 (환경변수, localStorage 또는 기본 탑재된 tlogger's Project) */
 export function getSavedCloudConfig(): CloudDbConfig | null {
   // 1. URL 쿼리 파라미터에서 자동 추출 (PC -> 모바일 동기화 링크)
   if (typeof window !== 'undefined') {
@@ -41,21 +42,19 @@ export function getSavedCloudConfig(): CloudDbConfig | null {
     }
   }
 
-  // 2. localStorage
-  const savedUrl = localStorage.getItem(STORAGE_KEY_URL);
-  const savedKey = localStorage.getItem(STORAGE_KEY_ANON) || DEFAULT_SUPABASE_KEY;
-  if (savedUrl && savedKey) {
-    return { url: savedUrl, anonKey: savedKey };
+  // 2. localStorage 또는 기본 탑재된 Supabase 설정
+  if (typeof window !== 'undefined') {
+    const savedUrl = localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_SUPABASE_URL;
+    const savedKey = localStorage.getItem(STORAGE_KEY_ANON) || DEFAULT_SUPABASE_KEY;
+    if (savedUrl && savedKey) {
+      return { url: savedUrl, anonKey: savedKey };
+    }
   }
 
-  // 3. 빌드 타임 환경변수
-  const envUrl = import.meta.env.VITE_SUPABASE_URL;
+  // 3. 빌드 타임 환경변수 또는 기본값
+  const envUrl = import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
   const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_KEY;
-  if (envUrl && envKey) {
-    return { url: envUrl, anonKey: envKey };
-  }
-
-  return null;
+  return { url: envUrl, anonKey: envKey };
 }
 
 /** 클라우드 DB 설정 저장 */
