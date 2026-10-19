@@ -1,7 +1,7 @@
 import React from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Play, Pause } from 'lucide-react';
+import { Crosshair, Moon, Sun, Plus, Play, Pause } from 'lucide-react';
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo } from '../types';
 import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
 
@@ -14,7 +14,6 @@ function createCustomPin(spot: FishingSpot, isSelected: boolean) {
     iconEmoji = '🔴';
   } else if (spot.fishing_methods.includes('SURF')) {
     bgColor = '#f59e0b'; // amber (surf)
-    iconEmoji = '⚓';
   }
 
   const borderClass = isSelected
@@ -38,6 +37,20 @@ function createCustomPin(spot: FishingSpot, isSelected: boolean) {
     popupAnchor: [0, -44],
   });
 }
+
+// 사용자 현재 위치 GPS 핀 마커
+const userLocationPin = L.divIcon({
+  html: `
+    <div style="width: 24px; height: 24px; position: relative;" class="animate-pulse">
+      <div class="w-6 h-6 rounded-full bg-cyan-500 border-2 border-white shadow-xl flex items-center justify-center text-[10px]">
+        🎯
+      </div>
+    </div>
+  `,
+  className: 'user-location-marker',
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+});
 
 // 클릭 시 지도 좌표 획득 컴포넌트
 function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
@@ -90,6 +103,37 @@ export const MapView: React.FC<MapViewProps> = ({
   // 타임라인 미래 시뮬레이션: 현재 시각 기준 앞으로 0 ~ 48시간 (48h 오프셋)
   const [timelineOffsetHours, setTimelineOffsetHours] = React.useState<number>(0);
   const [isPlaying, setIsPlaying] = React.useState(false);
+
+  // 내 현재 GPS 위치 및 추적 상태
+  const [myLocation, setMyLocation] = React.useState<{ lat: number; lng: number } | null>(null);
+  const [isLocating, setIsLocating] = React.useState(false);
+  const [internalRecenter, setInternalRecenter] = React.useState<{ lat: number; lng: number; zoom?: number } | null>(null);
+
+  // 야간 낚시용 다크 테마 타일 토글
+  const [isDarkTile, setIsDarkTile] = React.useState(false);
+
+  // 현재 GPS 위치 가져오기 핸들러
+  const handleLocateMe = () => {
+    if (!navigator.geolocation) {
+      alert('이 브라우저는 위치 정보(GPS)를 지원하지 않습니다.');
+      return;
+    }
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setIsLocating(false);
+        const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setMyLocation(userPos);
+        setInternalRecenter({ lat: userPos.lat, lng: userPos.lng, zoom: 15 });
+      },
+      (err) => {
+        setIsLocating(false);
+        console.warn('Geolocation error:', err);
+        alert('현재 위치 정보를 가져올 수 없습니다. 브라우저의 위치 권한을 확인해 주세요.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   // 재생 타이머 (1초마다 +1시간 전진, 48시간 후 0으로 루프)
   React.useEffect(() => {
@@ -171,13 +215,40 @@ export const MapView: React.FC<MapViewProps> = ({
         maxZoom={18}
         className="w-full h-full"
       >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        {isDarkTile ? (
+          <TileLayer
+            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          />
+        ) : (
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+        )}
 
         <MapClickHandler onMapClick={onMapClickForNewSpot} />
-        <MapRecenter target={recenterTarget ?? null} />
+        <MapRecenter target={internalRecenter || recenterTarget || null} />
+
+        {/* 내 현재 GPS 위치 마커 */}
+        {myLocation && (
+          <Marker position={[myLocation.lat, myLocation.lng]} icon={userLocationPin}>
+            <Popup className="custom-spot-popup">
+              <div className="p-1 text-slate-900 text-xs font-sans">
+                <div className="font-bold text-sm text-cyan-800 mb-1">🎯 내 현재 위치</div>
+                <div className="text-[11px] text-slate-600 mb-2">
+                  위도: {myLocation.lat.toFixed(4)}, 경도: {myLocation.lng.toFixed(4)}
+                </div>
+                <button
+                  onClick={() => onMapClickForNewSpot(myLocation.lat, myLocation.lng)}
+                  className="w-full py-1 bg-cyan-600 text-white rounded font-bold hover:bg-cyan-700 transition"
+                >
+                  이곳을 낚시 포인트로 등록
+                </button>
+              </div>
+            </Popup>
+          </Marker>
+        )}
 
         {spots.map((spot) => {
           const isSelected = selectedSpot?.id === spot.id;
@@ -333,6 +404,29 @@ export const MapView: React.FC<MapViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* 지도 플로팅 컨트롤: GPS 내 위치 & 야간 다크모드 타일 토글 */}
+      <div className="absolute top-4 right-4 z-[400] flex flex-col gap-2">
+        <button
+          onClick={handleLocateMe}
+          disabled={isLocating}
+          title="내 현재 GPS 위치 찾기"
+          className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-cyan-400 border border-slate-700/80 rounded-xl shadow-lg backdrop-blur flex items-center justify-center transition active:scale-95"
+        >
+          {isLocating ? (
+            <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <span className="text-lg">🎯</span>
+          )}
+        </button>
+        <button
+          onClick={() => setIsDarkTile(!isDarkTile)}
+          title={isDarkTile ? '일반 지도 타일로 변경' : '야간 낚시 다크 지도 타일로 변경'}
+          className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-amber-400 border border-slate-700/80 rounded-xl shadow-lg backdrop-blur flex items-center justify-center transition active:scale-95"
+        >
+          <span className="text-lg">{isDarkTile ? '☀️' : '🌙'}</span>
+        </button>
+      </div>
 
       {/* 지도 안내 뱃지 */}
       <div className="absolute bottom-4 left-4 z-20 bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-lg px-3 py-1.5 text-[11px] text-slate-300 hidden sm:block">

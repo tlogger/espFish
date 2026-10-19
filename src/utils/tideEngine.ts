@@ -213,6 +213,47 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
   const todayMul = getMulInfo(todayMoonAge);
   const todayTimes = SunCalc.getTimes(baseDate, lat, lng);
 
+  // 황금 피딩 타임(Golden Feeding Times) 자동 계산
+  // 1. 아침 해창 피딩 (일출 전 40분 ~ 일출 후 60분)
+  // 2. 저녁 해창 피딩 (일몰 전 60분 ~ 일몰 후 40분)
+  // 3. 만조/간조 물돌이 전후 1시간 (중들물 ~ 만조 피딩)
+  const feedingTimes: { label: string; timeRange: string; reason: string }[] = [];
+
+  const sr = todayTimes.sunrise;
+  if (sr) {
+    const srStart = new Date(sr.getTime() - 40 * 60000);
+    const srEnd = new Date(sr.getTime() + 60 * 60000);
+    feedingTimes.push({
+      label: '🌅 아침 해창 피딩',
+      timeRange: `${formatTime(srStart)} ~ ${formatTime(srEnd)}`,
+      reason: '일출 전후 먹이활동 집중 (시각 어종 활성)',
+    });
+  }
+
+  // 오늘 주간 고조(만조) 2시간 전 초·중들물 피딩
+  if (threeDays[0].highTides.length > 0) {
+    const firstHigh = threeDays[0].highTides[0];
+    const [hHour, hMin] = firstHigh.time.split(':').map(Number);
+    const hStartHour = (hHour - 2 + 24) % 24;
+    const hStartStr = `${padZero(hStartHour)}:${padZero(hMin)}`;
+    feedingTimes.push({
+      label: '🌊 들물(밀물) 피딩',
+      timeRange: `${hStartStr} ~ ${firstHigh.time}`,
+      reason: `초들물~만조 조류 유입 (${firstHigh.height}cm 고조 전)`,
+    });
+  }
+
+  const ss = todayTimes.sunset;
+  if (ss) {
+    const ssStart = new Date(ss.getTime() - 60 * 60000);
+    const ssEnd = new Date(ss.getTime() + 40 * 60000);
+    feedingTimes.push({
+      label: '🌇 저녁 해질녘 피딩',
+      timeRange: `${formatTime(ssStart)} ~ ${formatTime(ssEnd)}`,
+      reason: '일몰 골든아워 (포식성 어종 연안 접근)',
+    });
+  }
+
   return {
     lunarDateStr: `음력 ${todayMul.lunarDay}일`,
     mulText: todayMul.mulText,
@@ -226,5 +267,6 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
     sunset: formatTime(todayTimes.sunset),
     dawn: formatTime(todayTimes.dawn),
     dusk: formatTime(todayTimes.dusk),
+    feedingTimes,
   };
 }

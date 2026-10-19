@@ -1,6 +1,8 @@
 import React from 'react';
 import {
+  AlertTriangle,
   ChevronDown,
+  Clock,
   Compass,
   Edit,
   ExternalLink,
@@ -39,6 +41,8 @@ interface SpotDetailPanelProps {
   catchLogs: CatchLog[];
   windUnit: WindUnit;
   currentUnit: CurrentUnit;
+  onToggleWindUnit?: () => void;
+  onToggleCurrentUnit?: () => void;
   onOpenCatchLogModal: () => void;
   onEditLog: (log: CatchLog) => void;
   onDeleteLog: (logId: string) => void;
@@ -57,6 +61,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   catchLogs,
   windUnit,
   currentUnit,
+  onToggleWindUnit,
+  onToggleCurrentUnit,
   onOpenCatchLogModal,
   onEditLog,
   onDeleteLog,
@@ -303,40 +309,85 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
         </div>
       )}
 
-      {/* 내비게이션 & 빠른 액션 바 */}
-      <div className="px-4 py-2 bg-slate-950/60 border-b border-slate-800 flex items-center justify-between text-xs">
-        <div className="flex items-center gap-1 text-slate-400">
-          <MapPin size={13} className="text-cyan-400" />
-          <span>
-            {spot.lat.toFixed(4)}, {spot.lng.toFixed(4)}
-          </span>
+      {/* 안전 경보 & 고립 주의 배너 (너울성 파도, 강풍, 만조 고립 위험 자동 감지) */}
+      {(() => {
+        const warnings: string[] = [];
+        if (weather && weather.windSpeed >= 8) {
+          warnings.push(`순간 강풍 주의 (${weather.windSpeed}m/s)`);
+        }
+        if (marine && marine.waveHeight >= 1.5) {
+          warnings.push(`높은 파고/너울 주의 (${marine.waveHeight}m)`);
+        }
+        if (spot.spot_type === 'ROCK' && tide?.highTides && tide.highTides.length > 0) {
+          // 다음 만조까지 남은 시간 체크
+          const nowMinutes = now.getHours() * 60 + now.getMinutes();
+          for (const ht of tide.highTides) {
+            const [h, m] = ht.time.split(':').map(Number);
+            const htMinutes = h * 60 + m;
+            const diff = htMinutes - nowMinutes;
+            if (diff > 0 && diff <= 120) {
+              warnings.push(`만조(${ht.time}) ${diff}분 전! 갯바위 퇴로 확보 필수`);
+              break;
+            }
+          }
+        }
+
+        if (warnings.length === 0) return null;
+
+        return (
+          <div className="mx-4 mt-2 p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs flex items-start gap-2 shadow-sm animate-pulse">
+            <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <span className="font-bold text-amber-300">⚠️ 해안 안전 주의보:</span>
+              <div className="text-[11px] leading-tight text-amber-100 font-medium">
+                {warnings.join(' · ')}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 내비게이션 & 정밀 예보 액션 바 (반응형 3분할 그리드) */}
+      <div className="px-4 py-2.5 bg-slate-950/60 border-b border-slate-800 space-y-2">
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-1 text-slate-400">
+            <MapPin size={13} className="text-cyan-400" />
+            <span className="font-mono">
+              {spot.lat.toFixed(4)}, {spot.lng.toFixed(4)}
+            </span>
+          </div>
+          {spot.navi_name && (
+            <span className="text-[11px] text-amber-300 font-medium truncate max-w-[180px]">
+              목적지: {spot.navi_name}
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="grid grid-cols-3 gap-1.5 text-xs">
           <a
             href={kakaoNaviUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 px-2 py-1 rounded bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 transition font-medium"
+            className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 transition font-medium border border-yellow-500/30 shadow-sm"
           >
             <Navigation size={12} />
-            <span>카카오길찾기</span>
+            <span className="truncate">카카오길찾기</span>
           </a>
           <a
             href={naverNaviUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 px-2 py-1 rounded bg-green-500/20 text-green-300 hover:bg-green-500/30 transition font-medium"
+            className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-green-500/20 text-green-300 hover:bg-green-500/30 transition font-medium border border-green-500/30 shadow-sm"
           >
             <Navigation size={12} />
-            <span>네이버지도</span>
+            <span className="truncate">네이버지도</span>
           </a>
           <a
             href={windyUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 px-2.5 py-1 rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 transition font-semibold"
+            className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 transition font-semibold border border-cyan-500/30 shadow-sm"
           >
-            <span>Windy 정밀예보</span>
+            <span className="truncate">Windy 예보</span>
             <ExternalLink size={12} />
           </a>
         </div>
@@ -390,6 +441,28 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {activeTab === 'CONDITIONS' && (
           <div className="space-y-4">
+            {/* 단위 빠른 전환 토글 바 */}
+            {(onToggleWindUnit || onToggleCurrentUnit) && (
+              <div className="flex items-center justify-end gap-2 text-[11px]">
+                <span className="text-slate-400">표시 단위:</span>
+                {onToggleWindUnit && (
+                  <button
+                    onClick={onToggleWindUnit}
+                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 font-mono border border-slate-700 transition"
+                  >
+                    바람: {windUnit}
+                  </button>
+                )}
+                {onToggleCurrentUnit && (
+                  <button
+                    onClick={onToggleCurrentUnit}
+                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 font-mono border border-slate-700 transition"
+                  >
+                    조류: {currentUnit}
+                  </button>
+                )}
+              </div>
+            )}
             {/* 48시간 미래 환경 타임라인 시뮬레이터 (모바일 및 패널 전용 통합) */}
             <div className="p-3.5 bg-slate-950/90 border border-cyan-500/30 rounded-2xl shadow-lg space-y-2.5">
               <div className="flex items-center justify-between">
@@ -630,6 +703,32 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   ))}
                 </div>
               </div>
+
+              {/* 오늘의 황금 피딩 타임 카드 */}
+              {tide.feedingTimes && tide.feedingTimes.length > 0 && (
+                <div className="pt-2 border-t border-slate-800 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+                    <Clock size={13} />
+                    <span>🔥 오늘의 황금 피딩 타임 (집중 공략 시간대)</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    {tide.feedingTimes.map((f, idx) => (
+                      <div
+                        key={idx}
+                        className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-between"
+                      >
+                        <div>
+                          <div className="font-bold text-amber-200">{f.label}</div>
+                          <div className="text-[10px] text-slate-400">{f.reason}</div>
+                        </div>
+                        <span className="font-mono font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-500/40 text-[11px]">
+                          {f.timeRange}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 72시간 연속 조석 곡선 & 가로 스크롤 차트 */}

@@ -39,8 +39,13 @@ export function App() {
   const [editingSpot, setEditingSpot] = React.useState<FishingSpot | null>(null);
   const [editingCatchLog, setEditingCatchLog] = React.useState<CatchLog | null>(null);
 
-  // 모바일 드로워 표시 상태 (보일 때는 100% 화면 채우고, 숨길 때는 지도와 실시간 환경 복귀)
-  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = React.useState(true);
+  // 모바일 드로워 표시 상태 (모바일 시작 시 지도 우선 표시 위해 초기값 false, PC는 true)
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = React.useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 768;
+    }
+    return false;
+  });
 
   // 로그인 상태 관리 (Email & ID 확인, PW 불필요)
   const [currentUser, setCurrentUser] = React.useState<{ id: string; email: string } | null>(() => getSavedAuthUser());
@@ -537,6 +542,8 @@ export function App() {
               catchLogs={spotLogs}
               windUnit={windUnit}
               currentUnit={currentUnit}
+              onToggleWindUnit={() => setWindUnit((prev) => prev === 'ms' ? 'knot' : prev === 'knot' ? 'kmh' : 'ms')}
+              onToggleCurrentUnit={() => setCurrentUnit((prev) => prev === 'ms' ? 'knot' : prev === 'knot' ? 'cms' : 'ms')}
               onOpenCatchLogModal={() => {
                 setEditingCatchLog(null);
                 setIsCatchLogModalOpen(true);
@@ -565,6 +572,8 @@ export function App() {
               catchLogs={spotLogs}
               windUnit={windUnit}
               currentUnit={currentUnit}
+              onToggleWindUnit={() => setWindUnit((prev) => prev === 'ms' ? 'knot' : prev === 'knot' ? 'kmh' : 'ms')}
+              onToggleCurrentUnit={() => setCurrentUnit((prev) => prev === 'ms' ? 'knot' : prev === 'knot' ? 'cms' : 'ms')}
               onOpenCatchLogModal={() => {
                 setEditingCatchLog(null);
                 setIsCatchLogModalOpen(true);
@@ -587,7 +596,7 @@ export function App() {
 
         {/* 모바일 화면 2: 드로어를 숨겼을 때 하단 플로팅 바를 통해 원터치로 다시 열 수 있도록 지원 */}
         {selectedSpot && !isMobileDrawerOpen && (
-          <div className="md:hidden fixed bottom-4 left-4 right-4 z-30 animate-fade-in">
+          <div className="md:hidden fixed bottom-4 left-4 right-4 z-30 animate-fade-in flex flex-col gap-2">
             <button
               onClick={() => setIsMobileDrawerOpen(true)}
               className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-cyan-600 via-teal-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold flex items-center justify-between shadow-2xl border border-cyan-400/40 transition active:scale-98"
@@ -597,6 +606,24 @@ export function App() {
                 <span className="truncate">{selectedSpot.name} 포인트 상세정보 열기</span>
               </div>
               <ChevronUp size={18} className="shrink-0 text-cyan-200" />
+            </button>
+          </div>
+        )}
+
+        {/* 모바일 플로팅 포인트 등록 버튼 (드로워가 닫혀있을 때 우하단 표시) */}
+        {!isMobileDrawerOpen && (
+          <div className="md:hidden fixed bottom-20 right-4 z-30">
+            <button
+              onClick={() => {
+                setEditingSpot(null);
+                setNewSpotLat(37.2541);
+                setNewSpotLng(126.4982);
+                setIsSpotModalOpen(true);
+              }}
+              className="px-4 py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold shadow-2xl flex items-center gap-1.5 border border-cyan-400/50 active:scale-95 transition"
+            >
+              <Plus size={16} />
+              <span>포인트 등록</span>
             </button>
           </div>
         )}

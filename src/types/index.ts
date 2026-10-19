@@ -125,6 +125,7 @@ export interface TideDayInfo {
   sunset: string; // HH:mm
   dawn: string; // HH:mm
   dusk: string; // HH:mm
+  feedingTimes?: { label: string; timeRange: string; reason: string }[];
 }
 
 export interface BiteScoreBreakdown {
