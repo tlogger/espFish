@@ -16,6 +16,9 @@ import { Crosshair, Moon, Sun, Plus, Play, Pause } from 'lucide-react';
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo } from '../types';
 import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
 
+// Carto 공식 API 키 인증 (다크 모드 타일 정상 로드용)
+const CARTO_API_KEY = 'cb1_4pjj_1_910d67e653a18bd88f16bb8c';
+
 // 8방위 문자열을 방위각(도) 및 한글 라벨로 변환
 const CASTING_BEARINGS: Record<string, { deg: number; label: string }> = {
   N: { deg: 0, label: '북(N)' },
@@ -329,9 +332,9 @@ export const MapView: React.FC<MapViewProps> = ({
         {/* 줌 레벨 실시간 감지 (고배율 줌 시 캐스팅 화살표 렌더링) */}
         <MapZoomWatcher onZoomChange={setZoomLevel} />
 
-        {/* API 키나 토큰이 전혀 필요 없는 100% 무료 공식 타일 레이어
+        {/* 공식 타일 레이어
             - 주간: OpenStreetMap 기본 타일
-            - 야간 다크모드: CartoDB Dark Matter 정품 타일 (API 키 불필요, 100% 무료) */}
+            - 야간 다크모드: CartoDB Dark Matter 정품 타일 (API 키 인증 적용) */}
         <TileLayer
           key={isDarkTile ? 'carto-dark' : 'osm-standard'}
           attribution={
@@ -341,7 +344,7 @@ export const MapView: React.FC<MapViewProps> = ({
           }
           url={
             isDarkTile
-              ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+              ? `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?api_key=${CARTO_API_KEY}`
               : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
           }
         />
