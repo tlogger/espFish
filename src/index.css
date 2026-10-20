@@ -37,6 +37,14 @@
   color: #f8fafc !important;
 }
 
+/* 카카오 맵 야간 다크 모드 스타일 */
+.kakao-map-container.kakao-dark-mode > div:first-child {
+  filter: invert(0.92) hue-rotate(190deg) brightness(0.85) contrast(1.25);
+}
+.kakao-map-container.kakao-dark-mode .kakao-invert-restore {
+  filter: invert(0.92) hue-rotate(170deg) brightness(1.18) contrast(0.8);
+}
+
 /* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
