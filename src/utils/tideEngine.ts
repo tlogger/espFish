@@ -182,8 +182,8 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
 
     const slope = -Math.sin(phase);
     let stateText = '물돌이(정조)';
-    if (slope > 0.3) stateText = '들물(밀물)';
-    else if (slope < -0.3) stateText = '썰물(날물)';
+    if (slope > 0.3) stateText = '들물';
+    else if (slope < -0.3) stateText = '날물';
 
     const point: TideCurvePoint = {
       hour: totalHour,
@@ -255,7 +255,7 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
       });
     }
 
-    // 2. 들물(밀물) 본류대 피딩 (각 만조 2시간 전 ~ 만조 시점)
+    // 2. 들물 본류대 피딩 (각 만조 2시간 전 ~ 만조 시점)
     if (daySummary && daySummary.highTides) {
       daySummary.highTides.forEach((ht, htIdx) => {
         const [hHour, hMin] = ht.time.split(':').map(Number);
@@ -270,7 +270,7 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
         allFeedingTimes.push({
           label: `🌊 ${prefix} 들물 피딩${daySummary.highTides.length > 1 ? ` (${htIdx + 1}차)` : ''}`,
           timeRange: `${d > 0 ? `(${prefix}) ` : ''}${formatTime(htStartDate)} ~ ${formatTime(htDate)}`,
-          reason: `만조 전 조류 유입 활성 (${ht.height}cm 고조 전)`,
+          reason: `만조 전 조류 유입 활성 (${ht.height}cm 만조 전)`,
           startHour: sHour,
           endHour: Math.max(eHour, sHour + 1),
           startTimeStr: sTimeStr,

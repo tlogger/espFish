@@ -22,6 +22,7 @@ export interface FishingSpot {
   best_times?: string[]; // 선호 시간대 (예: 새벽 해창, 해질녘 등)
   best_seasons?: number[]; // 선호 월 (예: 9, 10, 11)
   description?: string; // 채비 및 수심 팁
+  casting_directions?: string[]; // 캐스팅 공략 방향 (예: 북(N), 동북(NE), 전방위 등)
   created_at: string;
 }
 

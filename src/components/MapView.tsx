@@ -274,153 +274,34 @@ export const MapView: React.FC<MapViewProps> = ({
         })}
       </MapContainer>
 
-      {/* 선택된 포인트 지도 상단 실시간/미래 시뮬레이션 환경 오버레이 (Windy 스타일 48h)
-          모바일 웹에서는 화면을 너무 가리므로 모바일에서는 완전히 제거(md:block)하고 포인트 상세 패널에서 환경 정보 제공 */}
-      {selectedSpot && (
-        <div
-          className="hidden md:block absolute top-4 left-4 z-20 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3.5 text-white shadow-2xl max-w-xs sm:max-w-sm space-y-3 pointer-events-auto transition-opacity duration-200"
-        >
-          <div className="flex justify-between items-start">
-            <div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                  {isNow
-                    ? '실시간 환경'
-                    : `${targetMonth}/${targetDate} ${targetHourStr}:00 (+${timelineOffsetHours}h 예측)`}
-                </span>
-                {!isNow && (
-                  <button
-                    onClick={() => setTimelineOffsetHours(0)}
-                    className="text-[10px] text-cyan-400 hover:underline font-semibold"
-                  >
-                    현재시각 복귀
-                  </button>
-                )}
-              </div>
-              <h3 className="font-bold text-sm text-slate-100 truncate mt-1">{selectedSpot.name}</h3>
-            </div>
-          </div>
+      {/* 선택된 포인트 지도 상단 실시간/미래 시뮬레이션 환경 오버레이는
+          사용자 요청(요구사항 11)에 따라 지도에서 완전히 제거하고, 상세 패널 내 48h 슬라이더로 일원화됨 */}
 
-          {/* 풍향·풍속 & 조류 벡터 카드 */}
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            {/* 풍향·풍속 벡터 */}
-            <div className="flex items-center gap-2 p-2 bg-slate-800/80 rounded-lg border border-slate-700">
-              <div
-                className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center text-cyan-400 font-bold shrink-0"
-                style={{
-                  transform: `rotate(${displayWindDir}deg)`,
-                  transition: 'transform 0.4s ease',
-                }}
-                title={`풍향 ${displayWindDir}°`}
-              >
-                <span className="text-base select-none">↓</span>
-              </div>
-              <div className="overflow-hidden">
-                <div className="text-[10px] text-slate-400 truncate">
-                  풍향: {getCompassDirection(displayWindDir)}
-                </div>
-                <div className="font-bold text-cyan-300">
-                  {formatWindSpeed(displayWindSpeed, windUnit)}
-                </div>
-              </div>
-            </div>
-
-            {/* 조류 방향·유속 벡터 */}
-            <div className="flex items-center gap-2 p-2 bg-slate-800/80 rounded-lg border border-slate-700">
-              <div
-                className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold shrink-0"
-                style={{
-                  transform: `rotate(${displayCurrentDir}deg)`,
-                  transition: 'transform 0.4s ease',
-                }}
-                title={`조류방향 ${displayCurrentDir}°`}
-              >
-                <span className="text-base select-none">↑</span>
-              </div>
-              <div className="overflow-hidden">
-                <div className="text-[10px] text-slate-400 truncate">
-                  조류: {getCompassDirection(displayCurrentDir)}
-                </div>
-                <div className="font-bold text-emerald-300">
-                  {formatCurrentVelocity(displayCurrentVel, currentUnit)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 수온, 기온, 조위 상태 */}
-          <div className="flex justify-between items-center text-[11px] text-slate-300 pt-1 border-t border-slate-800">
-            <span>
-              🌡️ 수온: <strong className="text-rose-400">{displayWaterTemp}°C</strong>
-              <span className="text-slate-400 ml-1">/ 기온 {displayTemp}°C</span>
-            </span>
-            <span>
-              조위: <strong className="text-cyan-300">{matchedTidePoint?.height ?? '--'}cm</strong>
-            </span>
-          </div>
-
-          {/* Windy 스타일 48시간 타임라인 슬라이더 컨트롤 */}
-          <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
-            <div className="flex justify-between items-center text-[11px]">
-              <div className="flex items-center gap-1.5 font-bold text-cyan-300">
-                <button
-                  type="button"
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-white transition"
-                  title={isPlaying ? '정지' : '48시간 시뮬레이션 재생'}
-                >
-                  {isPlaying ? <Pause size={12} /> : <Play size={12} />}
-                </button>
-                <span>
-                  {isNow ? '현재시각' : `+${timelineOffsetHours}시간 (${targetDate}일 ${targetHourStr}시)`}
-                </span>
-              </div>
-              <span className="text-[10px] text-slate-400">
-                {matchedTidePoint?.stateText || ''}
-              </span>
-            </div>
-
-            <input
-              type="range"
-              min={0}
-              max={48}
-              value={timelineOffsetHours}
-              onChange={(e) => setTimelineOffsetHours(parseInt(e.target.value))}
-              className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-            />
-            <div className="flex justify-between text-[9px] text-slate-500 font-mono">
-              <span>현재</span>
-              <span>+12h</span>
-              <span>+24h(내일)</span>
-              <span>+36h</span>
-              <span>+48h(모레)</span>
-            </div>
-          </div>
+      {/* 지도 플로팅 컨트롤: GPS 내 위치 & 야간 다크모드 타일 토글
+          (모바일 앱 상세보기 드로어가 열려있을 때에는 방해되지 않도록 숨김) */}
+      {!isMobileDrawerOpen && (
+        <div className="absolute top-4 right-4 z-[400] flex flex-col gap-2">
+          <button
+            onClick={handleLocateMe}
+            disabled={isLocating}
+            title="내 현재 GPS 위치 찾기"
+            className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-cyan-400 border border-slate-700/80 rounded-xl shadow-lg backdrop-blur flex items-center justify-center transition active:scale-95"
+          >
+            {isLocating ? (
+              <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <span className="text-lg">🎯</span>
+            )}
+          </button>
+          <button
+            onClick={() => setIsDarkTile(!isDarkTile)}
+            title={isDarkTile ? '일반 지도 타일로 변경' : '야간 낚시 다크 지도 타일로 변경'}
+            className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-amber-400 border border-slate-700/80 rounded-xl shadow-lg backdrop-blur flex items-center justify-center transition active:scale-95"
+          >
+            <span className="text-lg">{isDarkTile ? '☀️' : '🌙'}</span>
+          </button>
         </div>
       )}
-
-      {/* 지도 플로팅 컨트롤: GPS 내 위치 & 야간 다크모드 타일 토글 */}
-      <div className="absolute top-4 right-4 z-[400] flex flex-col gap-2">
-        <button
-          onClick={handleLocateMe}
-          disabled={isLocating}
-          title="내 현재 GPS 위치 찾기"
-          className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-cyan-400 border border-slate-700/80 rounded-xl shadow-lg backdrop-blur flex items-center justify-center transition active:scale-95"
-        >
-          {isLocating ? (
-            <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-          ) : (
-            <span className="text-lg">🎯</span>
-          )}
-        </button>
-        <button
-          onClick={() => setIsDarkTile(!isDarkTile)}
-          title={isDarkTile ? '일반 지도 타일로 변경' : '야간 낚시 다크 지도 타일로 변경'}
-          className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-amber-400 border border-slate-700/80 rounded-xl shadow-lg backdrop-blur flex items-center justify-center transition active:scale-95"
-        >
-          <span className="text-lg">{isDarkTile ? '☀️' : '🌙'}</span>
-        </button>
-      </div>
 
       {/* 지도 안내 뱃지 */}
       <div className="absolute bottom-4 left-4 z-20 bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-lg px-3 py-1.5 text-[11px] text-slate-300 hidden sm:block">

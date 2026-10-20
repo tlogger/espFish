@@ -1,10 +1,11 @@
 import React from 'react';
-import { ChevronUp, Filter, Loader2, LogIn, Navigation2, Plus, Search, User, X } from 'lucide-react';
+import { ChevronUp, Filter, List, Loader2, LogIn, Navigation2, Plus, Search, User, X } from 'lucide-react';
 import { MapView } from './components/MapView';
 import { SpotDetailPanel } from './components/SpotDetailPanel';
 import { SpotFormModal } from './components/SpotFormModal';
 import { CatchLogModal } from './components/CatchLogModal';
 import { getSavedAuthUser, LoginModal } from './components/LoginModal';
+import { SpotListModal, type SpotRealtimeSummary } from './components/SpotListModal';
 import type {
   BiteScoreBreakdown,
   CatchLog,
@@ -16,8 +17,8 @@ import type {
   WeatherData,
   WindUnit
 } from './types';
-import { calculateTideDay } from './utils/tideEngine';
-import { fetchMarineData, fetchWeatherData } from './utils/weatherApi';
+import { calculateTideDay, getDistanceKm } from './utils/tideEngine';
+import { fetchMarineData, fetchWeatherData, getWeatherText } from './utils/weatherApi';
 import { calculateBiteScore } from './utils/biteScore';
 import { extractExifFromImage } from './utils/exifExtractor';
 import { searchPoi, type PoiSearchResult } from './utils/poiSearch';
@@ -74,8 +75,13 @@ export function App() {
   // 모달 상태
   const [isSpotModalOpen, setIsSpotModalOpen] = React.useState(false);
   const [isCatchLogModalOpen, setIsCatchLogModalOpen] = React.useState(false);
+  const [isSpotListModalOpen, setIsSpotListModalOpen] = React.useState(false);
   const [newSpotLat, setNewSpotLat] = React.useState<number | undefined>();
   const [newSpotLng, setNewSpotLng] = React.useState<number | undefined>();
+
+  // 포인트별 실시간 환경 요약 캐시 (리스트 보기 전용)
+  const [environmentMap, setEnvironmentMap] = React.useState<Record<string, SpotRealtimeSummary>>({});
+  const [userLocation, setUserLocation] = React.useState<{ lat: number; lng: number } | null>(null);
 
   // 기기 로컬 저장소 대신 오직 Supabase DB에서만 포인트 및 조과 데이터 로드
   const reloadData = React.useCallback(async () => {
@@ -97,6 +103,83 @@ export function App() {
   React.useEffect(() => {
     reloadData();
   }, [reloadData]);
+
+  // 사용자 GPS 현재 위치 백그라운드 확인
+  React.useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        },
+        () => {},
+        { enableHighAccuracy: false, timeout: 5000 }
+      );
+    }
+  }, []);
+
+  // 모든 포인트의 실시간 요약 데이터(환경 & 물때 & 입질지수) 백그라운드 병렬 수집
+  React.useEffect(() => {
+    if (spots.length === 0) return;
+
+    let isMounted = true;
+    const loadSummaries = async () => {
+      const now = new Date();
+      const currentHour = now.getHours();
+
+      // 주요 포인트별 병렬 fetch (동시 최대 10개)
+      const entries = await Promise.all(
+        spots.map(async (spot) => {
+          try {
+            const tideData = calculateTideDay(spot.lat, spot.lng, now);
+            const currentTide = tideData.hourlyCurve.find((c) => c.hour === currentHour);
+
+            const [w, m] = await Promise.all([
+              fetchWeatherData(spot.lat, spot.lng),
+              fetchMarineData(spot.lat, spot.lng),
+            ]);
+
+            const bScore = calculateBiteScore(spot, w, m, tideData);
+            const dist = userLocation
+              ? getDistanceKm(userLocation.lat, userLocation.lng, spot.lat, spot.lng)
+              : undefined;
+
+            const summary: SpotRealtimeSummary = {
+              temp: w.temp,
+              weatherText: w.weatherText,
+              windSpeed: w.windSpeed,
+              windDir: w.windDirection,
+              seaTemp: m.seaSurfaceTemp,
+              waveHeight: m.waveHeight,
+              currentVel: m.currentVelocity,
+              currentDir: m.currentDirection,
+              mulText: tideData.mulText,
+              tideHeight: currentTide?.height ?? 0,
+              biteScore: bScore.totalScore,
+              distanceKm: dist,
+            };
+            return [spot.id, summary] as const;
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      if (isMounted) {
+        const nextMap: Record<string, SpotRealtimeSummary> = {};
+        for (const item of entries) {
+          if (item) {
+            nextMap[item[0]] = item[1];
+          }
+        }
+        setEnvironmentMap(nextMap);
+      }
+    };
+
+    loadSummaries();
+    return () => {
+      isMounted = false;
+    };
+  }, [spots, userLocation]);
 
   // Supabase 실시간 동기화 구독 (PC ⇄ 모바일 실시간 전파)
   React.useEffect(() => {
@@ -185,6 +268,9 @@ export function App() {
         setSpots(cSpots);
         handleSelectSpot(newSpot);
       }
+      setIsSpotModalOpen(false);
+      // 신규 등록 후 즉시 최신 데이터 반영 보장
+      await reloadData();
     } catch (e: any) {
       console.error('Supabase spot save error:', e);
       alert(`Supabase DB 저장에 실패했습니다: ${e?.message || '연결 또는 권한을 확인하세요.'}`);
@@ -334,19 +420,29 @@ export function App() {
                   setShowPoiDropdown(false);
                   setPoiResults([]);
                 }}
-                className="absolute right-9 top-2 text-slate-400 hover:text-slate-200"
+                className="absolute right-20 top-2 text-slate-400 hover:text-slate-200"
               >
                 <X size={14} />
               </button>
             )}
-            <button
-              onClick={handleExecutePoiSearch}
-              className="absolute right-1 top-1 bottom-1 px-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-full text-[11px] font-bold flex items-center gap-0.5 transition"
-              title="지도 장소 검색"
-            >
-              {isSearchingPoi ? <Loader2 size={11} className="animate-spin" /> : <Navigation2 size={11} />}
-              <span>검색</span>
-            </button>
+            <div className="absolute right-1 top-1 bottom-1 flex items-center gap-1">
+              <button
+                onClick={handleExecutePoiSearch}
+                className="px-2.5 h-full bg-cyan-600 hover:bg-cyan-500 text-white rounded-full text-[11px] font-bold flex items-center gap-0.5 transition shadow"
+                title="지도 장소 검색"
+              >
+                {isSearchingPoi ? <Loader2 size={11} className="animate-spin" /> : <Navigation2 size={11} />}
+                <span>검색</span>
+              </button>
+              <button
+                onClick={() => setIsSpotListModalOpen(true)}
+                className="px-2.5 h-full bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white rounded-full text-[11px] font-bold flex items-center gap-1 transition shadow"
+                title="전체 포인트 리스트 및 실시간 환경 열람"
+              >
+                <List size={12} />
+                <span className="hidden sm:inline">리스트</span>
+              </button>
+            </div>
           </div>
 
           {/* 장소 검색 결과 드롭다운 팝오버 */}
@@ -660,6 +756,20 @@ export function App() {
         currentUser={currentUser}
         onLogin={(user) => setCurrentUser(user)}
         onLogout={() => setCurrentUser(null)}
+      />
+
+      {/* 전국 포인트 리스트 모달 (필터, 소팅, 실시간 환경 요약) */}
+      <SpotListModal
+        isOpen={isSpotListModalOpen}
+        onClose={() => setIsSpotListModalOpen(false)}
+        spots={spots}
+        selectedSpot={selectedSpot}
+        onSelectSpot={handleSelectSpot}
+        environmentMap={environmentMap}
+        windUnit={windUnit}
+        currentUnit={currentUnit}
+        currentUserId={currentUser?.id}
+        userCoords={userLocation}
       />
     </div>
   );

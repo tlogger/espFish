@@ -36,6 +36,7 @@ function toDbSpotRecord(spot: FishingSpot): Record<string, unknown> {
     best_tides: spot.best_tides ?? [],
     best_times: spot.best_times ?? [],
     description: spot.description ?? '',
+    casting_directions: spot.casting_directions ?? [],
     created_at: spot.created_at || new Date().toISOString(),
   };
 }

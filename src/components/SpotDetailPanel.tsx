@@ -176,8 +176,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-slate-900 border-l border-slate-800 text-white overflow-hidden shadow-2xl">
-      {/* 헤더 및 포인트 사진 슬라이드 */}
-      <div className="relative h-48 sm:h-56 shrink-0 bg-slate-950 overflow-hidden">
+      {/* 헤더 및 포인트 사진 슬라이드 (모바일에서는 화면 높이 절약을 위해 사진 높이 대폭 축소) */}
+      <div className="relative h-28 sm:h-44 md:h-52 shrink-0 bg-slate-950 overflow-hidden">
         {spot.photo_urls && spot.photo_urls.length > 0 ? (
           <img
             src={spot.photo_urls[activePhotoIndex] || spot.photo_urls[0]}
@@ -185,30 +185,30 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             className="w-full h-full object-cover opacity-85 transition-opacity duration-300"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-slate-800 text-slate-500">
+          <div className="w-full h-full flex items-center justify-center bg-slate-800 text-slate-500 text-xs">
             사진 없음
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
 
         {/* 상단 액션 버튼 그룹 (수정, 삭제, 닫기 및 모바일 지도보기) */}
-        <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5">
+        <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
           {onMinimize && (
             <button
               onClick={onMinimize}
-              className="px-2.5 py-1 rounded-full bg-cyan-600/90 hover:bg-cyan-500 text-white flex items-center gap-1 text-xs font-bold transition shadow md:hidden"
+              className="px-2 py-0.5 rounded-full bg-cyan-600/90 hover:bg-cyan-500 text-white flex items-center gap-1 text-[11px] font-bold transition shadow md:hidden"
               title="지도 보기 (창 접기)"
             >
               <span>지도보기</span>
-              <ChevronDown size={14} />
+              <ChevronDown size={13} />
             </button>
           )}
           <button
             onClick={() => onEditSpot(spot)}
-            className="p-1.5 rounded-full bg-black/60 text-slate-200 hover:text-cyan-400 hover:bg-black/90 transition shadow"
+            className="p-1 rounded-full bg-black/60 text-slate-200 hover:text-cyan-400 hover:bg-black/90 transition shadow"
             title="포인트 수정"
           >
-            <Edit size={16} />
+            <Edit size={14} />
           </button>
           <button
             onClick={() => {
@@ -216,14 +216,14 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 onDeleteSpot(spot.id);
               }
             }}
-            className="p-1.5 rounded-full bg-black/60 text-slate-200 hover:text-rose-400 hover:bg-black/90 transition shadow"
+            className="p-1 rounded-full bg-black/60 text-slate-200 hover:text-rose-400 hover:bg-black/90 transition shadow"
             title="포인트 삭제"
           >
-            <Trash2 size={16} />
+            <Trash2 size={14} />
           </button>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/90 transition shadow"
+            className="w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/90 transition shadow text-xs"
             title="닫기"
           >
             ✕
@@ -232,13 +232,13 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
         {/* 복수 사진 썸네일 인디케이터 */}
         {spot.photo_urls && spot.photo_urls.length > 1 && (
-          <div className="absolute bottom-3 right-3 z-10 flex gap-1.5 bg-black/50 p-1 rounded-full backdrop-blur-sm">
+          <div className="absolute bottom-2 right-2 z-10 flex gap-1 bg-black/50 p-1 rounded-full backdrop-blur-sm">
             {spot.photo_urls.map((_, idx) => (
               <button
                 key={idx}
                 onClick={() => setActivePhotoIndex(idx)}
-                className={`w-2 h-2 rounded-full transition-all ${
-                  idx === activePhotoIndex ? 'bg-cyan-400 w-4' : 'bg-white/50'
+                className={`w-1.5 h-1.5 rounded-full transition-all ${
+                  idx === activePhotoIndex ? 'bg-cyan-400 w-3' : 'bg-white/50'
                 }`}
               />
             ))}
@@ -246,16 +246,16 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
         )}
 
         {/* 포인트명 및 메타데이터 오버레이 */}
-        <div className="absolute bottom-3 left-4 right-20 z-10">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-cyan-500/80 text-white backdrop-blur-sm">
+        <div className="absolute bottom-2 left-3 right-20 z-10">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-cyan-500/80 text-white backdrop-blur-sm">
               {spot.spot_type === 'ROCK' ? '갯바위' : spot.spot_type === 'BREAKWATER' ? '방파제/석축' : '해변/선착장'}
             </span>
-            <span className="text-xs text-slate-300">작성자: {spot.author_name}</span>
+            <span className="text-[10px] text-slate-300">작성자: {spot.author_name}</span>
           </div>
-          <h1 className="text-lg sm:text-xl font-bold truncate drop-shadow-md text-white">{spot.name}</h1>
+          <h1 className="text-base sm:text-lg font-bold truncate drop-shadow-md text-white">{spot.name}</h1>
           {spot.navi_name && (
-            <div className="text-[11px] text-amber-300 truncate">
+            <div className="text-[10px] text-amber-300 truncate">
               📍 네비 목적지: {spot.navi_name}
             </div>
           )}
@@ -519,35 +519,36 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             </div>
 
-            {/* 4대 실시간/예측 해양·기상 카드 그리드 */}
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              {/* 바람 위젯 (풍향 + 풍속 + 나침반 화살표) */}
-              <div className="p-3 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
-                <div className="flex items-center justify-between text-slate-400 text-xs">
-                  <span className="flex items-center gap-1">
-                    <Wind size={14} className="text-cyan-400" /> 풍향 · 풍속
+            {/* 4대 실시간/예측 해양·기상 카드 그리드
+                - 배치: [풍향·풍속] 옆에 [조류·해류], 아래에 [표층 수온(SST)] 및 [파고·날씨] 나란히 배치
+                - 텍스트 크기 최적화로 패널 세로 크기 불필요한 확장 방지 */}
+            <div className="grid grid-cols-2 gap-2.5 text-xs">
+              {/* 1. 바람 위젯 (풍향 + 풍속 + 나침반 화살표) */}
+              <div className="p-2.5 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
+                <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                  <span className="flex items-center gap-1 font-semibold truncate">
+                    <Wind size={13} className="text-cyan-400 shrink-0" /> 풍향·풍속
                   </span>
-                  <div className="flex items-center gap-1">
-                    {/* 나침반 화살표: 바람이 불어가는 방향 회전 */}
+                  <div className="flex items-center gap-1 shrink-0">
                     <div
-                      className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-xs font-bold transition-transform duration-300"
+                      className="w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[10px] font-bold transition-transform duration-300"
                       style={{ transform: `rotate(${simWindDir}deg)` }}
                       title={`풍향 ${Math.round(simWindDir)}°`}
                     >
                       ↓
                     </div>
-                    <span className="text-[11px] font-mono">{Math.round(simWindDir)}°</span>
+                    <span className="text-[10px] font-mono">{Math.round(simWindDir)}°</span>
                   </div>
                 </div>
-                <div className="flex items-baseline justify-between mt-1">
-                  <div className="text-lg font-bold text-cyan-300">
+                <div className="flex items-baseline justify-between mt-0.5">
+                  <div className="text-sm sm:text-base font-bold text-cyan-300 truncate">
                     {formatWindSpeed(simWindSpeed, windUnit)}
                   </div>
-                  <div className="text-xs text-slate-300 font-medium">
+                  <div className="text-[11px] text-slate-300 font-medium shrink-0 ml-1">
                     {getCompassDirection(simWindDir)}
                   </div>
                 </div>
-                <div className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-700/50">
+                <div className="text-[10px] text-slate-400 flex justify-between pt-1 border-t border-slate-700/50">
                   <span>돌풍:</span>
                   <span className="text-amber-400 font-medium">
                     {weather ? formatWindSpeed(weather.windGust, windUnit) : '--'}
@@ -555,77 +556,76 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 </div>
               </div>
 
-              {/* 수온 및 기온 위젯 */}
-              <div className="p-3 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
-                <div className="flex items-center justify-between text-slate-400 text-xs">
-                  <span className="flex items-center gap-1">
-                    <Thermometer size={14} className="text-rose-400" /> 표층 수온 (SST)
+              {/* 2. 조류 방향 / 유속 위젯 (풍향풍속 바로 옆에 배치) */}
+              <div className="p-2.5 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
+                <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                  <span className="flex items-center gap-1 font-semibold truncate">
+                    <Compass size={13} className="text-emerald-400 shrink-0" /> 조류·해류
                   </span>
-                </div>
-                <div className="flex items-baseline justify-between mt-1">
-                  <div className="text-lg font-bold text-rose-300">
-                    {simWaterTemp.toFixed(1)}°C
-                  </div>
-                  <span className="text-xs text-slate-300">
-                    기온 {simTemp.toFixed(1)}°C
-                  </span>
-                </div>
-                <div className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-700/50">
-                  <span>강수확률:</span>
-                  <span className="text-cyan-300 font-medium">{simPop}%</span>
-                </div>
-              </div>
-
-              {/* 조류 방향 / 유속 위젯 (나침반 화살표 포함) */}
-              <div className="p-3 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
-                <div className="flex items-center justify-between text-slate-400 text-xs">
-                  <span className="flex items-center gap-1">
-                    <Compass size={14} className="text-emerald-400" /> 조류 / 해류
-                  </span>
-                  <div className="flex items-center gap-1">
-                    {/* 나침반 화살표: 조류가 흘러가는 방향 회전 */}
+                  <div className="flex items-center gap-1 shrink-0">
                     <div
-                      className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-xs font-bold transition-transform duration-300"
+                      className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-[10px] font-bold transition-transform duration-300"
                       style={{ transform: `rotate(${simCurrentDir}deg)` }}
                       title={`조류방향 ${Math.round(simCurrentDir)}°`}
                     >
                       ↑
                     </div>
-                    <span className="text-[11px] font-mono">{Math.round(simCurrentDir)}°</span>
+                    <span className="text-[10px] font-mono">{Math.round(simCurrentDir)}°</span>
                   </div>
                 </div>
-                <div className="flex items-baseline justify-between mt-1">
-                  <div className="text-lg font-bold text-emerald-300">
+                <div className="flex items-baseline justify-between mt-0.5">
+                  <div className="text-sm sm:text-base font-bold text-emerald-300 truncate">
                     {formatCurrentVelocity(simCurrentVel, currentUnit)}
                   </div>
-                  <div className="text-xs text-slate-300 font-medium">
+                  <div className="text-[11px] text-slate-300 font-medium shrink-0 ml-1">
                     {getCompassDirection(simCurrentDir)}
                   </div>
                 </div>
-                <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-700/50 flex justify-between">
-                  <span>유속 흐름</span>
+                <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-700/50 flex justify-between">
+                  <span>흐름:</span>
                   <span className="text-emerald-400 font-mono text-[10px]">
                     {simCurrentVel > 0.5 ? '빠른 본류대' : simCurrentVel > 0.2 ? '완만한 조류' : '정조/약류'}
                   </span>
                 </div>
               </div>
 
-              {/* 파고 / 날씨 위젯 (슬라이더 시각 동적 연동) */}
-              <div className="p-3 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
-                <div className="flex items-center justify-between text-slate-400 text-xs">
-                  <span className="flex items-center gap-1">
-                    <Waves size={14} className="text-blue-400" /> 파고 · 날씨
+              {/* 3. 표층 수온 및 기온 위젯 */}
+              <div className="p-2.5 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
+                <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                  <span className="flex items-center gap-1 font-semibold truncate">
+                    <Thermometer size={13} className="text-rose-400 shrink-0" /> 표층 수온 (SST)
                   </span>
                 </div>
-                <div className="flex items-baseline justify-between mt-1">
-                  <div className="text-lg font-bold text-blue-300">
+                <div className="flex items-baseline justify-between mt-0.5">
+                  <div className="text-sm sm:text-base font-bold text-rose-300 truncate">
+                    {simWaterTemp.toFixed(1)}°C
+                  </div>
+                  <span className="text-[11px] text-slate-300 shrink-0 ml-1">
+                    기온 {simTemp.toFixed(1)}°C
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-400 flex justify-between pt-1 border-t border-slate-700/50">
+                  <span>강수확률:</span>
+                  <span className="text-cyan-300 font-medium">{simPop}%</span>
+                </div>
+              </div>
+
+              {/* 4. 파고 / 날씨 위젯 (표층수온 바로 옆에 배치) */}
+              <div className="p-2.5 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
+                <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                  <span className="flex items-center gap-1 font-semibold truncate">
+                    <Waves size={13} className="text-blue-400 shrink-0" /> 파고 · 날씨
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between mt-0.5">
+                  <div className="text-sm sm:text-base font-bold text-blue-300 truncate">
                     {simWaveHeight.toFixed(1)} m
                   </div>
-                  <span className="text-xs text-slate-300">
+                  <span className="text-[11px] text-slate-300 shrink-0 ml-1">
                     {marine?.wavePeriod ? `${marine.wavePeriod}초 주기` : '--'}
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-300 pt-1 border-t border-slate-700/50 flex justify-between">
+                <div className="text-[10px] text-slate-300 pt-1 border-t border-slate-700/50 flex justify-between">
                   <span className="text-slate-400">날씨:</span>
                   <span className="font-semibold text-cyan-300 truncate">{simWeatherText}</span>
                 </div>
@@ -664,18 +664,15 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
         {activeTab === 'TIDE' && tide && (
           <div className="space-y-4">
             {/* 오늘 물때 & 일출일몰 요약 카드 */}
-            <div className="p-4 bg-gradient-to-r from-blue-950/60 to-slate-900 border border-blue-900/60 rounded-xl space-y-3">
+            <div className="p-3.5 bg-gradient-to-r from-blue-950/60 to-slate-900 border border-blue-900/60 rounded-xl space-y-2.5">
               <div className="flex items-center justify-between">
                 <div>
                   <span className="text-xs text-blue-300 font-semibold">{tide.lunarDateStr}</span>
-                  <div className="text-xl font-bold text-white flex items-center gap-2">
+                  <div className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
                     <span>{tide.mulText}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-600/40 text-cyan-300 border border-cyan-500/40">
-                      8물제 표준
-                    </span>
                   </div>
                 </div>
-                <div className="text-right text-xs space-y-1">
+                <div className="text-right text-xs space-y-0.5">
                   <div className="text-amber-300 font-bold">🌅 일출 {tide.sunrise} (해창)</div>
                   <div className="text-indigo-300 font-bold">🌇 일몰 {tide.sunset} (피딩)</div>
                 </div>
@@ -697,61 +694,35 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               )}
 
               {/* 오늘 만조 / 간조 시각표 및 조위 정보 */}
-              <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-800">
-                <div className="p-2.5 rounded bg-rose-950/40 border border-rose-900/50">
-                  <div className="text-rose-400 font-semibold mb-1.5 flex items-center justify-between">
-                    <span>🔴 고조 (만조)</span>
+              <div className="grid grid-cols-2 gap-2 text-xs pt-1.5 border-t border-slate-800">
+                <div className="p-2 rounded bg-rose-950/40 border border-rose-900/50">
+                  <div className="text-rose-400 font-semibold mb-1 flex items-center justify-between text-[11px]">
+                    <span>🔴 만조</span>
                     <span className="text-[10px] text-slate-400">조위(cm)</span>
                   </div>
                   {tide.highTides.map((t, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-slate-200 py-0.5">
+                    <div key={idx} className="flex justify-between items-center text-slate-200 py-0.5 text-xs">
                       <span className="font-medium">{t.time}</span>
                       <span className="font-mono font-bold text-rose-300">{t.height} cm</span>
                     </div>
                   ))}
                 </div>
-                <div className="p-2.5 rounded bg-blue-950/40 border border-blue-900/50">
-                  <div className="text-blue-400 font-semibold mb-1.5 flex items-center justify-between">
-                    <span>🔵 저조 (간조)</span>
+                <div className="p-2 rounded bg-blue-950/40 border border-blue-900/50">
+                  <div className="text-blue-400 font-semibold mb-1 flex items-center justify-between text-[11px]">
+                    <span>🔵 간조</span>
                     <span className="text-[10px] text-slate-400">조위(cm)</span>
                   </div>
                   {tide.lowTides.map((t, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-slate-200 py-0.5">
+                    <div key={idx} className="flex justify-between items-center text-slate-200 py-0.5 text-xs">
                       <span className="font-medium">{t.time}</span>
                       <span className="font-mono font-bold text-blue-300">{t.height} cm</span>
                     </div>
                   ))}
                 </div>
               </div>
-
-              {/* 다가오는 미래 황금 피딩 타임 카드 */}
-              {tide.feedingTimes && tide.feedingTimes.length > 0 && (
-                <div className="pt-2 border-t border-slate-800 space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
-                    <Clock size={13} />
-                    <span>🔥 다가오는 황금 피딩 타임 (현재 시각 이후 입질 찬스)</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    {tide.feedingTimes.map((f, idx) => (
-                      <div
-                        key={idx}
-                        className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-between"
-                      >
-                        <div>
-                          <div className="font-bold text-amber-200">{f.label}</div>
-                          <div className="text-[10px] text-slate-400">{f.reason}</div>
-                        </div>
-                        <span className="font-mono font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-500/40 text-[11px]">
-                          {f.timeRange}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
 
-            {/* 72시간 연속 조석 곡선 & 가로 스크롤 차트 */}
+            {/* 72시간 연속 조석 곡선 & 가로 스크롤 차트 (황금 피딩타임보다 먼저 표시) */}
             <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
               <div className="flex justify-between items-center text-xs">
                 <span className="font-semibold text-slate-200">
@@ -867,9 +838,35 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
 
               <p className="text-[11px] text-slate-400">
-                💡 <strong>골든타임 공략</strong>: 점선(현재 시각 조위) 위치와 고조(만조) 시각 사이의 중들물 구간, 그리고 일출(해창)/일몰(피딩) 타임이 겹치는 시점이 최고의 입질 찬스입니다.
+                💡 <strong>골든타임 공략</strong>: 점선(현재 시각 조위) 위치와 만조 시각 사이의 중들물 구간, 그리고 일출(해창)/일몰(피딩) 타임이 겹치는 시점이 최고의 입질 찬스입니다.
               </p>
             </div>
+
+            {/* 다가오는 미래 황금 피딩 타임 카드 (조위 그래프 아래에 위치) */}
+            {tide.feedingTimes && tide.feedingTimes.length > 0 && (
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+                  <Clock size={13} />
+                  <span>🔥 다가오는 황금 피딩 타임 (현재 시각 이후 입질 찬스)</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  {tide.feedingTimes.map((f, idx) => (
+                    <div
+                      key={idx}
+                      className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="font-bold text-amber-200">{f.label}</div>
+                        <div className="text-[10px] text-slate-400">{f.reason}</div>
+                      </div>
+                      <span className="font-mono font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-500/40 text-[11px]">
+                        {f.timeRange}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1043,6 +1040,14 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   <strong className="text-slate-400">선호 시간대:</strong>{' '}
                   {spot.best_times?.join(', ') || '새벽/해질녘 피딩'}
                 </div>
+                {spot.casting_directions && spot.casting_directions.length > 0 && (
+                  <div>
+                    <strong className="text-slate-400">캐스팅 공략 방향:</strong>{' '}
+                    <span className="text-cyan-300 font-semibold">
+                      {spot.casting_directions.includes('ALL') ? '전방위 (모든 방향)' : spot.casting_directions.join(', ')}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 

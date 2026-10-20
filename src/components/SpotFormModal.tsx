@@ -18,6 +18,7 @@ interface SpotFormModalProps {
     best_tides: string[];
     best_times: string[];
     description: string;
+    casting_directions?: string[];
     is_public: boolean;
   }) => void;
   editingSpot?: FishingSpot | null;
@@ -48,6 +49,7 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
   const [bestTidesText, setBestTidesText] = React.useState('7물, 8물 (사리), 중들물');
   const [bestTimesText, setBestTimesText] = React.useState('새벽 해창, 일몰 피딩');
   const [description, setDescription] = React.useState('');
+  const [selectedCastingDirs, setSelectedCastingDirs] = React.useState<string[]>([]);
   const [isPublic, setIsPublic] = React.useState(true);
   const [isExtracting, setIsExtracting] = React.useState(false);
   const [exifSuccessMsg, setExifSuccessMsg] = React.useState('');
@@ -70,6 +72,7 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
       setBestTidesText(editingSpot.best_tides?.join(', ') || '');
       setBestTimesText(editingSpot.best_times?.join(', ') || '');
       setDescription(editingSpot.description || '');
+      setSelectedCastingDirs(editingSpot.casting_directions || []);
       setIsPublic(editingSpot.is_public ?? true);
       setExifSuccessMsg('');
       setPendingGps(null);
@@ -87,6 +90,7 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
       setBestTidesText('7물, 8물 (사리), 중들물');
       setBestTimesText('새벽 해창, 일몰 피딩');
       setDescription('');
+      setSelectedCastingDirs([]);
       setIsPublic(true);
       setExifSuccessMsg('');
       setPendingGps(null);
@@ -180,6 +184,7 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
       best_tides: tides,
       best_times: times,
       description,
+      casting_directions: selectedCastingDirs,
       is_public: isPublic,
     });
     onClose();
@@ -447,6 +452,71 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
               placeholder="수심 7~9m, 30m 전방 수중여 넘겨서 호핑 액션에 반응 좋음"
               className="w-full bg-slate-800/90 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400"
             />
+          </div>
+
+          {/* 캐스팅 방향 다중 선택 콤보박스 (선택 사항) */}
+          <div className="p-3 bg-slate-800/50 border border-slate-700/80 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-slate-300 font-medium text-xs flex items-center gap-1.5">
+                <span>🎯 캐스팅 공략 방향 (선택사항, 복수 선택 가능)</span>
+              </label>
+              {selectedCastingDirs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCastingDirs([])}
+                  className="text-[11px] text-cyan-400 hover:underline"
+                >
+                  초기화
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 text-xs">
+              {[
+                { id: 'ALL', label: '🌐 전방위 (모든 방향)' },
+                { id: 'N', label: '북 (N)' },
+                { id: 'NE', label: '북동 (NE)' },
+                { id: 'E', label: '동 (E)' },
+                { id: 'SE', label: '남동 (SE)' },
+                { id: 'S', label: '남 (S)' },
+                { id: 'SW', label: '남서 (SW)' },
+                { id: 'W', label: '서 (W)' },
+                { id: 'NW', label: '북서 (NW)' },
+              ].map((dir) => {
+                const isSelected = selectedCastingDirs.includes(dir.id);
+                return (
+                  <button
+                    type="button"
+                    key={dir.id}
+                    onClick={() => {
+                      if (dir.id === 'ALL') {
+                        if (selectedCastingDirs.includes('ALL')) {
+                          setSelectedCastingDirs([]);
+                        } else {
+                          setSelectedCastingDirs(['ALL']);
+                        }
+                      } else {
+                        const withoutAll = selectedCastingDirs.filter((d) => d !== 'ALL');
+                        if (withoutAll.includes(dir.id)) {
+                          setSelectedCastingDirs(withoutAll.filter((d) => d !== dir.id));
+                        } else {
+                          setSelectedCastingDirs([...withoutAll, dir.id]);
+                        }
+                      }
+                    }}
+                    className={`py-1.5 px-2 rounded-lg border text-xs font-medium transition text-center ${
+                      isSelected
+                        ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 font-bold'
+                        : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                    }`}
+                  >
+                    {dir.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-slate-400">
+              * 조류 및 여밭 위치에 따른 주요 캐스팅 투척 방향을 저장하여 맞바람/등바람 매칭에 활용합니다.
+            </p>
           </div>
 
           {/* 공개 여부 설정 */}
