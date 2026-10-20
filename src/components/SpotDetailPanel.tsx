@@ -8,12 +8,15 @@ import {
   ExternalLink,
   Fish,
   MapPin,
+  MessageSquare,
   Navigation,
   Pause,
   Play,
   PlusCircle,
   RotateCcw,
+  Send,
   Share2,
+  ShieldAlert,
   Thermometer,
   Trash2,
   Waves,
@@ -26,10 +29,13 @@ import type {
   CurrentUnit,
   FishingSpot,
   MarineData,
+  SpotMemo,
+  SpotMemoTag,
   TideDayInfo,
   WeatherData,
   WindUnit
 } from '../types';
+import { deleteCloudMemo, fetchCloudMemos, saveCloudMemo } from '../utils/cloudDb';
 import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeatherText, getWindyWebUrl } from '../utils/weatherApi';
 
 interface SpotDetailPanelProps {
@@ -71,8 +77,65 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   onClose,
   onMinimize,
 }) => {
-  const [activeTab, setActiveTab] = React.useState<'CONDITIONS' | 'TIDE' | 'LOGS' | 'DIRECTIONS'>('CONDITIONS');
+  const [activeTab, setActiveTab] = React.useState<'CONDITIONS' | 'TIDE' | 'LOGS' | 'DIRECTIONS' | 'MEMOS'>('CONDITIONS');
   const [activePhotoIndex, setActivePhotoIndex] = React.useState(0);
+
+  // 포인트별 커뮤니티 현장 메모 (Spot Memos) 상태
+  const [spotMemos, setSpotMemos] = React.useState<SpotMemo[]>([]);
+  const [newMemoAuthor, setNewMemoAuthor] = React.useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('espfish_memo_author') || '익명 조사';
+    return '익명 조사';
+  });
+  const [newMemoContent, setNewMemoContent] = React.useState('');
+  const [newMemoTag, setNewMemoTag] = React.useState<SpotMemoTag>('GENERAL');
+  const [memoFilterTag, setMemoFilterTag] = React.useState<string>('ALL');
+  const [isSubmittingMemo, setIsSubmittingMemo] = React.useState(false);
+
+  // 포인트 변경 시 해당 포인트의 현장 메모 로드
+  React.useEffect(() => {
+    let isMounted = true;
+    fetchCloudMemos(spot.id).then((memos) => {
+      if (isMounted) setSpotMemos(memos);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [spot.id]);
+
+  const handleAddSpotMemo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMemoContent.trim()) return;
+
+    setIsSubmittingMemo(true);
+    const author = newMemoAuthor.trim() || '익명 조사';
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('espfish_memo_author', author);
+    }
+
+    const newMemo: SpotMemo = {
+      id: `memo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      spot_id: spot.id,
+      user_id: 'user-me',
+      user_name: author,
+      content: newMemoContent.trim(),
+      tag: newMemoTag,
+      created_at: new Date().toISOString(),
+    };
+
+    try {
+      await saveCloudMemo(newMemo);
+      setSpotMemos((prev) => [newMemo, ...prev]);
+      setNewMemoContent('');
+    } finally {
+      setIsSubmittingMemo(false);
+    }
+  };
+
+  const handleDeleteSpotMemo = async (memoId: string) => {
+    if (!confirm('이 현장 메모를 삭제하시겠습니까?')) return;
+    await deleteCloudMemo(memoId);
+    setSpotMemos((prev) => prev.filter((m) => m.id !== memoId));
+  };
 
   // 48시간 미래 환경 타임라인 시뮬레이션 상태
   const [timelineOffsetHours, setTimelineOffsetHours] = React.useState<number>(0);
@@ -458,6 +521,17 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
           }`}
         >
           진입로 & 공략
+        </button>
+        <button
+          onClick={() => setActiveTab('MEMOS')}
+          className={`flex-1 py-2.5 text-center transition border-b-2 flex items-center justify-center gap-1 ${
+            activeTab === 'MEMOS'
+              ? 'border-cyan-400 text-cyan-400 bg-slate-800/40'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <MessageSquare size={12} />
+          <span>현장 메모 ({spotMemos.length})</span>
         </button>
       </div>
 
@@ -896,6 +970,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
         {activeTab === 'LOGS' && (
           <div className="space-y-3">
+            {/* 상단 액션 및 요약 */}
             <div className="flex justify-between items-center">
               <span className="text-xs font-semibold text-slate-300">
                 이 포인트의 실측 조과 히스토리 ({catchLogs.length}건)
@@ -905,100 +980,194 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-md shadow-emerald-600/20"
               >
                 <PlusCircle size={14} />
-                <span>조과 등록</span>
+                <span>조과/꽝 등록</span>
               </button>
             </div>
+
+            {/* 빅데이터 조과 & 꽝 통계 카드 (출조 1건 이상일 때 표시) */}
+            {catchLogs.length > 0 && (() => {
+              const total = catchLogs.length;
+              const hitLogs = catchLogs.filter((l) => (l.fish_count ?? 0) > 0 && !l.is_hitless);
+              const hitlessLogs = catchLogs.filter((l) => (l.fish_count ?? 0) === 0 || l.is_hitless);
+              const hitRate = Math.round((hitLogs.length / total) * 100);
+              const avgHitTemp = hitLogs.length > 0
+                ? (hitLogs.reduce((acc, cur) => acc + (cur.water_temp || 0), 0) / hitLogs.length).toFixed(1)
+                : null;
+              const avgHitlessTemp = hitlessLogs.length > 0
+                ? (hitlessLogs.reduce((acc, cur) => acc + (cur.water_temp || 0), 0) / hitlessLogs.length).toFixed(1)
+                : null;
+
+              return (
+                <div className="p-3 bg-gradient-to-r from-slate-900 to-blue-950/70 border border-slate-800 rounded-xl space-y-2 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                      📊 포인트 실측 통계 (빅데이터 분석)
+                    </span>
+                    <span className="text-[11px] text-cyan-400 font-mono font-bold">
+                      히트 적중률: {hitRate}%
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center pt-1">
+                    <div className="bg-slate-950/70 p-2 rounded-lg border border-slate-800">
+                      <div className="text-[10px] text-slate-400">총 출조</div>
+                      <div className="text-sm font-bold text-white font-mono">{total}회</div>
+                    </div>
+                    <div className="bg-emerald-950/50 p-2 rounded-lg border border-emerald-800/60">
+                      <div className="text-[10px] text-emerald-400">손맛 성공</div>
+                      <div className="text-sm font-bold text-emerald-300 font-mono">{hitLogs.length}회</div>
+                    </div>
+                    <div className="bg-rose-950/50 p-2 rounded-lg border border-rose-800/60">
+                      <div className="text-[10px] text-rose-400">꽝 (노피시)</div>
+                      <div className="text-sm font-bold text-rose-300 font-mono">{hitlessLogs.length}회</div>
+                    </div>
+                  </div>
+                  {(avgHitTemp || avgHitlessTemp) && (
+                    <div className="text-[11px] text-slate-400 pt-1 flex justify-between border-t border-slate-800/80">
+                      {avgHitTemp && <span>🐟 성공 시 평균수온: <strong className="text-emerald-300">{avgHitTemp}°C</strong></span>}
+                      {avgHitlessTemp && <span>❌ 꽝 당시 평균수온: <strong className="text-rose-300">{avgHitlessTemp}°C</strong></span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {catchLogs.length === 0 ? (
               <div className="p-8 text-center bg-slate-950/60 rounded-xl border border-slate-800 text-slate-400 space-y-2">
                 <Fish size={32} className="mx-auto text-slate-600" />
                 <p className="text-sm">아직 등록된 조과 기록이 없습니다.</p>
                 <p className="text-xs text-slate-500">
-                  첫 손맛의 짜릿한 순간과 당시 환경을 기록해 보세요!
+                  첫 손맛이나 꽝 경험 당시의 기상·해양 환경을 기록해 보세요!
                 </p>
               </div>
             ) : (
-              catchLogs.map((log) => (
-                <div
-                  key={log.id}
-                  className="p-3 bg-slate-850/80 border border-slate-800 rounded-xl space-y-2 text-xs"
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base font-bold text-emerald-400">
-                        {log.fish_species}
+              catchLogs.map((log) => {
+                const isHitless = (log.fish_count ?? 0) === 0 || log.is_hitless;
+
+                return (
+                  <div
+                    key={log.id}
+                    className={`p-3 rounded-xl space-y-2 text-xs border transition ${
+                      isHitless
+                        ? 'bg-rose-950/20 border-rose-900/40 hover:border-rose-700/60'
+                        : 'bg-slate-850/80 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {isHitless ? (
+                          <>
+                            <span className="px-2 py-0.5 rounded bg-rose-600 text-white font-bold text-[11px] shadow-sm">
+                              ❌ 꽝 (노피시)
+                            </span>
+                            <span className="text-sm font-bold text-rose-200">
+                              대상어: {log.fish_species}
+                            </span>
+                            <span className="text-slate-400 text-[11px]">(0수 / 입질 없음)</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-base font-bold text-emerald-400">
+                              {log.fish_species}
+                            </span>
+                            {log.fish_size_cm && (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono font-bold">
+                                {log.fish_size_cm} cm
+                              </span>
+                            )}
+                            <span className="text-slate-300">({log.fish_count}수)</span>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[11px] text-slate-400">
+                          {log.catch_date} {log.catch_time}
+                        </span>
+                        <button
+                          onClick={() => onEditLog(log)}
+                          className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-cyan-400 transition"
+                          title="조과 기록 수정"
+                        >
+                          <Edit size={13} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`'${log.fish_species}' 조과 기록을 삭제하시겠습니까?`)) {
+                              onDeleteLog(log.id);
+                            }
+                          }}
+                          className="p-1 rounded bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 transition"
+                          title="조과 기록 삭제"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 출조 시간대 정보 (시작~종료 및 총 낚시시간) */}
+                    {(log.start_time || log.end_time || log.duration_minutes) && (
+                      <div className="text-[11px] text-slate-300 flex items-center gap-1.5">
+                        <Clock size={11} className="text-cyan-400" />
+                        <span>낚시 시간: </span>
+                        <span className="font-mono text-cyan-200">
+                          {log.start_time || ''} ~ {log.end_time || ''}
+                        </span>
+                        {log.duration_minutes != null && log.duration_minutes > 0 && (
+                          <span className="text-amber-300 font-medium">
+                            ({Math.floor(log.duration_minutes / 60)}시간 {log.duration_minutes % 60}분간)
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 당시 환경 스냅샷 배지 (풍향, 풍속, 수온, 물때, 조류) */}
+                    <div className="flex flex-wrap gap-1.5 text-[11px]">
+                      <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-900/60">
+                        🌊 {log.catch_mul} ({log.tide_state})
                       </span>
-                      {log.fish_size_cm && (
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono font-bold">
-                          {log.fish_size_cm} cm
+                      <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-900/60">
+                        🌡️ 수온 {log.water_temp}°C
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-900/60">
+                        💨 풍속 {formatWindSpeed(log.wind_speed, windUnit)}
+                      </span>
+                      {log.wind_direction != null && (
+                        <span className="px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-200 border border-cyan-800/60 font-mono flex items-center gap-1">
+                          🧭 {log.wind_direction}° ({getCompassDirection(log.wind_direction)})
                         </span>
                       )}
-                      <span className="text-slate-300">({log.fish_count}수)</span>
+                      {log.current_velocity != null && (
+                        <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-900/60 font-mono">
+                          🧭 조류 {formatCurrentVelocity(log.current_velocity, currentUnit)}
+                        </span>
+                      )}
+                      {log.lat != null && log.lng != null && (
+                        <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-900/60 font-mono">
+                          📍 {log.lat.toFixed(4)}, {log.lng.toFixed(4)}
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] text-slate-400">
-                        {log.catch_date} {log.catch_time}
-                      </span>
-                      <button
-                        onClick={() => onEditLog(log)}
-                        className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-cyan-400 transition"
-                        title="조과 기록 수정"
-                      >
-                        <Edit size={13} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`'${log.fish_species}' 조과 기록을 삭제하시겠습니까?`)) {
-                            onDeleteLog(log.id);
-                          }
-                        }}
-                        className="p-1 rounded bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 transition"
-                        title="조과 기록 삭제"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </div>
 
-                  {/* 당시 환경 스냅샷 배지 (선택된 풍속 단위 반영) */}
-                  <div className="flex flex-wrap gap-1.5 text-[11px]">
-                    <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-900/60">
-                      🌊 {log.catch_mul} ({log.tide_state})
-                    </span>
-                    <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-900/60">
-                      🌡️ 수온 {log.water_temp}°C
-                    </span>
-                    <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-900/60">
-                      💨 풍속 {formatWindSpeed(log.wind_speed, windUnit)}
-                    </span>
-                    {log.current_velocity != null && (
-                      <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-900/60 font-mono">
-                        🧭 조류 {formatCurrentVelocity(log.current_velocity, currentUnit)}
-                      </span>
+                    {log.lure_bait && (
+                      <div className="text-slate-300">
+                        <span className="text-slate-500">채비: </span>
+                        {log.lure_bait} ({log.catch_method === 'LURE' ? '루어' : log.catch_method === 'SURF' ? '원투' : '찌낚'})
+                      </div>
                     )}
-                    {log.lat != null && log.lng != null && (
-                      <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-900/60 font-mono">
-                        📍 {log.lat.toFixed(4)}, {log.lng.toFixed(4)}
-                      </span>
+
+                    {log.memo && (
+                      <div className={`p-2 rounded text-slate-300 leading-relaxed ${isHitless ? 'bg-rose-950/30 border border-rose-900/30' : 'bg-slate-900'}`}>
+                        {log.memo}
+                      </div>
+                    )}
+
+                    {log.photo_url && (
+                      <div className="mt-2 h-32 rounded-lg overflow-hidden border border-slate-800">
+                        <img src={log.photo_url} alt="Catch" className="w-full h-full object-cover" />
+                      </div>
                     )}
                   </div>
-
-                  {log.lure_bait && (
-                    <div className="text-slate-300">
-                      <span className="text-slate-500">채비: </span>
-                      {log.lure_bait} ({log.catch_method === 'LURE' ? '루어' : log.catch_method === 'SURF' ? '원투' : '찌낚'})
-                    </div>
-                  )}
-
-                  {log.memo && <div className="p-2 rounded bg-slate-900 text-slate-300">{log.memo}</div>}
-
-                  {log.photo_url && (
-                    <div className="mt-2 h-32 rounded-lg overflow-hidden border border-slate-800">
-                      <img src={log.photo_url} alt="Catch" className="w-full h-full object-cover" />
-                    </div>
-                  )}
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         )}
@@ -1163,6 +1332,182 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* 💬 커뮤니티 현장 메모 (Spot Memos / 실시간 팁 & 방명록) */}
+        {activeTab === 'MEMOS' && (
+          <div className="space-y-3 text-xs">
+            {/* 상단 안내 카드 */}
+            <div className="p-3.5 bg-gradient-to-r from-slate-900 to-indigo-950/60 border border-indigo-900/40 rounded-xl space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-indigo-300">
+                <MessageSquare size={14} />
+                <span>조사님들의 실시간 현장 메모 & 방명록</span>
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                현장 진입로 상태, 갯바위 안전 주의, 주차 혼잡도, 실시간 물돌이 팁 등 생생한 정보를 공유해 주세요!
+              </p>
+            </div>
+
+            {/* 새 메모 작성 폼 */}
+            <form onSubmit={handleAddSpotMemo} className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-300 text-[11px]">✍️ 새 현장 메모 남기기</span>
+                <span className="text-[10px] text-slate-500">누구나 자유롭게 작성 가능</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-0.5">작성자 닉네임</label>
+                  <input
+                    type="text"
+                    required
+                    value={newMemoAuthor}
+                    onChange={(e) => setNewMemoAuthor(e.target.value)}
+                    placeholder="조사 닉네임"
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white font-medium focus:outline-none focus:border-cyan-400 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-0.5">메모 유형</label>
+                  <select
+                    value={newMemoTag}
+                    onChange={(e) => setNewMemoTag(e.target.value as SpotMemoTag)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-white focus:outline-none focus:border-cyan-400 text-xs"
+                  >
+                    <option value="GENERAL">💬 일반 팁</option>
+                    <option value="SAFETY">⚠️ 안전 주의</option>
+                    <option value="PARKING">🚗 주차/진입로</option>
+                    <option value="CONDITION">🌊 바다/조황상황</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <textarea
+                  rows={2}
+                  required
+                  value={newMemoContent}
+                  onChange={(e) => setNewMemoContent(e.target.value)}
+                  placeholder="예: 간조 2시간 전부터 진입로가 드러납니다. 갯바위 젖은 곳 매우 미끄러우니 안전 유의하세요!"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs leading-relaxed"
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={isSubmittingMemo || !newMemoContent.trim()}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold transition shadow"
+                >
+                  <Send size={12} />
+                  <span>{isSubmittingMemo ? '등록 중...' : '현장 메모 등록'}</span>
+                </button>
+              </div>
+            </form>
+
+            {/* 태그 필터 칩 */}
+            <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+              {[
+                { id: 'ALL', label: '전체 메모' },
+                { id: 'SAFETY', label: '⚠️ 안전주의' },
+                { id: 'PARKING', label: '🚗 주차/진입' },
+                { id: 'CONDITION', label: '🌊 바다상황' },
+                { id: 'GENERAL', label: '💬 일반팁' },
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setMemoFilterTag(f.id)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium shrink-0 transition ${
+                    memoFilterTag === f.id
+                      ? 'bg-cyan-500 text-slate-950 font-bold'
+                      : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* 메모 카드 리스트 */}
+            {(() => {
+              const filtered = spotMemos.filter((m) => memoFilterTag === 'ALL' || m.tag === memoFilterTag);
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="p-8 text-center bg-slate-950/60 rounded-xl border border-slate-800 text-slate-400 space-y-1">
+                    <MessageSquare size={28} className="mx-auto text-slate-600" />
+                    <p className="text-xs">등록된 현장 메모가 없습니다.</p>
+                    <p className="text-[11px] text-slate-500">첫 번째 현장 팁을 남겨보세요!</p>
+                  </div>
+                );
+              }
+
+              return filtered.map((m) => {
+                const isSafety = m.tag === 'SAFETY';
+                const isParking = m.tag === 'PARKING';
+                const isCondition = m.tag === 'CONDITION';
+
+                const tagBadge = isSafety ? (
+                  <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800 text-[10px] font-bold flex items-center gap-1">
+                    <ShieldAlert size={10} />
+                    안전주의
+                  </span>
+                ) : isParking ? (
+                  <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 text-[10px] font-bold">
+                    🚗 주차/진입
+                  </span>
+                ) : isCondition ? (
+                  <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 text-[10px] font-bold">
+                    🌊 바다상황
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 text-[10px]">
+                    💬 일반팁
+                  </span>
+                );
+
+                const dateStr = new Date(m.created_at).toLocaleDateString('ko-KR', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                });
+
+                return (
+                  <div
+                    key={m.id}
+                    className={`p-3 rounded-xl space-y-1.5 border transition ${
+                      isSafety
+                        ? 'bg-rose-950/20 border-rose-900/40'
+                        : isParking
+                        ? 'bg-amber-950/15 border-amber-900/40'
+                        : 'bg-slate-900 border-slate-800'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        {tagBadge}
+                        <span className="font-bold text-slate-200 text-xs">{m.user_name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-500 font-mono">{dateStr}</span>
+                        <button
+                          onClick={() => handleDeleteSpotMemo(m.id)}
+                          className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
+                          title="메모 삭제"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-slate-300 text-xs leading-relaxed whitespace-pre-line pl-0.5">
+                      {m.content}
+                    </p>
+                  </div>
+                );
+              });
+            })()}
           </div>
         )}
       </div>

@@ -32,10 +32,14 @@ export interface CatchLog {
   user_id: string;
   user_name: string;
   catch_date: string; // YYYY-MM-DD
-  catch_time: string; // HH:mm
-  fish_species: string;
+  catch_time: string; // HH:mm (히트 시각)
+  start_time?: string; // 낚시 시작 시각 (HH:mm)
+  end_time?: string; // 낚시 종료 시각 (HH:mm)
+  duration_minutes?: number; // 총 낚시 시간 (분 단위)
+  fish_species: string; // 잡은 어종 또는 대상 어종
   fish_size_cm?: number;
-  fish_count: number;
+  fish_count: number; // 0 = 꽝 (노피시/입질 무), >= 1 = 히트
+  is_hitless?: boolean; // 꽝 여부 플래그
   catch_method: FishingMethod;
   lure_bait?: string;
   // 당시 환경 자동 스냅샷 (Environment Snapshot)
@@ -50,6 +54,18 @@ export interface CatchLog {
   lng?: number; // 조과 히트 GPS 경도
   photo_url?: string; // 조과 인증 사진
   memo?: string;
+  created_at: string;
+}
+
+export type SpotMemoTag = 'SAFETY' | 'PARKING' | 'CONDITION' | 'GENERAL';
+
+export interface SpotMemo {
+  id: string;
+  spot_id: string;
+  user_id: string;
+  user_name: string;
+  content: string; // 현장 메모 내용 (안전주의, 주차, 진입로, 조황 등)
+  tag?: SpotMemoTag; // 메모 유형
   created_at: string;
 }
 
