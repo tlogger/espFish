@@ -18,7 +18,16 @@ export interface CloudDbConfig {
 
 /** fishing_spots 테이블에 존재하는 컬럼만 추출하여 Supabase 스키마 불일치 에러 방지 */
 function toDbSpotRecord(spot: FishingSpot): Record<string, unknown> {
-  return {
+  // description 필드 끝에 캐스팅 방향 정보를 안전하게 인코딩하여 스키마 변경 전/후 모두 무결성 유지
+  let desc = spot.description || '';
+  if (spot.casting_directions && spot.casting_directions.length > 0) {
+    const castingTag = `[CASTING:${spot.casting_directions.join(',')}]`;
+    if (!desc.includes('[CASTING:')) {
+      desc = desc ? `${desc}\n${castingTag}` : castingTag;
+    }
+  }
+
+  const record: Record<string, unknown> = {
     id: spot.id,
     user_id: spot.user_id || 'user-me',
     author_name: spot.author_name || '나의 포인트',
@@ -35,15 +44,23 @@ function toDbSpotRecord(spot: FishingSpot): Record<string, unknown> {
     target_species: spot.target_species ?? [],
     best_tides: spot.best_tides ?? [],
     best_times: spot.best_times ?? [],
-    description: spot.description ?? '',
-    casting_directions: spot.casting_directions ?? [],
+    description: desc,
     created_at: spot.created_at || new Date().toISOString(),
   };
+
+  return record;
 }
 
 /** catch_logs 테이블에 존재하는 컬럼만 추출 */
 function toDbLogRecord(log: CatchLog): Record<string, unknown> {
-  return {
+  // 조류 유속 및 방향을 memo 필드에 안전하게 보존하여 스키마 에러 방지
+  let memoText = log.memo || '';
+  if (log.current_velocity != null && !memoText.includes('[CURRENT:')) {
+    const velTag = `[CURRENT:${log.current_velocity}${log.current_direction != null ? `@${log.current_direction}` : ''}]`;
+    memoText = memoText ? `${memoText} ${velTag}` : velTag;
+  }
+
+  const record: Record<string, unknown> = {
     id: log.id,
     spot_id: log.spot_id,
     user_id: log.user_id || 'user-me',
@@ -62,12 +79,12 @@ function toDbLogRecord(log: CatchLog): Record<string, unknown> {
     water_temp: log.water_temp,
     wind_speed: log.wind_speed,
     wind_direction: log.wind_direction ?? null,
-    current_velocity: log.current_velocity ?? null,
-    current_direction: log.current_direction ?? null,
     photo_url: log.photo_url ?? null,
-    memo: log.memo ?? '',
+    memo: memoText,
     created_at: log.created_at || new Date().toISOString(),
   };
+
+  return record;
 }
 
 /** 클라우드 DB 설정 가져오기 (항상 Supabase 사용) */
@@ -142,6 +159,49 @@ export async function testCloudConnection(url: string, anonKey: string): Promise
   }
 }
 
+/** DB 레코드로부터 FishingSpot 객체로 변환 (description 내 [CASTING:...] 태그 파싱) */
+function fromDbSpotRecord(record: any): FishingSpot {
+  let desc = record.description || '';
+  let castingDirections: string[] = record.casting_directions || [];
+
+  if (desc && desc.includes('[CASTING:')) {
+    const match = desc.match(/\[CASTING:([^\]]+)\]/);
+    if (match && match[1]) {
+      castingDirections = match[1].split(',').filter(Boolean);
+      desc = desc.replace(/\n?\[CASTING:[^\]]+\]/, '').trim();
+    }
+  }
+
+  return {
+    ...record,
+    description: desc,
+    casting_directions: castingDirections,
+  };
+}
+
+/** DB 레코드로부터 CatchLog 객체로 변환 (memo 내 [CURRENT:...] 태그 파싱) */
+function fromDbLogRecord(record: any): CatchLog {
+  let memoText = record.memo || '';
+  let currentVel = record.current_velocity ?? undefined;
+  let currentDir = record.current_direction ?? undefined;
+
+  if (memoText && memoText.includes('[CURRENT:')) {
+    const match = memoText.match(/\[CURRENT:([0-9.]+)(?:@([0-9.]+))?\]/);
+    if (match) {
+      if (match[1]) currentVel = parseFloat(match[1]);
+      if (match[2]) currentDir = parseFloat(match[2]);
+      memoText = memoText.replace(/\s*\[CURRENT:[^\]]+\]/, '').trim();
+    }
+  }
+
+  return {
+    ...record,
+    memo: memoText,
+    current_velocity: currentVel,
+    current_direction: currentDir,
+  };
+}
+
 /** Supabase로부터 포인트 목록 불러오기 (테이블이 비어있으면 기본 5대 포인트를 Supabase에 자동 시딩) */
 export async function fetchCloudSpots(): Promise<FishingSpot[]> {
   const client = getSupabase();
@@ -166,7 +226,7 @@ export async function fetchCloudSpots(): Promise<FishingSpot[]> {
     return INITIAL_SPOTS;
   }
 
-  return data as FishingSpot[];
+  return data.map(fromDbSpotRecord);
 }
 
 /** Supabase로부터 조과 목록 불러오기 (테이블이 비어있으면 기본 조과를 Supabase에 자동 시딩) */
@@ -192,7 +252,7 @@ export async function fetchCloudLogs(): Promise<CatchLog[]> {
     return INITIAL_CATCH_LOGS;
   }
 
-  return data as CatchLog[];
+  return data.map(fromDbLogRecord);
 }
 
 /** 포인트 Supabase 직접 저장 (신규 등록 및 업데이트) */
