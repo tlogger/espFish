@@ -172,12 +172,43 @@ export const MapView: React.FC<MapViewProps> = ({
   if (error) {
     return (
       <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-rose-300 gap-3">
-        <AlertCircle size={36} className="text-rose-400" />
-        <h3 className="text-base font-bold text-white">카카오 맵 API 인증 오류</h3>
-        <p className="text-xs text-slate-400 max-w-md leading-relaxed">
-          카카오 개발자 콘솔(developers.kakao.com)의 <strong>[플랫폼] → [Web 플랫폼]</strong>에{' '}
-          현재 접속 도메인(<code>{window.location.origin}</code>)이 등록되어 있는지 확인해 주세요.
-        </p>
+        <AlertCircle size={40} className="text-amber-400" />
+        <h3 className="text-base font-bold text-white">카카오 맵 API 활성화 안내</h3>
+        <div className="text-xs text-slate-300 max-w-lg leading-relaxed bg-slate-900 border border-slate-800 p-4 rounded-xl text-left space-y-2 shadow-xl">
+          <p className="font-semibold text-amber-300">
+            ⚠️ 카카오 개발자 콘솔에서 <strong>[지도/로컬]</strong> 서비스 활성화가 필요합니다:
+          </p>
+          <ol className="list-decimal list-inside space-y-1.5 text-slate-300">
+            <li>
+              <a
+                href="https://developers.kakao.com/console/app"
+                target="_blank"
+                rel="noreferrer"
+                className="text-cyan-400 underline font-bold"
+              >
+                developers.kakao.com
+              </a>{' '}
+              접속 → <strong>ExFish</strong> 애플리케이션 선택
+            </li>
+            <li>
+              좌측 사이드바 <strong>[제품 설정] → [지도/로컬]</strong> 메뉴 이동
+            </li>
+            <li>
+              <strong>[활성화 설정]</strong> 토글을 <strong>[ON (활성화)]</strong>으로 켜기
+            </li>
+            <li>
+              <strong>[앱 설정] → [플랫폼] → [Web 플랫폼]</strong> 사이트 도메인에{' '}
+              <code className="text-amber-200">https://tlogger.github.io</code> 및{' '}
+              <code className="text-amber-200">http://localhost:5173</code> 등록 확인
+            </li>
+          </ol>
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold transition shadow mt-1"
+        >
+          설정 완료 후 새로고침 (다시 시도)
+        </button>
       </div>
     );
   }
