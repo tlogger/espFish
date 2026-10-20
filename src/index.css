@@ -8,10 +8,33 @@
   z-index: 10;
 }
 
-/* 야간 낚시 다크 모드 타일 필터 (API 키 필요 없는 완전 무료/무제한 클라이언트 필터) */
-.dark-mode-tiles .leaflet-tile-pane,
-.leaflet-container.dark-mode-tiles .leaflet-tile-pane {
-  filter: brightness(0.65) invert(1) contrast(3.5) hue-rotate(200deg) saturate(0.35) !important;
+/* 야간 낚시 다크 모드 컨트롤 및 팝업 스타일링 */
+.dark-mode-tiles .leaflet-bar a {
+  background-color: #0f172a !important;
+  color: #94a3b8 !important;
+  border-bottom: 1px solid #1e293b !important;
+}
+.dark-mode-tiles .leaflet-bar a:hover {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+}
+
+/* Leaflet 팝업 다크 테마 일원화 (주간/야간 모두 눈부심 방지 다크 슬레이트 톤) */
+.leaflet-popup-content-wrapper {
+  background: #0f172a !important;
+  color: #f8fafc !important;
+  border: 1px solid #334155 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7) !important;
+}
+.leaflet-popup-tip {
+  background: #0f172a !important;
+}
+.leaflet-popup-close-button {
+  color: #94a3b8 !important;
+}
+.leaflet-popup-close-button:hover {
+  color: #f8fafc !important;
 }
 
 /* Custom scrollbars */

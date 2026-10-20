@@ -1,9 +1,98 @@
 import React from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  Polyline,
+  Polygon,
+  Circle,
+  Tooltip,
+  useMapEvents,
+  useMap
+} from 'react-leaflet';
 import L from 'leaflet';
 import { Crosshair, Moon, Sun, Plus, Play, Pause } from 'lucide-react';
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo } from '../types';
 import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
+
+// 8방위 문자열을 방위각(도) 및 한글 라벨로 변환
+const CASTING_BEARINGS: Record<string, { deg: number; label: string }> = {
+  N: { deg: 0, label: '북(N)' },
+  NE: { deg: 45, label: '북동(NE)' },
+  E: { deg: 90, label: '동(E)' },
+  SE: { deg: 135, label: '남동(SE)' },
+  S: { deg: 180, label: '남(S)' },
+  SW: { deg: 225, label: '남서(SW)' },
+  W: { deg: 270, label: '서(W)' },
+  NW: { deg: 315, label: '북서(NW)' },
+};
+
+// 대권 항로 공식에 따른 목표 좌표(위도, 경도) 계산 (비거리 distanceMeters 지점)
+function calculateDestinationPoint(
+  lat: number,
+  lng: number,
+  bearingDeg: number,
+  distanceMeters: number
+): [number, number] {
+  const R = 6378137; // 지구 반지름 (m)
+  const d = distanceMeters;
+  const bearing = (bearingDeg * Math.PI) / 180;
+  const latRad = (lat * Math.PI) / 180;
+  const lngRad = (lng * Math.PI) / 180;
+
+  const endLatRad = Math.asin(
+    Math.sin(latRad) * Math.cos(d / R) +
+    Math.cos(latRad) * Math.sin(d / R) * Math.cos(bearing)
+  );
+  const endLngRad = lngRad + Math.atan2(
+    Math.sin(bearing) * Math.sin(d / R) * Math.cos(latRad),
+    Math.cos(d / R) - Math.sin(latRad) * Math.sin(endLatRad)
+  );
+
+  return [(endLatRad * 180) / Math.PI, (endLngRad * 180) / Math.PI];
+}
+
+// 화살표 끝부분의 삼각형 화살촉 좌표 계산 (약 9m 크기)
+function getArrowheadPoints(
+  tipLat: number,
+  tipLng: number,
+  bearingDeg: number,
+  headLengthMeters: number = 9
+): [number, number][] {
+  const leftCorner = calculateDestinationPoint(tipLat, tipLng, (bearingDeg + 150) % 360, headLengthMeters);
+  const rightCorner = calculateDestinationPoint(tipLat, tipLng, (bearingDeg - 150 + 360) % 360, headLengthMeters);
+  return [[tipLat, tipLng], leftCorner, rightCorner];
+}
+
+// Leaflet DOM 컨테이너에 다크모드 클래스 직접 동기화 컨트롤러
+function MapDarkModeController({ isDark }: { isDark: boolean }) {
+  const map = useMap();
+  React.useEffect(() => {
+    const container = map.getContainer();
+    if (isDark) {
+      container.classList.add('dark-mode-tiles');
+    } else {
+      container.classList.remove('dark-mode-tiles');
+    }
+  }, [isDark, map]);
+  return null;
+}
+
+// 줌 레벨 추적 컴포넌트
+function MapZoomWatcher({ onZoomChange }: { onZoomChange: (zoom: number) => void }) {
+  const map = useMapEvents({
+    zoomend: () => {
+      onZoomChange(map.getZoom());
+    },
+  });
+
+  React.useEffect(() => {
+    onZoomChange(map.getZoom());
+  }, [map, onZoomChange]);
+
+  return null;
+}
 
 // 기본 Leaflet 아이콘 깨짐 방지 커스텀 SVG 마커 (정확한 앵커와 박스 크기)
 function createCustomPin(spot: FishingSpot, isSelected: boolean) {
@@ -109,8 +198,27 @@ export const MapView: React.FC<MapViewProps> = ({
   const [isLocating, setIsLocating] = React.useState(false);
   const [internalRecenter, setInternalRecenter] = React.useState<{ lat: number; lng: number; zoom?: number } | null>(null);
 
-  // 야간 낚시용 다크 테마 타일 토글
-  const [isDarkTile, setIsDarkTile] = React.useState(false);
+  // 야간 낚시용 다크 테마 타일 토글 (localStorage 영구 보존)
+  const [isDarkTile, setIsDarkTile] = React.useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('exfish_dark_mode') === 'true';
+    }
+    return false;
+  });
+
+  const handleToggleDarkMode = () => {
+    setIsDarkTile((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('exfish_dark_mode', String(next));
+      }
+      return next;
+    });
+  };
+
+  // 지도 현재 줌 레벨 추적 (고배율 줌 >= 15 일 때만 캐스팅 방향 화살표 활성화)
+  const [zoomLevel, setZoomLevel] = React.useState<number>(7);
+  const showCastingArrows = zoomLevel >= 15;
 
   // 현재 GPS 위치 가져오기 핸들러
   const handleLocateMe = () => {
@@ -207,7 +315,7 @@ export const MapView: React.FC<MapViewProps> = ({
     tide?.hourlyCurve[targetHour];
 
   return (
-    <div className="relative w-full h-full bg-slate-950">
+    <div className={`relative w-full h-full bg-slate-950 ${isDarkTile ? 'dark-mode-tiles' : ''}`}>
       <MapContainer
         center={[36.0, 127.8]} // 한국 중심
         zoom={7}
@@ -215,27 +323,146 @@ export const MapView: React.FC<MapViewProps> = ({
         maxZoom={18}
         className={`w-full h-full ${isDarkTile ? 'dark-mode-tiles' : ''}`}
       >
-        {/* 외부 상용 API 키나 인증 토큰 없이 100% 무료/무제한 동작하는 OpenStreetMap 기본 타일 레이어 + CSS 다크 필터 */}
+        {/* Leaflet DOM 컨테이너에 다크모드 클래스 직접 동기화 */}
+        <MapDarkModeController isDark={isDarkTile} />
+
+        {/* 줌 레벨 실시간 감지 (고배율 줌 시 캐스팅 화살표 렌더링) */}
+        <MapZoomWatcher onZoomChange={setZoomLevel} />
+
+        {/* API 키나 토큰이 전혀 필요 없는 100% 무료 공식 타일 레이어
+            - 주간: OpenStreetMap 기본 타일
+            - 야간 다크모드: CartoDB Dark Matter 정품 타일 (API 키 불필요, 100% 무료) */}
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          key={isDarkTile ? 'carto-dark' : 'osm-standard'}
+          attribution={
+            isDarkTile
+              ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+              : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          }
+          url={
+            isDarkTile
+              ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+              : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+          }
         />
 
         <MapClickHandler onMapClick={onMapClickForNewSpot} />
         <MapRecenter target={internalRecenter || recenterTarget || null} />
 
+        {/* 고배율 줌(Zoom >= 15) 시 포인트 캐스팅 공략 방향 화살표 렌더링 */}
+        {showCastingArrows &&
+          spots.map((spot) => {
+            const directions = spot.casting_directions;
+            if (!directions || directions.length === 0) return null;
+
+            const isSelected = selectedSpot?.id === spot.id;
+            const lineColor = isSelected ? '#22d3ee' : '#10b981'; // 선택 시 형광 cyan, 일반 에메랄드
+            const arrowWeight = isSelected ? 4 : 2.5;
+
+            // 'ALL' (전방위 캐스팅)인 경우 반경 45m 점선 레이더 원 및 4방위 화살표
+            if (directions.includes('ALL')) {
+              const cardinalBearings = [0, 90, 180, 270];
+              return (
+                <React.Fragment key={`casting-all-${spot.id}`}>
+                  <Circle
+                    center={[spot.lat, spot.lng]}
+                    radius={45}
+                    pathOptions={{
+                      color: lineColor,
+                      weight: isSelected ? 2.5 : 1.5,
+                      dashArray: '4, 4',
+                      fillColor: lineColor,
+                      fillOpacity: isSelected ? 0.18 : 0.08,
+                    }}
+                  >
+                    <Tooltip sticky>
+                      <div className="text-xs font-sans">
+                        <strong className="text-cyan-400">{spot.name}</strong>
+                        <div>🎯 전방위 (360°) 캐스팅 공략 가능</div>
+                      </div>
+                    </Tooltip>
+                  </Circle>
+                  {cardinalBearings.map((deg) => {
+                    const tip = calculateDestinationPoint(spot.lat, spot.lng, deg, 45);
+                    const head = getArrowheadPoints(tip[0], tip[1], deg, 8);
+                    return (
+                      <React.Fragment key={`all-arrow-${spot.id}-${deg}`}>
+                        <Polyline
+                          positions={[[spot.lat, spot.lng], tip]}
+                          pathOptions={{ color: lineColor, weight: arrowWeight, opacity: 0.85 }}
+                        />
+                        <Polygon
+                          positions={head}
+                          pathOptions={{
+                            color: lineColor,
+                            fillColor: lineColor,
+                            fillOpacity: 0.9,
+                            weight: 1,
+                          }}
+                        />
+                      </React.Fragment>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            }
+
+            // 개별 지정 방향 화살표들
+            return (
+              <React.Fragment key={`casting-group-${spot.id}`}>
+                {directions.map((dir) => {
+                  const info = CASTING_BEARINGS[dir];
+                  if (!info) return null;
+                  const bearing = info.deg;
+                  const distanceMeters = 50; // 실제 캐스팅 비거리 약 50m
+                  const tip = calculateDestinationPoint(spot.lat, spot.lng, bearing, distanceMeters);
+                  const head = getArrowheadPoints(tip[0], tip[1], bearing, 9);
+
+                  return (
+                    <React.Fragment key={`arrow-${spot.id}-${dir}`}>
+                      <Polyline
+                        positions={[[spot.lat, spot.lng], tip]}
+                        pathOptions={{
+                          color: lineColor,
+                          weight: arrowWeight,
+                          opacity: 0.9,
+                        }}
+                      >
+                        <Tooltip sticky>
+                          <div className="text-xs font-sans">
+                            <strong className="text-cyan-400">{spot.name}</strong>
+                            <div>🎯 캐스팅 방향: {info.label} ({Math.round(bearing)}°) ~50m</div>
+                          </div>
+                        </Tooltip>
+                      </Polyline>
+                      <Polygon
+                        positions={head}
+                        pathOptions={{
+                          color: lineColor,
+                          fillColor: lineColor,
+                          fillOpacity: 0.95,
+                          weight: 1,
+                        }}
+                      />
+                    </React.Fragment>
+                  );
+                })}
+              </React.Fragment>
+            );
+          })}
+
         {/* 내 현재 GPS 위치 마커 */}
         {myLocation && (
           <Marker position={[myLocation.lat, myLocation.lng]} icon={userLocationPin}>
             <Popup className="custom-spot-popup">
-              <div className="p-1 text-slate-900 text-xs font-sans">
-                <div className="font-bold text-sm text-cyan-800 mb-1">🎯 내 현재 위치</div>
-                <div className="text-[11px] text-slate-600 mb-2">
+              <div className="p-1 text-slate-100 text-xs font-sans">
+                <div className="font-bold text-sm text-cyan-400 mb-1">🎯 내 현재 위치</div>
+                <div className="text-[11px] text-slate-300 mb-2">
                   위도: {myLocation.lat.toFixed(4)}, 경도: {myLocation.lng.toFixed(4)}
                 </div>
                 <button
                   onClick={() => onMapClickForNewSpot(myLocation.lat, myLocation.lng)}
-                  className="w-full py-1 bg-cyan-600 text-white rounded font-bold hover:bg-cyan-700 transition"
+                  className="w-full py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-bold transition shadow"
                 >
                   이곳을 낚시 포인트로 등록
                 </button>
@@ -256,14 +483,19 @@ export const MapView: React.FC<MapViewProps> = ({
               }}
             >
               <Popup className="custom-spot-popup">
-                <div className="p-1 text-slate-900 text-xs font-sans">
-                  <div className="font-bold text-sm text-cyan-800 mb-0.5">{spot.name}</div>
-                  <div className="text-slate-600 mb-1">
+                <div className="p-1 text-slate-100 text-xs font-sans">
+                  <div className="font-bold text-sm text-cyan-400 mb-0.5">{spot.name}</div>
+                  <div className="text-slate-300 mb-1 text-[11px]">
                     어종: {spot.target_species.join(', ')}
                   </div>
+                  {spot.casting_directions && spot.casting_directions.length > 0 && (
+                    <div className="text-[11px] text-amber-300 mb-1 font-semibold">
+                      🎯 투척 방향: {spot.casting_directions.includes('ALL') ? '전방위 (360°)' : spot.casting_directions.join(', ')}
+                    </div>
+                  )}
                   <button
                     onClick={() => onSelectSpot(spot)}
-                    className="w-full py-1 bg-cyan-600 text-white rounded font-medium hover:bg-cyan-700 transition"
+                    className="w-full py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-medium transition shadow mt-1 text-xs"
                   >
                     상세 및 기상 보기
                   </button>
@@ -273,9 +505,6 @@ export const MapView: React.FC<MapViewProps> = ({
           );
         })}
       </MapContainer>
-
-      {/* 선택된 포인트 지도 상단 실시간/미래 시뮬레이션 환경 오버레이는
-          사용자 요청(요구사항 11)에 따라 지도에서 완전히 제거하고, 상세 패널 내 48h 슬라이더로 일원화됨 */}
 
       {/* 지도 플로팅 컨트롤: GPS 내 위치 & 야간 다크모드 타일 토글
           - 모바일에서는 드로어가 전체화면을 덮을 때만 숨김
@@ -294,8 +523,8 @@ export const MapView: React.FC<MapViewProps> = ({
           )}
         </button>
         <button
-          onClick={() => setIsDarkTile(!isDarkTile)}
-          title={isDarkTile ? '일반 지도 타일로 변경' : '야간 낚시 다크 지도 타일로 변경'}
+          onClick={handleToggleDarkMode}
+          title={isDarkTile ? '주간 지도 타일로 변경' : '야간 낚시 다크 지도 타일로 변경 (Carto Dark)'}
           className={`p-2.5 border rounded-xl shadow-lg backdrop-blur flex items-center justify-center transition active:scale-95 ${
             isDarkTile
               ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-amber-500/20'
@@ -307,8 +536,13 @@ export const MapView: React.FC<MapViewProps> = ({
       </div>
 
       {/* 지도 안내 뱃지 */}
-      <div className="absolute bottom-4 left-4 z-20 bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-lg px-3 py-1.5 text-[11px] text-slate-300 hidden sm:block">
-        💡 지도의 원하는 해안·갯바위를 클릭하면 해당 위치로 <strong>새 포인트를 즉시 추가</strong>할 수 있습니다.
+      <div className="absolute bottom-4 left-4 z-20 bg-slate-900/85 backdrop-blur-sm border border-slate-800 rounded-lg px-3 py-1.5 text-[11px] text-slate-300 hidden sm:flex items-center gap-2 shadow-lg">
+        <span>💡 해안·갯바위를 클릭하면 <strong>새 포인트를 즉시 추가</strong>할 수 있습니다.</span>
+        {showCastingArrows && (
+          <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
+            🎯 캐스팅 공략 방향 표시 중
+          </span>
+        )}
       </div>
     </div>
   );
