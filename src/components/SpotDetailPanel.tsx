@@ -374,33 +374,45 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             </span>
           )}
         </div>
-        <div className="grid grid-cols-3 gap-1.5 text-xs">
+        <div className="grid grid-cols-4 gap-1 text-[11px]">
           <a
             href={kakaoNaviUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 transition font-medium border border-yellow-500/30 shadow-sm"
+            className="flex items-center justify-center gap-0.5 py-1.5 px-1 rounded-lg bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 transition font-medium border border-yellow-500/30 shadow-sm"
+            title="카카오맵 길찾기"
           >
-            <Navigation size={12} />
-            <span className="truncate">카카오길찾기</span>
+            <Navigation size={11} />
+            <span className="truncate">카카오길</span>
           </a>
           <a
             href={naverNaviUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-green-500/20 text-green-300 hover:bg-green-500/30 transition font-medium border border-green-500/30 shadow-sm"
+            className="flex items-center justify-center gap-0.5 py-1.5 px-1 rounded-lg bg-green-500/20 text-green-300 hover:bg-green-500/30 transition font-medium border border-green-500/30 shadow-sm"
+            title="네이버 지도 길찾기"
           >
-            <Navigation size={12} />
+            <Navigation size={11} />
             <span className="truncate">네이버지도</span>
+          </a>
+          <a
+            href={`https://map.kakao.com/link/roadview/${spot.lat},${spot.lng}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-0.5 py-1.5 px-1 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition font-medium border border-amber-500/30 shadow-sm"
+            title="카카오 로드뷰로 현장 주차장 및 진입로 360도 확인"
+          >
+            <span className="truncate">🚗 로드뷰</span>
           </a>
           <a
             href={windyUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 transition font-semibold border border-cyan-500/30 shadow-sm"
+            className="flex items-center justify-center gap-0.5 py-1.5 px-1 rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 transition font-semibold border border-cyan-500/30 shadow-sm"
+            title="Windy 정밀 해양기상 예보"
           >
-            <span className="truncate">Windy 예보</span>
-            <ExternalLink size={12} />
+            <span className="truncate">Windy</span>
+            <ExternalLink size={10} />
           </a>
         </div>
       </div>
@@ -1016,6 +1028,17 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     </a>
                   </div>
                 )}
+                <div className="pt-1.5 flex">
+                  <a
+                    href={`https://map.kakao.com/link/roadview/${spot.lat},${spot.lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs border border-amber-500/40 transition shadow"
+                  >
+                    <span>🚗 카카오 로드뷰로 진입로/주차장 360° 현장 미리보기</span>
+                    <ExternalLink size={12} />
+                  </a>
+                </div>
               </div>
             </div>
 
