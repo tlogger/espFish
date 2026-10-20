@@ -282,10 +282,10 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Esper 입질 지수 뱃지 */}
+                    {/* ExFish 입질 지수 뱃지 */}
                     {env && (
                       <div className="flex flex-col items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-600 to-blue-700 text-white font-black shadow shrink-0">
-                        <span className="text-[9px] opacity-80 leading-none">Esper</span>
+                        <span className="text-[9px] opacity-80 leading-none">Ex</span>
                         <span className="text-base leading-none">{env.biteScore}</span>
                       </div>
                     )}

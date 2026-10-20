@@ -139,6 +139,14 @@ export interface TideDayInfo {
   }[];
 }
 
+export interface SpeciesBiteScore {
+  speciesName: string;
+  score: number;
+  verdict: string;
+  activityMatch: string; // 야행성/주행성 적합도
+  tempMatch: string; // 수온 적합도
+}
+
 export interface BiteScoreBreakdown {
   totalScore: number; // 0 - 100
   mulScore: number;
@@ -147,4 +155,7 @@ export interface BiteScoreBreakdown {
   timeScore: number;
   windRelation: '등바람 (최적)' | '옆바람 (주의)' | '맞바람/너울 (위험)';
   verdict: string;
+  topSpecies?: SpeciesBiteScore; // 현재 여건 1위 추천 어종
+  speciesScores?: SpeciesBiteScore[]; // 관심 대상어별 세부 점수
+  targetSummaryLabel?: string; // 예: "내 관심어종 [우럭, 풀치] 맞춤"
 }

@@ -1,56 +1,170 @@
-import { BiteScoreBreakdown, FishingSpot, MarineData, TideDayInfo, WeatherData } from '../types';
-
-/** 대상어종별 최적 활성 수온 대역(°C) 데이터베이스 */
-export const SPECIES_TEMP_MAP: Record<string, { min: number; optMin: number; optMax: number; max: number }> = {
-  감성돔: { min: 11, optMin: 14, optMax: 19, max: 24 },
-  참돔: { min: 13, optMin: 16, optMax: 22, max: 26 },
-  벵에돔: { min: 14, optMin: 17, optMax: 23, max: 27 },
-  농어: { min: 10, optMin: 14, optMax: 21, max: 25 },
-  우럭: { min: 7, optMin: 11, optMax: 17, max: 22 },
-  광어: { min: 9, optMin: 13, optMax: 19, max: 24 },
-  노래미: { min: 6, optMin: 10, optMax: 16, max: 21 },
-  볼락: { min: 8, optMin: 11, optMax: 16, max: 20 },
-  무늬오징어: { min: 15, optMin: 17, optMax: 23, max: 27 },
-  갑오징어: { min: 13, optMin: 15, optMax: 21, max: 25 },
-  고등어: { min: 14, optMin: 17, optMax: 22, max: 26 },
-  전갱이: { min: 14, optMin: 17, optMax: 23, max: 27 },
-  삼치: { min: 15, optMin: 18, optMax: 24, max: 28 },
-};
+import { BiteScoreBreakdown, FishingSpot, MarineData, SpeciesBiteScore, TideDayInfo, WeatherData } from '../types';
+import { SPECIES_ENCYCLOPEDIA, SpeciesEcology } from './speciesDatabase';
 
 /**
- * Esper AI 입질 지수 (Bite Index, 100점 만점) 및 바람/안전 판정 계산기
+ * 특정 단일 어종의 현재 환경 적합도(0~100점) 정밀 채점기
+ */
+export function calculateSingleSpeciesScore(
+  species: SpeciesEcology,
+  spot: FishingSpot,
+  weather: WeatherData,
+  marine: MarineData,
+  tide: TideDayInfo,
+  currentHour: number,
+  currentMonth: number
+): SpeciesBiteScore {
+  const sst = marine.seaSurfaceTemp;
+  const wind = weather.windSpeed;
+  const currentVel = marine.currentVelocity ?? 0.3;
+
+  // 1. 수온 활성도 채점 (30점 만점)
+  let tempScore = 15;
+  let tempMatch = '보통 수온';
+  const tr = species.tempRange;
+  if (sst >= tr.optMin && sst <= tr.optMax) {
+    tempScore = 30;
+    tempMatch = `최적 활성수온 (${sst.toFixed(1)}°C)`;
+  } else if (sst >= tr.min && sst <= tr.max) {
+    // 최적 구간 근처
+    tempScore = 20;
+    tempMatch = `적정 수온 (${sst.toFixed(1)}°C)`;
+  } else {
+    // 생존 한계 초과 (저수온 또는 고수온 비활성)
+    tempScore = 8;
+    tempMatch = sst < tr.min ? `저수온 비활성 (${sst.toFixed(1)}°C)` : `고수온 비활성 (${sst.toFixed(1)}°C)`;
+  }
+
+  // 2. 주야간 및 일출/일몰 생태 적합도 (25점 만점)
+  let timeScore = 12;
+  let activityMatch = '';
+  const isNight = currentHour >= 20 || currentHour <= 4;
+  const isDay = currentHour >= 9 && currentHour <= 16;
+  const isCrepuscular = (currentHour >= 5 && currentHour <= 8) || (currentHour >= 17 && currentHour <= 19);
+
+  if (species.activityPeriod === 'NOCTURNAL') {
+    // 야행성: 우럭, 풀치(갈치), 낙지, 볼락, 붕장어 등
+    if (isNight) {
+      timeScore = 25;
+      activityMatch = '야간 먹이활동 집중 (최고 활성)';
+    } else if (isCrepuscular) {
+      timeScore = 20;
+      activityMatch = '어두워지는 피딩 진입';
+    } else {
+      timeScore = 8;
+      activityMatch = '주간 은신 상태 (입질 뜸함)';
+    }
+  } else if (species.activityPeriod === 'DIURNAL') {
+    // 주행성: 주꾸미, 삼치, 고등어, 쥐노래미, 도다리, 보리멸, 벵에돔 등
+    if (isDay) {
+      timeScore = 25;
+      activityMatch = '주간 시각 사냥 최적';
+    } else if (isCrepuscular) {
+      timeScore = 18;
+      activityMatch = '아침/오후 완만한 입질';
+    } else {
+      timeScore = 6;
+      activityMatch = '야간 시야 부재 (입질 저하)';
+    }
+  } else {
+    // 피딩형: 광어, 농어, 감성돔, 참돔, 무늬오징어 등
+    if (isCrepuscular) {
+      timeScore = 25;
+      activityMatch = '해창/일몰 골든타임 (폭발적)';
+    } else if (isNight) {
+      timeScore = 17;
+      activityMatch = '야간 완만한 피딩';
+    } else {
+      timeScore = 14;
+      activityMatch = '낮 시간대 무난';
+    }
+  }
+
+  // 3. 조류 유속 및 물때 적합도 (25점 만점)
+  let currentScore = 16;
+  if (species.currentPref === 'STRONG') {
+    // 참돔, 감성돔, 농어, 방어: 사리 물때와 빠른 유속 선호
+    if (tide.mulNumber >= 6 && tide.mulNumber <= 10 && currentVel >= 0.35) {
+      currentScore = 25;
+    } else if (currentVel >= 0.25) {
+      currentScore = 20;
+    } else {
+      currentScore = 12;
+    }
+  } else if (species.currentPref === 'SLACK_GENTLE') {
+    // 주꾸미, 갑오징어, 낙지, 도다리: 채비 안착과 바닥 탐색에 약한 조류 선호
+    if (currentVel <= 0.25 || tide.mulNumber <= 3 || tide.mulNumber >= 13) {
+      currentScore = 25;
+    } else if (currentVel <= 0.45) {
+      currentScore = 18;
+    } else {
+      currentScore = 10; // 채비 날림
+    }
+  } else {
+    // MODERATE (우럭, 광어, 볼락, 무늬오징어): 0.15~0.5m/s 유속 적합
+    if (currentVel >= 0.15 && currentVel <= 0.5) {
+      currentScore = 24;
+    } else {
+      currentScore = 16;
+    }
+  }
+
+  // 4. 지형 & 제철(계절) 적합도 (20점 만점)
+  let spotSeasonScore = 12;
+  // 지형 매칭
+  if (
+    (species.bottomType === 'ROCK_REEF' && (spot.spot_type === 'ROCK' || spot.spot_type === 'BREAKWATER')) ||
+    (species.bottomType === 'SAND_FLAT' && spot.spot_type === 'BEACH') ||
+    (species.bottomType === 'MUD_FLAT' && spot.spot_type === 'PIER') ||
+    species.bottomType === 'OPEN_WATER'
+  ) {
+    spotSeasonScore += 4;
+  }
+
+  // 제철 월 매칭
+  if (species.peakMonths.includes(currentMonth)) {
+    spotSeasonScore += 4;
+  }
+
+  const score = Math.min(100, Math.round(tempScore + timeScore + currentScore + spotSeasonScore));
+
+  let verdict = '';
+  if (score >= 85) verdict = `${species.name} 대박 찬스! ${activityMatch}, ${tempMatch}`;
+  else if (score >= 70) verdict = `${species.name} 조황 기대. ${activityMatch}`;
+  else if (score >= 50) verdict = `${species.name} 무난한 편이나 타이밍 조율 필요`;
+  else verdict = `${species.name} 비활성 구간 (${activityMatch})`;
+
+  return {
+    speciesName: species.name,
+    score,
+    verdict,
+    activityMatch,
+    tempMatch,
+  };
+}
+
+/**
+ * ExFish 어종 생태 기반 맞춤형 입질 종합 지수 (Bite Index, 100점 만점)
+ * - 관심 대상어(favoriteSpecies)가 주어지면 해당 어종들의 생태 데이터를 기반으로 점수 산출
  */
 export function calculateBiteScore(
   spot: FishingSpot,
   weather: WeatherData,
   marine: MarineData,
-  tide: TideDayInfo
+  tide: TideDayInfo,
+  favoriteSpecies?: string[]
 ): BiteScoreBreakdown {
-  // 1. 물때 일치도 (최대 30점)
-  let mulScore = 20; // 기본 점수
-  if (spot.best_tides && spot.best_tides.length > 0) {
-    const isMatched = spot.best_tides.some(
-      (t) => t.includes(`${tide.mulNumber}물`) || (tide.mulNumber >= 6 && tide.mulNumber <= 10 && t.includes('사리'))
-    );
-    mulScore = isMatched ? 30 : 16;
-  } else {
-    // 6~9물(사리) 또는 1~3물 등 일반적 조류 흐름 반영
-    if (tide.mulNumber >= 6 && tide.mulNumber <= 9) mulScore = 28;
-    else if (tide.mulNumber === 14 || tide.mulNumber === 15) mulScore = 15;
-    else mulScore = 22;
-  }
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMonth = now.getMonth() + 1; // 1~12
 
-  // 2. 바람 & 안전 적합도 (최대 25점)
-  // 풍속에 따른 감점 (m/s)
-  let windScore = 25;
+  // 1. 바람 및 너울 안전 판정 (전 어종 공통 안전 지표)
   const speed = weather.windSpeed;
+  let windScore = 25;
   if (speed <= 4.0) windScore = 25;
   else if (speed <= 6.5) windScore = 20;
   else if (speed <= 8.5) windScore = 13;
-  else windScore = 5; // 강풍 주의
+  else windScore = 5;
 
-  // 풍향과 포인트 해안선 배향에 따른 등바람 vs 맞바람 판정
-  // 기본적으로 남해안/동해안/서해안 기준 또는 단순 각도 차이 분석
   let windRelation: BiteScoreBreakdown['windRelation'] = '등바람 (최적)';
   if (speed > 7.0 || marine.waveHeight > 1.5) {
     windRelation = '맞바람/너울 (위험)';
@@ -61,56 +175,74 @@ export function calculateBiteScore(
     windRelation = '등바람 (최적)';
   }
 
-  // 3. 수온 활성도 (최대 25점)
-  let tempScore = 20;
-  const currentSst = marine.seaSurfaceTemp;
-  const target = spot.target_species[0] || '우럭';
-  const range = SPECIES_TEMP_MAP[target] || { min: 10, optMin: 14, optMax: 20, max: 25 };
+  // 2. 평가 대상 어종 목록 결정
+  // (사용자 관심 어종이 있으면 우선 적용, 없으면 포인트의 대표 대상어종 적용)
+  let targetNames: string[] = [];
+  let isCustom = false;
 
-  if (currentSst >= range.optMin && currentSst <= range.optMax) {
-    tempScore = 25; // 최적 수온
-  } else if (currentSst >= range.min && currentSst <= range.max) {
-    tempScore = 18; // 보통
+  if (favoriteSpecies && favoriteSpecies.length > 0) {
+    targetNames = favoriteSpecies;
+    isCustom = true;
+  } else if (spot.target_species && spot.target_species.length > 0) {
+    targetNames = spot.target_species;
   } else {
-    tempScore = 10; // 비활성 저수온/고수온
+    targetNames = ['우럭', '광어'];
   }
 
-  // 4. 피딩 타임 및 시간대 (최대 20점)
-  let timeScore = 15;
-  const now = new Date();
-  const currentHour = now.getHours();
+  // 어종별 개별 점수 산출
+  const speciesScores: SpeciesBiteScore[] = targetNames.map((name) => {
+    // 백과사전에서 정확한 생태 매칭 또는 부분 일치 검색
+    const matchedEcology =
+      SPECIES_ENCYCLOPEDIA[name] ||
+      Object.values(SPECIES_ENCYCLOPEDIA).find((sp) => sp.name.includes(name) || name.includes(sp.name)) ||
+      SPECIES_ENCYCLOPEDIA['우럭'];
 
-  // 일출(새벽 해창) or 일몰(초저녁 피딩) 전후 2시간대 가산점
-  const isDawnOrDusk = (currentHour >= 5 && currentHour <= 8) || (currentHour >= 17 && currentHour <= 20);
-  if (isDawnOrDusk) {
-    timeScore = 20;
-  } else if (currentHour >= 21 || currentHour <= 4) {
-    timeScore = 14; // 야간
-  } else {
-    timeScore = 12; // 낮 피딩
+    return calculateSingleSpeciesScore(matchedEcology, spot, weather, marine, tide, currentHour, currentMonth);
+  });
+
+  // 점수 높은 순 정렬
+  speciesScores.sort((a, b) => b.score - a.score);
+  const topSpecies = speciesScores[0];
+
+  // 종합 점수: 관심 어종들의 평균 점수 (최대 100점)
+  const avgSpeciesScore = Math.round(
+    speciesScores.reduce((acc, curr) => acc + curr.score, 0) / speciesScores.length
+  );
+
+  // 풍속/너울 안전 감점 반영
+  let totalScore = avgSpeciesScore;
+  if (speed > 7.5 || marine.waveHeight > 1.6) {
+    totalScore = Math.max(30, totalScore - 15);
+  } else if (speed > 5.5) {
+    totalScore = Math.max(40, totalScore - 7);
   }
 
-  const totalScore = Math.min(100, mulScore + windScore + tempScore + timeScore);
-
-  // 실전 브리핑 코멘트 생성
+  // 브리핑 평결 생성
   let verdict = '';
-  if (totalScore >= 85) {
-    verdict = `🔥 특급 출조 찬스 (${totalScore}점)! ${target} 활성수온(${currentSst}°C)과 ${tide.mulText} 조류가 완벽합니다.`;
+  const targetLabel = isCustom
+    ? `내 관심어종 [${targetNames.slice(0, 2).join(', ')}${targetNames.length > 2 ? ` 외 ${targetNames.length - 2}` : ''}]`
+    : `포인트 대상어 [${targetNames.slice(0, 2).join(', ')}]`;
+
+  if (topSpecies && topSpecies.score >= 80) {
+    verdict = `🔥 현재 [${topSpecies.speciesName}] 입질 확률 최고 (${topSpecies.score}점)! ${topSpecies.activityMatch}`;
   } else if (totalScore >= 70) {
-    verdict = `✨ 좋은 조황 기대 (${totalScore}점). 풍속 ${weather.windSpeed}m/s로 안정적이며 입질 타임 진입 중입니다.`;
+    verdict = `✨ 양호한 출조 여건 (${totalScore}점). ${topSpecies ? `${topSpecies.speciesName} 위주 공략 추천` : '물때와 수온이 안정적입니다.'}`;
   } else if (totalScore >= 50) {
-    verdict = `⚖️ 무난한 여건 (${totalScore}점). 조류 흐름과 중들물 타이밍을 집중 공략하세요.`;
+    verdict = `⚖️ 무난한 여건 (${totalScore}점). ${topSpecies ? `${topSpecies.speciesName} 입질 타이밍을 노려보세요.` : '중들물 시간대 집중 요망'}`;
   } else {
-    verdict = `⚠️ 까다로운 여건 (${totalScore}점). 바람 또는 너울 파고에 주의하시고 안전 장구를 착용하세요.`;
+    verdict = `⚠️ 까다로운 여건 (${totalScore}점). ${topSpecies ? `${topSpecies.speciesName} 활동 시간대 확인 필요.` : '바람/수온에 유의하세요.'}`;
   }
 
   return {
     totalScore,
-    mulScore,
+    mulScore: Math.round(avgSpeciesScore * 0.3),
     windScore,
-    tempScore,
-    timeScore,
+    tempScore: Math.round(avgSpeciesScore * 0.3),
+    timeScore: Math.round(avgSpeciesScore * 0.25),
     windRelation,
     verdict,
+    topSpecies,
+    speciesScores,
+    targetSummaryLabel: targetLabel,
   };
 }

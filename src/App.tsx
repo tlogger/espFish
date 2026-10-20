@@ -4,7 +4,7 @@ import { MapView } from './components/MapView';
 import { SpotDetailPanel } from './components/SpotDetailPanel';
 import { SpotFormModal } from './components/SpotFormModal';
 import { CatchLogModal } from './components/CatchLogModal';
-import { getSavedAuthUser, LoginModal } from './components/LoginModal';
+import { type AuthUser, getSavedAuthUser, LoginModal } from './components/LoginModal';
 import { SpotListModal, type SpotRealtimeSummary } from './components/SpotListModal';
 import { BiteScoreHelpModal } from './components/BiteScoreHelpModal';
 import type {
@@ -49,7 +49,7 @@ export function App() {
   });
 
   // 로그인 상태 관리 (Email & ID 확인, PW 불필요)
-  const [currentUser, setCurrentUser] = React.useState<{ id: string; email: string } | null>(() => getSavedAuthUser());
+  const [currentUser, setCurrentUser] = React.useState<AuthUser | null>(() => getSavedAuthUser());
   const [isLoginModalOpen, setIsLoginModalOpen] = React.useState(false);
 
   // 환경 데이터 상태
@@ -140,7 +140,7 @@ export function App() {
               fetchMarineData(spot.lat, spot.lng),
             ]);
 
-            const bScore = calculateBiteScore(spot, w, m, tideData);
+            const bScore = calculateBiteScore(spot, w, m, tideData, currentUser?.favoriteSpecies);
             const dist = userLocation
               ? getDistanceKm(userLocation.lat, userLocation.lng, spot.lat, spot.lng)
               : undefined;
@@ -181,7 +181,7 @@ export function App() {
     return () => {
       isMounted = false;
     };
-  }, [spots, userLocation]);
+  }, [spots, userLocation, currentUser?.favoriteSpecies]);
 
   // Supabase 실시간 동기화 구독 (PC ⇄ 모바일 실시간 전파)
   React.useEffect(() => {
@@ -231,13 +231,21 @@ export function App() {
       setWeather(weatherData);
       setMarine(marineData);
 
-      // 3. Esper AI 입질 지수 도출
-      const score = calculateBiteScore(spot, weatherData, marineData, tideData);
+      // 3. ExFish AI 입질 지수 도출 (로그인 유저의 관심 어종 가중치 자동 반영)
+      const score = calculateBiteScore(spot, weatherData, marineData, tideData, currentUser?.favoriteSpecies);
       setBiteScore(score);
     } catch (err) {
       console.error('Error fetching marine/weather data:', err);
     }
   };
+
+  // 로그인 유저의 관심 어종(favoriteSpecies) 변경 시, 현재 선택된 포인트의 입질 지수 실시간 재연산
+  React.useEffect(() => {
+    if (selectedSpot && weather && marine && tide) {
+      const score = calculateBiteScore(selectedSpot, weather, marine, tide, currentUser?.favoriteSpecies);
+      setBiteScore(score);
+    }
+  }, [currentUser?.favoriteSpecies]);
 
   // 지도 클릭을 통한 새 포인트 추가 트리거
   const handleMapClickForNewSpot = (lat: number, lng: number) => {
@@ -783,6 +791,11 @@ export function App() {
         currentUser={currentUser}
         onLogin={(user) => setCurrentUser(user)}
         onLogout={() => setCurrentUser(null)}
+        onUpdateFavorites={(favorites) => {
+          if (currentUser) {
+            setCurrentUser({ ...currentUser, favoriteSpecies: favorites });
+          }
+        }}
       />
 
       {/* 입질 종합 지수 평가 기준 설명 헬프 모달 */}

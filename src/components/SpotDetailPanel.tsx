@@ -271,7 +271,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               <span className="text-base leading-none">{biteScore.totalScore}</span>
             </div>
             <div>
-              <div className="text-xs font-semibold text-cyan-300 flex items-center gap-1.5">
+              <div className="text-xs font-semibold text-cyan-300 flex items-center gap-1.5 flex-wrap">
                 <span>입질 종합 지수: {biteScore.totalScore}점</span>
                 <span
                   className={`px-1.5 py-0.2 rounded text-[10px] ${
@@ -284,8 +284,20 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 >
                   {biteScore.windRelation}
                 </span>
+                {biteScore.targetSummaryLabel && (
+                  <span className="px-1.5 py-0.2 rounded text-[10px] bg-cyan-900/60 text-cyan-200 border border-cyan-700/50">
+                    🎯 {biteScore.targetSummaryLabel}
+                  </span>
+                )}
               </div>
               <p className="text-[11px] text-slate-300 line-clamp-1">{biteScore.verdict}</p>
+              {biteScore.topSpecies && (
+                <div className="text-[10px] text-emerald-300 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
+                  <span>🏆 추천 1순위: {biteScore.topSpecies.speciesName} ({biteScore.topSpecies.score}점)</span>
+                  <span className="text-slate-400">· {biteScore.topSpecies.activityMatch}</span>
+                  <span className="text-cyan-300/80">({biteScore.topSpecies.tempMatch})</span>
+                </div>
+              )}
             </div>
           </div>
           <button
@@ -1058,6 +1070,76 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 <p className="text-xs text-slate-300 leading-relaxed">{spot.description}</p>
               </div>
             )}
+
+            {/* 유튜브 실시간 현장 조황 & 낚시 영상 링크 (최신순 검색) */}
+            <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-rose-400 flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded bg-rose-600 flex items-center justify-center text-white text-[10px] font-black">
+                    ▶
+                  </span>
+                  <span>유튜브 최근 현장 조황 & 공략 영상</span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">최신 업로드순</span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                유튜브에서 최근 업로드된 이 포인트의 생생한 실시간 조황 및 공략 영상을 확인하세요.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {/* 1. 포인트 전체 최신 조황 */}
+                <a
+                  href={`https://www.youtube.com/results?search_query=${encodeURIComponent(spot.name + ' 낚시')}&sp=CAI%253D`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2.5 rounded-lg bg-rose-950/30 hover:bg-rose-900/40 border border-rose-800/40 hover:border-rose-600/60 text-slate-200 transition flex items-center justify-between group"
+                >
+                  <div className="truncate pr-2">
+                    <div className="text-xs font-bold text-white group-hover:text-rose-300 truncate">
+                      📺 {spot.name} 낚시
+                    </div>
+                    <div className="text-[10px] text-slate-400">최근 조황 영상 보기</div>
+                  </div>
+                  <ExternalLink size={13} className="text-rose-400 group-hover:text-rose-300 shrink-0" />
+                </a>
+
+                {/* 2. 네비 명칭이 다를 경우 네비 지명 조황 */}
+                {spot.navi_name && spot.navi_name !== spot.name && (
+                  <a
+                    href={`https://www.youtube.com/results?search_query=${encodeURIComponent(spot.navi_name + ' 낚시')}&sp=CAI%253D`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-rose-700/50 text-slate-200 transition flex items-center justify-between group"
+                  >
+                    <div className="truncate pr-2">
+                      <div className="text-xs font-bold text-white group-hover:text-rose-300 truncate">
+                        📺 {spot.navi_name} 낚시
+                      </div>
+                      <div className="text-[10px] text-slate-400">주변 지명 탐색</div>
+                    </div>
+                    <ExternalLink size={13} className="text-slate-400 group-hover:text-rose-400 shrink-0" />
+                  </a>
+                )}
+
+                {/* 3. 대상 어종별 맞춤 최신 조황 */}
+                {spot.target_species.slice(0, 4).map((sp, idx) => (
+                  <a
+                    key={idx}
+                    href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${spot.name} ${sp} 낚시`)}&sp=CAI%253D`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-cyan-600/50 text-slate-200 transition flex items-center justify-between group"
+                  >
+                    <div className="truncate pr-2">
+                      <div className="text-xs font-bold text-white group-hover:text-cyan-300 truncate">
+                        🐟 {spot.name} {sp}
+                      </div>
+                      <div className="text-[10px] text-slate-400">{sp} 실시간 공략 영상</div>
+                    </div>
+                    <ExternalLink size={13} className="text-slate-400 group-hover:text-cyan-400 shrink-0" />
+                  </a>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
