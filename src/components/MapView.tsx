@@ -278,30 +278,33 @@ export const MapView: React.FC<MapViewProps> = ({
           사용자 요청(요구사항 11)에 따라 지도에서 완전히 제거하고, 상세 패널 내 48h 슬라이더로 일원화됨 */}
 
       {/* 지도 플로팅 컨트롤: GPS 내 위치 & 야간 다크모드 타일 토글
-          (모바일 앱 상세보기 드로어가 열려있을 때에는 방해되지 않도록 숨김) */}
-      {!isMobileDrawerOpen && (
-        <div className="absolute top-4 right-4 z-[400] flex flex-col gap-2">
-          <button
-            onClick={handleLocateMe}
-            disabled={isLocating}
-            title="내 현재 GPS 위치 찾기"
-            className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-cyan-400 border border-slate-700/80 rounded-xl shadow-lg backdrop-blur flex items-center justify-center transition active:scale-95"
-          >
-            {isLocating ? (
-              <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <span className="text-lg">🎯</span>
-            )}
-          </button>
-          <button
-            onClick={() => setIsDarkTile(!isDarkTile)}
-            title={isDarkTile ? '일반 지도 타일로 변경' : '야간 낚시 다크 지도 타일로 변경'}
-            className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-amber-400 border border-slate-700/80 rounded-xl shadow-lg backdrop-blur flex items-center justify-center transition active:scale-95"
-          >
-            <span className="text-lg">{isDarkTile ? '☀️' : '🌙'}</span>
-          </button>
-        </div>
-      )}
+          - 모바일에서는 드로어가 전체화면을 덮을 때만 숨김
+          - PC 웹에서는 사이드 패널이 열려있어도 지도 상단에 항시 온전히 노출되도록 보장 */}
+      <div className={`absolute top-4 right-4 z-[400] flex flex-col gap-2 ${isMobileDrawerOpen ? 'hidden md:flex' : 'flex'}`}>
+        <button
+          onClick={handleLocateMe}
+          disabled={isLocating}
+          title="내 현재 GPS 위치 찾기"
+          className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-cyan-400 border border-slate-700/80 rounded-xl shadow-lg backdrop-blur flex items-center justify-center transition active:scale-95"
+        >
+          {isLocating ? (
+            <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <span className="text-lg">🎯</span>
+          )}
+        </button>
+        <button
+          onClick={() => setIsDarkTile(!isDarkTile)}
+          title={isDarkTile ? '일반 지도 타일로 변경' : '야간 낚시 다크 지도 타일로 변경'}
+          className={`p-2.5 border rounded-xl shadow-lg backdrop-blur flex items-center justify-center transition active:scale-95 ${
+            isDarkTile
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-amber-500/20'
+              : 'bg-slate-900/90 hover:bg-slate-800 text-amber-400 border-slate-700/80'
+          }`}
+        >
+          <span className="text-lg">{isDarkTile ? '☀️' : '🌙'}</span>
+        </button>
+      </div>
 
       {/* 지도 안내 뱃지 */}
       <div className="absolute bottom-4 left-4 z-20 bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-lg px-3 py-1.5 text-[11px] text-slate-300 hidden sm:block">

@@ -1,11 +1,12 @@
 import React from 'react';
-import { ChevronUp, Filter, List, Loader2, LogIn, Navigation2, Plus, Search, User, X } from 'lucide-react';
+import { ChevronUp, Filter, HelpCircle, List, Loader2, LogIn, Navigation2, Plus, Search, User, X } from 'lucide-react';
 import { MapView } from './components/MapView';
 import { SpotDetailPanel } from './components/SpotDetailPanel';
 import { SpotFormModal } from './components/SpotFormModal';
 import { CatchLogModal } from './components/CatchLogModal';
 import { getSavedAuthUser, LoginModal } from './components/LoginModal';
 import { SpotListModal, type SpotRealtimeSummary } from './components/SpotListModal';
+import { BiteScoreHelpModal } from './components/BiteScoreHelpModal';
 import type {
   BiteScoreBreakdown,
   CatchLog,
@@ -76,6 +77,7 @@ export function App() {
   const [isSpotModalOpen, setIsSpotModalOpen] = React.useState(false);
   const [isCatchLogModalOpen, setIsCatchLogModalOpen] = React.useState(false);
   const [isSpotListModalOpen, setIsSpotListModalOpen] = React.useState(false);
+  const [isHelpModalOpen, setIsHelpModalOpen] = React.useState(false);
   const [newSpotLat, setNewSpotLat] = React.useState<number | undefined>();
   const [newSpotLng, setNewSpotLng] = React.useState<number | undefined>();
 
@@ -381,15 +383,12 @@ export function App() {
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* 글로벌 상단 헤더 & 내비게이션 바 */}
       <header className="h-14 bg-slate-900 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 shadow-md gap-2">
-        {/* 로고 & 슬로건 */}
+        {/* 로고 (PC 문구 제거, ExFish 브랜딩 적용) */}
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-2xl filter drop-shadow">🎣</span>
           <div className="flex flex-col">
             <span className="text-base sm:text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500 bg-clip-text text-transparent">
-              EsperFish
-            </span>
-            <span className="text-[9px] text-slate-400 -mt-1 font-medium hidden md:inline">
-              초능력자처럼 읽는 한국 연안 스마트 낚시
+              ExFish
             </span>
           </div>
         </div>
@@ -496,12 +495,22 @@ export function App() {
           )}
         </div>
 
-        {/* 툴바: 로그인 버튼, 단위 변환 토글 */}
+        {/* 툴바: 헬프 버튼, 로그인 버튼 (PC 웹용), 단위 변환 토글 */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 text-xs">
-          {/* 로그인 / 회원 정보 버튼 */}
+          {/* 입질 종합 지수 평가 기준 헬프 버튼 */}
+          <button
+            onClick={() => setIsHelpModalOpen(true)}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-amber-300 border border-slate-700 font-semibold text-xs transition shadow-sm"
+            title="입질 종합 지수(Bite Index) 평가 기준 설명"
+          >
+            <HelpCircle size={14} className="text-amber-400" />
+            <span className="hidden sm:inline">입질지수 기준</span>
+          </button>
+
+          {/* PC 웹 로그인 / 회원 정보 버튼 (모바일에서는 아래 서브바로 이동) */}
           <button
             onClick={() => setIsLoginModalOpen(true)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition ${
+            className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition ${
               currentUser
                 ? 'bg-slate-800/90 border-slate-700 text-cyan-300 hover:bg-slate-700 hover:text-white'
                 : 'bg-gradient-to-r from-cyan-600/30 to-blue-600/30 border-cyan-500/50 text-cyan-300 hover:bg-cyan-600/40 hover:text-white shadow-sm'
@@ -548,9 +557,10 @@ export function App() {
         </div>
       </header>
 
-      {/* 장르별 서브 필터 칩 바 */}
-      <div className="h-10 bg-slate-900/90 border-b border-slate-800 px-4 flex items-center justify-between text-xs shrink-0 overflow-x-auto">
-        <div className="flex items-center gap-1.5">
+      {/* 서브 바: 모바일에서는 장르 선택을 제거하고 '내 포인트만 보기'와 '로그인'을 나란히 배치 */}
+      <div className="h-10 bg-slate-900/90 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between text-xs shrink-0 overflow-x-auto">
+        {/* PC 화면 전용 장르 필터 (모바일에서는 완전히 숨김) */}
+        <div className="hidden md:flex items-center gap-1.5">
           <span className="text-slate-400 flex items-center gap-1 mr-1">
             <Filter size={12} /> 장르:
           </span>
@@ -574,19 +584,36 @@ export function App() {
           ))}
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setViewOnlyMySpots(!viewOnlyMySpots)}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs transition ${
-              viewOnlyMySpots
-                ? 'bg-cyan-950 border-cyan-600 text-cyan-300 font-bold'
-                : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <User size={13} />
-            <span>내 포인트만 보기</span>
-          </button>
-          <span className="text-[11px] text-slate-500 hidden sm:inline">
+        {/* 모바일 & 공통 액션: 내 포인트만 보기와 로그인 버튼 나란히 배치 */}
+        <div className="flex items-center justify-between w-full md:w-auto gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setViewOnlyMySpots(!viewOnlyMySpots)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs transition ${
+                viewOnlyMySpots
+                  ? 'bg-cyan-950 border-cyan-600 text-cyan-300 font-bold'
+                  : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <User size={13} />
+              <span>내 포인트만 보기</span>
+            </button>
+
+            {/* 모바일 화면 전용 로그인 버튼 (내 포인트만 보기 바로 옆에 배치) */}
+            <button
+              onClick={() => setIsLoginModalOpen(true)}
+              className={`md:hidden flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-semibold transition ${
+                currentUser
+                  ? 'bg-slate-800/90 border-slate-700 text-cyan-300'
+                  : 'bg-cyan-600/30 border-cyan-500/50 text-cyan-300'
+              }`}
+            >
+              {currentUser ? <User size={12} className="text-cyan-400" /> : <LogIn size={12} className="text-cyan-400" />}
+              <span>{currentUser ? currentUser.id : '로그인'}</span>
+            </button>
+          </div>
+
+          <span className="text-[11px] text-slate-500">
             총 {filteredSpots.length}개 포인트
           </span>
         </div>
@@ -756,6 +783,12 @@ export function App() {
         currentUser={currentUser}
         onLogin={(user) => setCurrentUser(user)}
         onLogout={() => setCurrentUser(null)}
+      />
+
+      {/* 입질 종합 지수 평가 기준 설명 헬프 모달 */}
+      <BiteScoreHelpModal
+        isOpen={isHelpModalOpen}
+        onClose={() => setIsHelpModalOpen(false)}
       />
 
       {/* 전국 포인트 리스트 모달 (필터, 소팅, 실시간 환경 요약) */}

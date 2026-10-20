@@ -1,6 +1,6 @@
 {
-  "name": "EsperFish - 스마트 연안 낚시",
-  "short_name": "EsperFish",
+  "name": "ExFish - 내 곁의 스마트 낚시터 찾기",
+  "short_name": "ExFish",
   "description": "한국 연안 갯바위·방파제 포인트 및 실시간 기상, 수온, 조류, 72h 물때 예보 플랫폼",
   "start_url": "./",
   "display": "standalone",

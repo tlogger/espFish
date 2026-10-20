@@ -262,12 +262,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
         </div>
       </div>
 
-      {/* Esper AI 입질 지수 & 안전 상태 브리핑 바 */}
+      {/* ExFish AI 입질 지수 & 안전 상태 브리핑 바 */}
       {biteScore && (
         <div className="px-4 py-2.5 bg-gradient-to-r from-cyan-950/70 via-slate-900 to-blue-950/70 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="flex flex-col items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white font-extrabold shadow-md shadow-cyan-500/30">
-              <span className="text-xs leading-none opacity-80">Esper</span>
+              <span className="text-xs leading-none opacity-80">Ex</span>
               <span className="text-base leading-none">{biteScore.totalScore}</span>
             </div>
             <div>
@@ -292,7 +292,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             onClick={() => {
               if (navigator.share) {
                 navigator.share({
-                  title: `EsperFish - ${spot.name}`,
+                  title: `ExFish - ${spot.name}`,
                   text: `현재 입질 지수 ${biteScore.totalScore}점! ${biteScore.verdict}`,
                   url: window.location.href,
                 }).catch(() => {});
