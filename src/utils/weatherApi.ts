@@ -167,3 +167,41 @@ export function formatCurrentVelocity(valMs: number, unit: 'knot' | 'ms' | 'cms'
       return `${valMs.toFixed(2)} m/s`;
   }
 }
+
+export interface SwellRisk {
+  level: 'SAFE' | 'CAUTION' | 'DANGER';
+  title: string;
+  badgeColor: string;
+  energyScore: number;
+  description: string;
+}
+
+/** 유의파고(m) 및 파주기(s) 결합 너울성(Swell) 위험도 판정 */
+export function calculateSwellRisk(waveHeight: number, wavePeriod: number): SwellRisk {
+  const energy = (waveHeight ** 2) * wavePeriod;
+  if (energy >= 12 || waveHeight >= 1.6 || (wavePeriod >= 9 && waveHeight >= 0.9)) {
+    return {
+      level: 'DANGER',
+      title: '너울성 파도 경보',
+      badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/50',
+      energyScore: Math.round(energy * 10) / 10,
+      description: '긴 파주기의 너울이 갯바위를 덮칠 수 있습니다. 간출여 진입을 절대 금지하세요.',
+    };
+  }
+  if (energy >= 5.5 || waveHeight >= 1.0 || wavePeriod >= 7.5) {
+    return {
+      level: 'CAUTION',
+      title: '너울 주의보',
+      badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/50',
+      energyScore: Math.round(energy * 10) / 10,
+      description: '간헐적인 세트 너울이 발생할 수 있습니다. 구명조끼를 필히 착용하고 발판 침수에 유의하세요.',
+    };
+  }
+  return {
+    level: 'SAFE',
+    title: '해상 파도 양호',
+    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50',
+    energyScore: Math.round(energy * 10) / 10,
+    description: '너울 에너지가 낮아 도보 포인트 및 갯바위 진입에 양호한 상태입니다.',
+  };
+}

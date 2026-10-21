@@ -3,6 +3,7 @@ import { ArrowUp, Clock, Compass, RefreshCw } from 'lucide-react';
 import type { CatchLog, CurrentUnit, FishingMethod, TideDayInfo, WeatherData, WindUnit } from '../types';
 import { syncCatchEnvironment } from '../utils/catchSync';
 import { formatCurrentVelocity, formatWindSpeed, getCompassDirection } from '../utils/weatherApi';
+import { generatePostMortemReport } from '../utils/postMortemEngine';
 
 interface CatchLogModalProps {
   isOpen: boolean;
@@ -160,9 +161,30 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
     }
   }, [editingLog, currentTide, currentWaterTemp, currentWeather, currentVelocity, spotLat, spotLng, isOpen]);
 
-  if (!isOpen) return null;
-
   const isHitless = fishCount === 0;
+
+  // 마릿수가 0(꽝)일 때 7대 환경 벡터 기반 실시간 사후 복기 리포트 연산
+  const postMortemReport = React.useMemo(() => {
+    if (!isHitless) return null;
+    return generatePostMortemReport({
+      targetSpecies: fishSpecies.trim() || '우럭',
+      catchTime: catchTime || '16:00',
+      weather: currentWeather,
+      marine: {
+        seaSurfaceTemp: Number(waterTemp) || 16.5,
+        waveHeight: currentWeather ? 0.8 : 0.6,
+        wavePeriod: 6.0,
+        currentVelocity: Number(simCurrentVel) || 0.35,
+        waveDirection: 180,
+        currentDirection: 135,
+        hourly: { time: [], seaSurfaceTemp: [], waveHeight: [], currentVelocity: [], currentDirection: [] },
+      },
+      tide: currentTide,
+      biteScore: null,
+    });
+  }, [isHitless, fishSpecies, catchTime, waterTemp, simCurrentVel, currentWeather, currentTide]);
+
+  if (!isOpen) return null;
 
   // 일자/시각/위치 기반 환경 동기화 함수
   const handleAutoSyncEnvironment = async (dStr: string, tStr: string, latVal: number, lngVal: number) => {
@@ -391,6 +413,45 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* AI 꽝 사후 복기 인텔리전스 카드 ("ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며...") */}
+          {isHitless && postMortemReport && (
+            <div className="p-3.5 bg-rose-950/30 border border-rose-500/40 rounded-xl space-y-2.5 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between border-b border-rose-900/40 pb-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-rose-300">
+                  <span>💔 AI 꽝 사후 복기 리포트</span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono italic">
+                  "떠나버린 물고기를 기리며..."
+                </span>
+              </div>
+              <p className="text-[11.5px] text-slate-200 leading-snug">
+                {postMortemReport.summary}
+              </p>
+              <div className="space-y-1.5 pt-1">
+                {postMortemReport.topFactors.map((factor, idx) => (
+                  <div key={factor.id} className="text-[11px] space-y-0.5">
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span>{idx + 1}. {factor.name}</span>
+                      <span className="font-mono font-bold text-rose-400">{factor.contributionPercent}%</span>
+                    </div>
+                    <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${
+                          idx === 0 ? 'bg-rose-500' : idx === 1 ? 'bg-amber-500' : 'bg-cyan-500'
+                        }`}
+                        style={{ width: `${factor.contributionPercent}%` }}
+                      />
+                    </div>
+                    <div className="text-[10px] text-slate-400">{factor.description}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="p-2 bg-slate-900/90 rounded-lg border border-slate-800 text-[11px] text-amber-300 font-medium">
+                {postMortemReport.tacticalAdvice}
+              </div>
+            </div>
+          )}
 
           {/* 출조 일자 & 낚시 시간대 (시작, 종료, 총 낚시시간, 히트 시각) */}
           <div className="p-3.5 bg-slate-800/40 border border-slate-700/60 rounded-xl space-y-3">

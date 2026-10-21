@@ -49,7 +49,8 @@ import { ChecklistModal } from './ChecklistModal';
 import { deleteCloudMemo, fetchCloudMemos, saveCloudMemo } from '../utils/cloudDb';
 import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 import { getSpeciesRigInfo } from '../utils/speciesRigs';
-import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeatherText, getWindyWebUrl } from '../utils/weatherApi';
+import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeatherText, getWindyWebUrl, calculateSwellRisk } from '../utils/weatherApi';
+import { generatePostMortemReport } from '../utils/postMortemEngine';
 
 interface SpotDetailPanelProps {
   spot: FishingSpot;
@@ -994,6 +995,34 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               );
             })()}
 
+            {/* 너울성(Swell) 파도 위험도 지수 (파고×파주기 결합 에너지) */}
+            {(() => {
+              const waveH = simWaveHeight;
+              const waveP = marine?.wavePeriod || 6.0;
+              const swell = calculateSwellRisk(waveH, waveP);
+              return (
+                <div className={`p-2.5 rounded-xl border flex items-center justify-between text-xs backdrop-blur-sm ${swell.badgeColor}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-base shrink-0">🌊</span>
+                    <div className="min-w-0">
+                      <div className="font-bold flex items-center gap-1.5 truncate">
+                        <span>{swell.title}</span>
+                        <span className="text-[10px] font-mono opacity-80 font-normal">
+                          (파고 {waveH.toFixed(1)}m × 주기 {waveP}s = 에너지 {swell.energyScore})
+                        </span>
+                      </div>
+                      <div className="text-[10.5px] opacity-90 truncate mt-0.5">
+                        {swell.description}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded border border-current shrink-0">
+                    {swell.level === 'DANGER' ? '진입금지' : swell.level === 'CAUTION' ? '주의요망' : '양호'}
+                  </span>
+                </div>
+              );
+            })()}
+
             {/* 3. [제안 6] 현재 시각 기준 연속 조위 변화 곡선 (-6h ~ +36h, 스크롤 없는 반응형 100% 뷰) */}
             {tide && (
               <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2.5">
@@ -1540,8 +1569,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       <div className="flex items-center gap-2 flex-wrap">
                         {isHitless ? (
                           <>
-                            <span className="px-2 py-0.5 rounded bg-rose-600 text-white font-bold text-[11px] shadow-sm">
-                              ❌ 꽝 (노피시)
+                            <span className="px-2 py-0.5 rounded bg-rose-600 text-white font-bold text-[11px] shadow-sm flex items-center gap-1">
+                              <span>💔 꽝</span>
+                              <span className="text-[10px] opacity-90">(떠나버린 물고기)</span>
                             </span>
                             <span className="text-sm font-bold text-rose-200">
                               대상어: {log.fish_species}
@@ -1643,6 +1673,48 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         {log.memo}
                       </div>
                     )}
+
+                    {/* AI 꽝 사후 복기 브리핑 ("떠나버린 물고기를 기리며") */}
+                    {isHitless && (() => {
+                      const pm = generatePostMortemReport({
+                        targetSpecies: log.fish_species || '우럭',
+                        catchTime: log.catch_time || '16:00',
+                        weather: {
+                          temp: 18,
+                          apparentTemp: 18,
+                          windSpeed: log.wind_speed || 4.5,
+                          windDirection: log.wind_direction || 180,
+                          windGust: (log.wind_speed || 4.5) * 1.3,
+                          weatherCode: 0,
+                          weatherText: '맑음',
+                          humidity: 60,
+                          hourly: { time: [], temp: [], windSpeed: [], windDirection: [], pop: [] },
+                        },
+                        marine: {
+                          seaSurfaceTemp: log.water_temp || 16.5,
+                          waveHeight: 0.8,
+                          wavePeriod: 6.0,
+                          currentVelocity: log.current_velocity || 0.35,
+                          waveDirection: 180,
+                          currentDirection: 135,
+                          hourly: { time: [], seaSurfaceTemp: [], waveHeight: [], currentVelocity: [], currentDirection: [] },
+                        },
+                        tide: null,
+                        biteScore: null,
+                      });
+                      return (
+                        <div className="mt-1.5 p-2.5 rounded-xl bg-rose-950/40 border border-rose-800/40 text-[11px] space-y-1.5 animate-in fade-in duration-150">
+                          <div className="flex items-center justify-between text-rose-300 font-bold border-b border-rose-900/50 pb-1">
+                            <span>💔 실패 원인 분석: {pm.topFactors[0]?.name} ({pm.topFactors[0]?.contributionPercent}%)</span>
+                            <span className="text-[10px] text-slate-400 font-mono">7대 환경벡터</span>
+                          </div>
+                          <div className="text-[10.5px] text-slate-300 leading-snug">{pm.topFactors[0]?.description}</div>
+                          <div className="text-[10px] text-amber-300 bg-slate-900/90 p-2 rounded-lg border border-slate-800 mt-0.5">
+                            {pm.tacticalAdvice}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {log.photo_url && (
                       <div className="mt-2 h-32 rounded-lg overflow-hidden border border-slate-800">

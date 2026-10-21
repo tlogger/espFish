@@ -70,6 +70,7 @@ interface MapViewProps {
   onConfirmMicroAdjust?: (spotId: string, newLat: number, newLng: number) => void;
   currentUser?: { id: string; name: string } | null;
   onStartMicroAdjust?: (spot: FishingSpot) => void;
+  isSunMode?: boolean;
 }
 
 export const MapView: React.FC<MapViewProps> = ({
@@ -88,6 +89,7 @@ export const MapView: React.FC<MapViewProps> = ({
   onConfirmMicroAdjust,
   currentUser = null,
   onStartMicroAdjust,
+  isSunMode = false,
 }) => {
   // 카카오 지도 SDK 동적 로더
   const [loading, error] = useKakaoLoader({
@@ -111,8 +113,9 @@ export const MapView: React.FC<MapViewProps> = ({
     return 'ROADMAP';
   });
 
-  // 내 현재 GPS 위치 및 추적 상태
+  // 내 현재 GPS 위치 및 추적 상태 (GPS 수평 오차 반경 원 포함)
   const [myLocation, setMyLocation] = React.useState<{ lat: number; lng: number } | null>(null);
+  const [gpsAccuracy, setGpsAccuracy] = React.useState<number | null>(null);
   const [isLocating, setIsLocating] = React.useState(false);
 
   // 클릭 이벤트 관통 방지 이중 락 레퍼런스
@@ -163,6 +166,7 @@ export const MapView: React.FC<MapViewProps> = ({
         setIsLocating(false);
         const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setMyLocation(userPos);
+        setGpsAccuracy(pos.coords.accuracy || 10);
         setCenter(userPos);
         setLevel(3); // 상세 50m 레벨
       },
@@ -187,6 +191,7 @@ export const MapView: React.FC<MapViewProps> = ({
           setIsLocating(false);
           const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
           setMyLocation(userPos);
+          setGpsAccuracy(pos.coords.accuracy || 12);
           setCenter(userPos);
           setLevel(4); // 약 100m~250m 상세 레벨
         },
@@ -333,7 +338,7 @@ export const MapView: React.FC<MapViewProps> = ({
     <div
       className={`relative w-full h-full bg-slate-950 overflow-hidden kakao-map-container ${
         isDarkMode ? 'kakao-dark-mode' : ''
-      }`}
+      } ${isSunMode ? 'exfish-sun-mode' : ''}`}
     >
       <Map
         center={center}
@@ -698,22 +703,40 @@ export const MapView: React.FC<MapViewProps> = ({
           );
         })()}
 
-        {/* 내 현재 GPS 위치 마커 */}
+        {/* 내 현재 GPS 위치 마커 & 수평 오차 반경 원 (Virtual Crosshair Accuracy Circle) */}
         {myLocation && (
-          <CustomOverlayMap
-            position={{ lat: myLocation.lat, lng: myLocation.lng }}
-            yAnchor={0.5}
-            xAnchor={0.5}
-            zIndex={90}
-            clickable={true}
-          >
-            <div className="relative flex items-center justify-center kakao-invert-restore">
-              <div className="w-8 h-8 rounded-full bg-cyan-400/30 animate-ping absolute" />
-              <div className="w-6 h-6 rounded-full bg-cyan-500 border-2 border-white shadow-xl flex items-center justify-center text-xs">
-                🎯
+          <React.Fragment key="my-location-group">
+            {gpsAccuracy && gpsAccuracy > 0 && (
+              <Circle
+                center={myLocation}
+                radius={gpsAccuracy}
+                strokeWeight={1}
+                strokeColor="#06b6d4"
+                strokeOpacity={0.8}
+                strokeStyle="dash"
+                fillColor="#06b6d4"
+                fillOpacity={0.12}
+                zIndex={85}
+              />
+            )}
+            <CustomOverlayMap
+              position={{ lat: myLocation.lat, lng: myLocation.lng }}
+              yAnchor={0.5}
+              xAnchor={0.5}
+              zIndex={90}
+              clickable={true}
+            >
+              <div
+                className="relative flex items-center justify-center kakao-invert-restore cursor-pointer"
+                title={`현재 내 위치 (GPS 오차 반경 약 ±${Math.round(gpsAccuracy || 10)}m)`}
+              >
+                <div className="w-8 h-8 rounded-full bg-cyan-400/30 animate-ping absolute" />
+                <div className="w-6 h-6 rounded-full bg-cyan-500 border-2 border-white shadow-xl flex items-center justify-center text-xs">
+                  🎯
+                </div>
               </div>
-            </div>
-          </CustomOverlayMap>
+            </CustomOverlayMap>
+          </React.Fragment>
         )}
 
         {/* 지도 빈 공간 클릭 시: 새 포인트 등록 확인 미니 팝업 (실수 터치 완벽 방지) */}
@@ -1051,16 +1074,16 @@ export const MapView: React.FC<MapViewProps> = ({
             </div>
           </div>
 
-          {/* D-Pad 1m 단위 미세 넛지 컨트롤 */}
+          {/* D-Pad 1m 단위 미세 넛지 컨트롤 (48px 터치 타깃 규격) */}
           <div className="flex items-center justify-between gap-2 bg-slate-950/60 p-2 rounded-xl border border-slate-800/80">
             <span className="text-[11px] text-slate-400 font-medium pl-1">
               1m 미세 보정:
             </span>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => handleNudge(0.000009, 0)}
-                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95 transition"
+                className="min-w-[44px] min-h-[44px] px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-xl text-xs font-mono font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
                 title="북쪽 1m 이동"
               >
                 ▲ 북
@@ -1068,7 +1091,7 @@ export const MapView: React.FC<MapViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleNudge(-0.000009, 0)}
-                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95 transition"
+                className="min-w-[44px] min-h-[44px] px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-xl text-xs font-mono font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
                 title="남쪽 1m 이동"
               >
                 ▼ 남
@@ -1076,7 +1099,7 @@ export const MapView: React.FC<MapViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleNudge(0, -0.000011)}
-                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95 transition"
+                className="min-w-[44px] min-h-[44px] px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-xl text-xs font-mono font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
                 title="서쪽 1m 이동"
               >
                 ◄ 서
@@ -1084,7 +1107,7 @@ export const MapView: React.FC<MapViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleNudge(0, 0.000011)}
-                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95 transition"
+                className="min-w-[44px] min-h-[44px] px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-xl text-xs font-mono font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
                 title="동쪽 1m 이동"
               >
                 ► 동

@@ -33,6 +33,7 @@ import {
   saveCloudCatchLog,
   saveCloudSpot,
 } from './utils/cloudDb';
+import { cacheSpotMetadata, getAllCachedSpots, subscribeNetworkStatus } from './utils/offlineStorage';
 
 export function App() {
   const [spots, setSpots] = React.useState<FishingSpot[]>([]);
@@ -90,11 +91,30 @@ export function App() {
   const [newSpotLng, setNewSpotLng] = React.useState<number | undefined>();
   const [microAdjustSpot, setMicroAdjustSpot] = React.useState<FishingSpot | null>(null);
 
+  // 아웃도어 초고대비 모드 (Sun Mode: WCAG AAA 7:1) 및 오프라인 상태 관리
+  const [isSunMode, setIsSunMode] = React.useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('exfish_sun_mode') === 'true';
+    }
+    return false;
+  });
+  const [isOffline, setIsOffline] = React.useState<boolean>(() => typeof navigator !== 'undefined' && !navigator.onLine);
+
+  React.useEffect(() => {
+    if (typeof document !== 'undefined' && isSunMode) {
+      document.body.classList.add('sun-mode-active');
+    }
+    const unsub = subscribeNetworkStatus((online) => {
+      setIsOffline(!online);
+    });
+    return unsub;
+  }, [isSunMode]);
+
   // 포인트별 실시간 환경 요약 캐시 (리스트 보기 전용)
   const [environmentMap, setEnvironmentMap] = React.useState<Record<string, SpotRealtimeSummary>>({});
   const [userLocation, setUserLocation] = React.useState<{ lat: number; lng: number } | null>(null);
 
-  // 기기 로컬 저장소 대신 오직 Supabase DB에서만 포인트 및 조과 데이터 로드
+  // 기기 로컬 저장소 대신 오직 Supabase DB에서만 포인트 및 조과 데이터 로드 (오프라인 시 로컬 캐시 폴백)
   const reloadData = React.useCallback(async () => {
     try {
       const [cSpots, cLogs] = await Promise.all([
@@ -103,12 +123,19 @@ export function App() {
       ]);
       setSpots(cSpots);
       setCatchLogs(cLogs);
+      // 오프라인 대비 로컬 캐시 백업
+      cSpots.forEach((s) => cacheSpotMetadata(s));
       if (cSpots.length > 0 && !selectedSpot) {
         // 첫 진입 시 포인트 정보는 로드하되, 지도는 내 위치 중심으로 유지하도록 shouldRecenter=false 전달
         handleSelectSpot(cSpots[0], false);
       }
     } catch (err) {
-      console.error('Supabase 데이터 로드 실패:', err);
+      console.warn('Supabase 데이터 로드 실패, 오프라인 로컬 캐시 복원 시도:', err);
+      const cached = getAllCachedSpots();
+      if (cached.length > 0) {
+        setSpots(cached);
+        if (!selectedSpot) handleSelectSpot(cached[0], false);
+      }
     }
   }, [selectedSpot]);
 
@@ -254,6 +281,9 @@ export function App() {
         // 3. ExFish AI 입질 지수 도출 (로그인 유저의 관심 어종 가중치 자동 반영)
         const score = calculateBiteScore(spot, weatherData, marineData, tideData, currentUser?.favoriteSpecies);
         setBiteScore(score);
+
+        // 4. 오프라인 대비 메타데이터 로컬 캐싱
+        cacheSpotMetadata(spot, tideData, weatherData, marineData);
       } catch (err) {
         console.error('Error fetching marine/weather data:', err);
       }
@@ -583,6 +613,27 @@ export function App() {
 
         {/* 툴바: 헬프 버튼, 로그인 버튼 (PC 웹용), 단위 변환 토글 */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 text-xs">
+          {/* 아웃도어 초고대비 모드 (한낮 갯바위 직사광선 글레어 극복) */}
+          <button
+            onClick={() => {
+              const next = !isSunMode;
+              setIsSunMode(next);
+              localStorage.setItem('exfish_sun_mode', String(next));
+              if (typeof document !== 'undefined') {
+                document.body.classList.toggle('sun-mode-active', next);
+              }
+            }}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border font-semibold text-xs transition shadow-sm ${
+              isSunMode
+                ? 'bg-yellow-400 text-black border-yellow-300 font-bold shadow-yellow-500/30'
+                : 'bg-slate-800/90 hover:bg-slate-700 text-yellow-300 border-slate-700'
+            }`}
+            title="한낮 갯바위 직사광선 대비 초고대비 모드 (Sun Mode: WCAG AAA 7:1)"
+          >
+            <span>☀️</span>
+            <span className="hidden sm:inline">{isSunMode ? '고대비ON' : '고대비'}</span>
+          </button>
+
           {/* 입질 종합 지수 평가 기준 헬프 버튼 */}
           <button
             onClick={() => setIsHelpModalOpen(true)}
@@ -715,6 +766,13 @@ export function App() {
         </div>
       </div>
 
+      {/* 오프라인 네트워크 단절 안내 배너 */}
+      {isOffline && (
+        <div className="bg-amber-500 text-slate-950 font-bold px-4 py-1.5 text-xs text-center flex items-center justify-center gap-2 shadow-md shrink-0">
+          <span>📶 오프라인 모드 작동 중: 로컬 캐시된 포인트 및 조위 메타데이터로 작동합니다.</span>
+        </div>
+      )}
+
       {/* 메인 2열 분할 레이아웃 (지도 캔버스 + 우측 상세 대시보드 패널) */}
       <main className="flex-1 relative flex flex-col md:flex-row overflow-hidden">
         {/* 좌측(또는 전체 배경) OpenStreetMap 영역 (모달 관통 방지를 위해 isolate 적용) */}
@@ -736,6 +794,7 @@ export function App() {
             onConfirmMicroAdjust={handleConfirmMicroAdjust}
             currentUser={currentUser}
             onStartMicroAdjust={handleStartMicroAdjust}
+            isSunMode={isSunMode}
           />
         </div>
 

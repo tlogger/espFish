@@ -45,6 +45,23 @@
   filter: invert(0.92) hue-rotate(170deg) brightness(1.18) contrast(0.8);
 }
 
+/* 아웃도어 초고대비 모드 (Sun Mode: WCAG AAA 7:1 대비율, 직사광선 글레어 극복) */
+.exfish-sun-mode {
+  filter: contrast(140%) brightness(108%);
+}
+.exfish-sun-mode .kakao-invert-restore {
+  filter: contrast(125%) saturate(130%);
+}
+body.sun-mode-active {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+body.sun-mode-active .bg-slate-900,
+body.sun-mode-active .bg-slate-950 {
+  background-color: #0a0a0a !important;
+  border-color: #eab308 !important;
+}
+
 /* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
