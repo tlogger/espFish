@@ -664,6 +664,7 @@ export function App() {
               tide={tide}
               biteScore={biteScore}
               catchLogs={spotLogs}
+              favoriteSpecies={currentUser?.favoriteSpecies}
               windUnit={windUnit}
               currentUnit={currentUnit}
               onToggleWindUnit={() => setWindUnit((prev) => prev === 'ms' ? 'knot' : prev === 'knot' ? 'kmh' : 'ms')}
@@ -694,6 +695,7 @@ export function App() {
               tide={tide}
               biteScore={biteScore}
               catchLogs={spotLogs}
+              favoriteSpecies={currentUser?.favoriteSpecies}
               windUnit={windUnit}
               currentUnit={currentUnit}
               onToggleWindUnit={() => setWindUnit((prev) => prev === 'ms' ? 'knot' : prev === 'knot' ? 'kmh' : 'ms')}

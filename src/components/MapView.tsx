@@ -314,38 +314,128 @@ export const MapView: React.FC<MapViewProps> = ({
           setCenter({ lat: latLng.getLat(), lng: latLng.getLng() });
         }}
       >
-        {/* 선택된 포인트의 캐스팅 비거리 동심원 눈금 링 (30m 루어 / 60m 중거리 / 100m 원투 장타) */}
-        {showCastingArrows && selectedSpot && (
-          <React.Fragment key={`range-rings-${selectedSpot.id}`}>
-            <Circle
-              center={{ lat: selectedSpot.lat, lng: selectedSpot.lng }}
-              radius={30}
-              strokeWeight={1}
-              strokeColor="#06b6d4"
-              strokeOpacity={0.7}
-              strokeStyle="dash"
-              zIndex={30}
-            />
-            <Circle
-              center={{ lat: selectedSpot.lat, lng: selectedSpot.lng }}
-              radius={60}
-              strokeWeight={1}
-              strokeColor="#06b6d4"
-              strokeOpacity={0.45}
-              strokeStyle="dash"
-              zIndex={30}
-            />
-            <Circle
-              center={{ lat: selectedSpot.lat, lng: selectedSpot.lng }}
-              radius={100}
-              strokeWeight={1}
-              strokeColor="#06b6d4"
-              strokeOpacity={0.25}
-              strokeStyle="dash"
-              zIndex={30}
-            />
-          </React.Fragment>
-        )}
+        {/* 선택된 포인트의 캐스팅 비거리 동심원 눈금 링 (캐스팅 방향만 부채꼴 호로 표기 + 각 동심원에 30m / 60m / 100m 거리 표기) */}
+        {showCastingArrows && selectedSpot && (() => {
+          const castingDirs = selectedSpot.casting_directions || [];
+          const isAllDirections = castingDirs.includes('ALL');
+          const radii = [30, 60, 100];
+          const fanHalfAngle = 30; // 투척 방향 중심 좌우 30도 (총 60도 부채꼴 호)
+
+          // 1. 'ALL' (전방위) 또는 방향 미지정인 경우: 360도 전체 동심원 + 북쪽 기준 거리 표기
+          if (isAllDirections || castingDirs.length === 0) {
+            return (
+              <React.Fragment key={`range-rings-${selectedSpot.id}`}>
+                {radii.map((r, idx) => {
+                  const [labelLat, labelLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, 0, r);
+                  return (
+                    <React.Fragment key={`all-ring-${selectedSpot.id}-${r}`}>
+                      <Circle
+                        center={{ lat: selectedSpot.lat, lng: selectedSpot.lng }}
+                        radius={r}
+                        strokeWeight={1.5}
+                        strokeColor="#06b6d4"
+                        strokeOpacity={idx === 0 ? 0.75 : idx === 1 ? 0.5 : 0.3}
+                        strokeStyle="dash"
+                        zIndex={30}
+                      />
+                      <CustomOverlayMap
+                        position={{ lat: labelLat, lng: labelLng }}
+                        yAnchor={0.5}
+                        xAnchor={0.5}
+                        zIndex={35}
+                        clickable={false}
+                      >
+                        <div className="px-1.5 py-0.5 rounded-full bg-slate-950/90 text-cyan-300 border border-cyan-400/60 text-[9px] font-bold font-mono shadow-md backdrop-blur-xs select-none pointer-events-none kakao-invert-restore whitespace-nowrap">
+                          {r}m
+                        </div>
+                      </CustomOverlayMap>
+                    </React.Fragment>
+                  );
+                })}
+              </React.Fragment>
+            );
+          }
+
+          // 2. 개별 지정 방향(N, NE, E 등)인 경우: 캐스팅 투척 방향으로만 30m, 60m, 100m 부채꼴 호 및 거리 라벨 렌더링
+          return (
+            <React.Fragment key={`range-arcs-${selectedSpot.id}`}>
+              {castingDirs.map((dir) => {
+                const info = CASTING_BEARINGS[dir];
+                if (!info) return null;
+                const bearing = info.deg;
+
+                // 좌우 부채꼴 경계선 (100m 지점까지 뻗어나가는 은은한 레이더 가이드 선)
+                const leftEdge = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing - fanHalfAngle, 100);
+                const rightEdge = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing + fanHalfAngle, 100);
+
+                return (
+                  <React.Fragment key={`casting-fan-${selectedSpot.id}-${dir}`}>
+                    {/* 부채꼴 좌측 경계선 */}
+                    <Polyline
+                      path={[
+                        { lat: selectedSpot.lat, lng: selectedSpot.lng },
+                        { lat: leftEdge[0], lng: leftEdge[1] },
+                      ]}
+                      strokeWeight={1}
+                      strokeColor="#06b6d4"
+                      strokeOpacity={0.25}
+                      strokeStyle="dash"
+                      zIndex={28}
+                    />
+                    {/* 부채꼴 우측 경계선 */}
+                    <Polyline
+                      path={[
+                        { lat: selectedSpot.lat, lng: selectedSpot.lng },
+                        { lat: rightEdge[0], lng: rightEdge[1] },
+                      ]}
+                      strokeWeight={1}
+                      strokeColor="#06b6d4"
+                      strokeOpacity={0.25}
+                      strokeStyle="dash"
+                      zIndex={28}
+                    />
+
+                    {/* 각 거리(30m / 60m / 100m)별 부채꼴 호 및 거리 m 라벨 오버레이 */}
+                    {radii.map((r, rIdx) => {
+                      const arcPoints: { lat: number; lng: number }[] = [];
+                      for (let b = bearing - fanHalfAngle; b <= bearing + fanHalfAngle; b += 2) {
+                        const [pLat, pLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, b, r);
+                        arcPoints.push({ lat: pLat, lng: pLng });
+                      }
+
+                      // 호 중심 지점에 m 거리 표기 오버레이
+                      const [labelLat, labelLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, r);
+
+                      return (
+                        <React.Fragment key={`arc-r-${selectedSpot.id}-${dir}-${r}`}>
+                          <Polyline
+                            path={arcPoints}
+                            strokeWeight={rIdx === 0 ? 2 : 1.5}
+                            strokeColor="#06b6d4"
+                            strokeOpacity={rIdx === 0 ? 0.85 : rIdx === 1 ? 0.6 : 0.4}
+                            strokeStyle="dash"
+                            zIndex={30}
+                          />
+                          <CustomOverlayMap
+                            position={{ lat: labelLat, lng: labelLng }}
+                            yAnchor={0.5}
+                            xAnchor={0.5}
+                            zIndex={35}
+                            clickable={false}
+                          >
+                            <div className="px-1.5 py-0.5 rounded-full bg-slate-950/90 text-cyan-300 border border-cyan-400/60 text-[9px] font-bold font-mono shadow-md backdrop-blur-xs select-none pointer-events-none kakao-invert-restore whitespace-nowrap">
+                              {r}m
+                            </div>
+                          </CustomOverlayMap>
+                        </React.Fragment>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+            </React.Fragment>
+          );
+        })()}
 
         {/* 선택된 포인트 위 실시간 풍향(바람) & 조류 벡터 화살표 오버레이 */}
         {selectedSpot && weather && (

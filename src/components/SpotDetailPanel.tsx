@@ -7,6 +7,7 @@ import {
   Edit,
   ExternalLink,
   Fish,
+  Info,
   MapPin,
   MessageSquare,
   Navigation,
@@ -17,6 +18,7 @@ import {
   Send,
   Share2,
   ShieldAlert,
+  Star,
   Thermometer,
   Trash2,
   Waves,
@@ -35,7 +37,9 @@ import type {
   WeatherData,
   WindUnit
 } from '../types';
+import { calculateSingleSpeciesScore } from '../utils/biteScore';
 import { deleteCloudMemo, fetchCloudMemos, saveCloudMemo } from '../utils/cloudDb';
+import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeatherText, getWindyWebUrl } from '../utils/weatherApi';
 
 interface SpotDetailPanelProps {
@@ -45,6 +49,7 @@ interface SpotDetailPanelProps {
   tide: TideDayInfo | null;
   biteScore: BiteScoreBreakdown | null;
   catchLogs: CatchLog[];
+  favoriteSpecies?: string[];
   windUnit: WindUnit;
   currentUnit: CurrentUnit;
   onToggleWindUnit?: () => void;
@@ -65,6 +70,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   tide,
   biteScore,
   catchLogs,
+  favoriteSpecies,
   windUnit,
   currentUnit,
   onToggleWindUnit,
@@ -529,10 +535,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               ? 'bg-gradient-to-b from-amber-500/20 to-orange-600/10 text-amber-300 ring-1 ring-amber-500/40 shadow-sm'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
-          title="도보 진입로, 주차 및 공략 팁"
+          title="포인트 상세 정보 및 도보 진입로, 주차 안내"
         >
-          <Navigation size={19} className={activeTab === 'DIRECTIONS' ? 'text-amber-400 scale-110 transition-transform' : ''} />
-          <span className="text-[11px] font-medium tracking-tight">진입로</span>
+          <Info size={19} className={activeTab === 'DIRECTIONS' ? 'text-amber-400 scale-110 transition-transform' : ''} />
+          <span className="text-[11px] font-medium tracking-tight">정보</span>
           {activeTab === 'DIRECTIONS' && (
             <span className="absolute bottom-0 w-8 h-0.5 bg-amber-400 rounded-full" />
           )}
@@ -705,118 +711,243 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             </div>
 
-            {/* 4대 실시간/예측 해양·기상 카드 그리드
-                - 배치: [풍향·풍속] 옆에 [조류·해류], 아래에 [표층 수온(SST)] 및 [파고·날씨] 나란히 배치
-                - 텍스트 크기 최적화로 패널 세로 크기 불필요한 확장 방지 */}
-            <div className="grid grid-cols-2 gap-2.5 text-xs">
-              {/* 1. 바람 위젯 (풍향 + 풍속 + 나침반 화살표) */}
-              <div className="p-2.5 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
-                <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                  <span className="flex items-center gap-1 font-semibold truncate">
-                    <Wind size={13} className="text-cyan-400 shrink-0" /> 풍향·풍속
-                  </span>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <div
-                      className="w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[10px] font-bold transition-transform duration-300"
-                      style={{ transform: `rotate(${simWindDir}deg)` }}
-                      title={`풍향 ${Math.round(simWindDir)}°`}
-                    >
-                      ↓
+            {/* 풍속·조류·파고 위험 수준 판정 및 위험 경고 배너 */}
+            {(() => {
+              const isWindDanger = simWindSpeed >= 9.5 || (weather?.windGust ? weather.windGust >= 13.0 : false);
+              const isWindWarning = !isWindDanger && simWindSpeed >= 6.5;
+
+              const isCurrentDanger = simCurrentVel >= 0.9;
+              const isCurrentWarning = !isCurrentDanger && simCurrentVel >= 0.6;
+
+              const isWaveDanger = simWaveHeight >= 1.8;
+              const isWaveWarning = !isWaveDanger && simWaveHeight >= 1.2;
+
+              const hasAnyDanger = isWindDanger || isCurrentDanger || isWaveDanger;
+
+              return (
+                <>
+                  {hasAnyDanger && (
+                    <div className="p-3 bg-rose-950/85 border border-rose-500 rounded-2xl flex items-center gap-2.5 text-rose-200 text-xs shadow-lg shadow-rose-950/50 animate-pulse">
+                      <ShieldAlert size={22} className="text-rose-400 shrink-0" />
+                      <div>
+                        <div className="font-bold text-rose-300 flex items-center gap-1.5">
+                          <span>🚨 해양 기상 특보급 위험 경고</span>
+                        </div>
+                        <p className="text-[11px] text-rose-200/95 leading-relaxed pt-0.5">
+                          {isWaveDanger && '⚠️ 높은 파고(너울)로 인한 갯바위/방파제 테트라포드 월파 위험! '}
+                          {isWindDanger && '⚠️ 강풍/돌풍으로 인한 낚시 불가 및 실족 추락 위험! '}
+                          {isCurrentDanger && '⚠️ 빠른 급류/와류로 인한 채비 쓸림 및 해상 안전사고 위험! '}
+                          출조를 자제하고 안전장구(구명조끼/펠트화)를 반드시 점검하세요.
+                        </p>
+                      </div>
                     </div>
-                    <span className="text-[10px] font-mono">{Math.round(simWindDir)}°</span>
-                  </div>
-                </div>
-                <div className="flex items-baseline justify-between mt-0.5">
-                  <div className="text-sm sm:text-base font-bold text-cyan-300 truncate">
-                    {formatWindSpeed(simWindSpeed, windUnit)}
-                  </div>
-                  <div className="text-[11px] text-slate-300 font-medium shrink-0 ml-1">
-                    {getCompassDirection(simWindDir)}
-                  </div>
-                </div>
-                <div className="text-[10px] text-slate-400 flex justify-between pt-1 border-t border-slate-700/50">
-                  <span>돌풍:</span>
-                  <span className="text-amber-400 font-medium">
-                    {weather ? formatWindSpeed(weather.windGust, windUnit) : '--'}
-                  </span>
-                </div>
-              </div>
+                  )}
 
-              {/* 2. 조류 방향 / 유속 위젯 (풍향풍속 바로 옆에 배치) */}
-              <div className="p-2.5 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
-                <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                  <span className="flex items-center gap-1 font-semibold truncate">
-                    <Compass size={13} className="text-emerald-400 shrink-0" /> 조류·해류
-                  </span>
-                  <div className="flex items-center gap-1 shrink-0">
+                  {/* 4대 실시간/예측 해양·기상 카드 그리드
+                      - 위험 수준 시 경고 배경색(bg-rose-950/80, border-rose-600) 자동 적용 */}
+                  <div className="grid grid-cols-2 gap-2.5 text-xs">
+                    {/* 1. 바람 위젯 (풍향 + 풍속 + 나침반 화살표) */}
                     <div
-                      className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-[10px] font-bold transition-transform duration-300"
-                      style={{ transform: `rotate(${simCurrentDir}deg)` }}
-                      title={`조류방향 ${Math.round(simCurrentDir)}°`}
+                      className={`p-2.5 rounded-xl space-y-1 transition-colors border ${
+                        isWindDanger
+                          ? 'bg-rose-950/80 border-rose-600 shadow-[0_0_15px_rgba(244,63,94,0.35)]'
+                          : isWindWarning
+                          ? 'bg-amber-950/60 border-amber-600 shadow-[0_0_10px_rgba(245,158,11,0.2)]'
+                          : 'bg-slate-800/70 border-slate-700/60'
+                      }`}
                     >
-                      ↑
+                      <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                        <span className="flex items-center gap-1 font-semibold truncate">
+                          <Wind
+                            size={13}
+                            className={isWindDanger ? 'text-rose-400 shrink-0 animate-bounce' : isWindWarning ? 'text-amber-400 shrink-0' : 'text-cyan-400 shrink-0'}
+                          />{' '}
+                          <span className={isWindDanger ? 'text-rose-200 font-bold' : isWindWarning ? 'text-amber-200 font-bold' : ''}>
+                            풍향·풍속
+                          </span>
+                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {isWindDanger ? (
+                            <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white font-bold text-[9px] animate-pulse">
+                              위험
+                            </span>
+                          ) : isWindWarning ? (
+                            <span className="px-1.5 py-0.2 rounded bg-amber-600 text-slate-950 font-bold text-[9px]">
+                              주의
+                            </span>
+                          ) : null}
+                          <div
+                            className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold transition-transform duration-300 ${
+                              isWindDanger ? 'bg-rose-500/30 text-rose-200' : 'bg-cyan-500/20 text-cyan-300'
+                            }`}
+                            style={{ transform: `rotate(${simWindDir}deg)` }}
+                            title={`풍향 ${Math.round(simWindDir)}°`}
+                          >
+                            ↓
+                          </div>
+                          <span className={`text-[10px] font-mono ${isWindDanger ? 'text-rose-300' : ''}`}>
+                            {Math.round(simWindDir)}°
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-baseline justify-between mt-0.5">
+                        <div
+                          className={`text-sm sm:text-base font-bold truncate ${
+                            isWindDanger ? 'text-rose-200' : isWindWarning ? 'text-amber-300' : 'text-cyan-300'
+                          }`}
+                        >
+                          {formatWindSpeed(simWindSpeed, windUnit)}
+                        </div>
+                        <div className={`text-[11px] font-medium shrink-0 ml-1 ${isWindDanger ? 'text-rose-300' : 'text-slate-300'}`}>
+                          {getCompassDirection(simWindDir)}
+                        </div>
+                      </div>
+                      <div className={`text-[10px] flex justify-between pt-1 border-t ${isWindDanger ? 'border-rose-800/80 text-rose-300' : 'border-slate-700/50 text-slate-400'}`}>
+                        <span>돌풍:</span>
+                        <span className={isWindDanger ? 'text-rose-200 font-bold' : 'text-amber-400 font-medium'}>
+                          {weather ? formatWindSpeed(weather.windGust, windUnit) : '--'}
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-[10px] font-mono">{Math.round(simCurrentDir)}°</span>
-                  </div>
-                </div>
-                <div className="flex items-baseline justify-between mt-0.5">
-                  <div className="text-sm sm:text-base font-bold text-emerald-300 truncate">
-                    {formatCurrentVelocity(simCurrentVel, currentUnit)}
-                  </div>
-                  <div className="text-[11px] text-slate-300 font-medium shrink-0 ml-1">
-                    {getCompassDirection(simCurrentDir)}
-                  </div>
-                </div>
-                <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-700/50 flex justify-between">
-                  <span>흐름:</span>
-                  <span className="text-emerald-400 font-mono text-[10px]">
-                    {simCurrentVel > 0.5 ? '빠른 본류대' : simCurrentVel > 0.2 ? '완만한 조류' : '정조/약류'}
-                  </span>
-                </div>
-              </div>
 
-              {/* 3. 표층 수온 및 기온 위젯 */}
-              <div className="p-2.5 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
-                <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                  <span className="flex items-center gap-1 font-semibold truncate">
-                    <Thermometer size={13} className="text-rose-400 shrink-0" /> 표층 수온 (SST)
-                  </span>
-                </div>
-                <div className="flex items-baseline justify-between mt-0.5">
-                  <div className="text-sm sm:text-base font-bold text-rose-300 truncate">
-                    {simWaterTemp.toFixed(1)}°C
-                  </div>
-                  <span className="text-[11px] text-slate-300 shrink-0 ml-1">
-                    기온 {simTemp.toFixed(1)}°C
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-400 flex justify-between pt-1 border-t border-slate-700/50">
-                  <span>강수확률:</span>
-                  <span className="text-cyan-300 font-medium">{simPop}%</span>
-                </div>
-              </div>
+                    {/* 2. 조류 방향 / 유속 위젯 (풍향풍속 바로 옆에 배치) */}
+                    <div
+                      className={`p-2.5 rounded-xl space-y-1 transition-colors border ${
+                        isCurrentDanger
+                          ? 'bg-rose-950/80 border-rose-600 shadow-[0_0_15px_rgba(244,63,94,0.35)]'
+                          : isCurrentWarning
+                          ? 'bg-amber-950/60 border-amber-600 shadow-[0_0_10px_rgba(245,158,11,0.2)]'
+                          : 'bg-slate-800/70 border-slate-700/60'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                        <span className="flex items-center gap-1 font-semibold truncate">
+                          <Compass
+                            size={13}
+                            className={isCurrentDanger ? 'text-rose-400 shrink-0 animate-bounce' : isCurrentWarning ? 'text-amber-400 shrink-0' : 'text-emerald-400 shrink-0'}
+                          />{' '}
+                          <span className={isCurrentDanger ? 'text-rose-200 font-bold' : isCurrentWarning ? 'text-amber-200 font-bold' : ''}>
+                            조류·해류
+                          </span>
+                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {isCurrentDanger ? (
+                            <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white font-bold text-[9px] animate-pulse">
+                              위험
+                            </span>
+                          ) : isCurrentWarning ? (
+                            <span className="px-1.5 py-0.2 rounded bg-amber-600 text-slate-950 font-bold text-[9px]">
+                              주의
+                            </span>
+                          ) : null}
+                          <div
+                            className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold transition-transform duration-300 ${
+                              isCurrentDanger ? 'bg-rose-500/30 text-rose-200' : 'bg-emerald-500/20 text-emerald-300'
+                            }`}
+                            style={{ transform: `rotate(${simCurrentDir}deg)` }}
+                            title={`조류방향 ${Math.round(simCurrentDir)}°`}
+                          >
+                            ↑
+                          </div>
+                          <span className={`text-[10px] font-mono ${isCurrentDanger ? 'text-rose-300' : ''}`}>
+                            {Math.round(simCurrentDir)}°
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-baseline justify-between mt-0.5">
+                        <div
+                          className={`text-sm sm:text-base font-bold truncate ${
+                            isCurrentDanger ? 'text-rose-200' : isCurrentWarning ? 'text-amber-300' : 'text-emerald-300'
+                          }`}
+                        >
+                          {formatCurrentVelocity(simCurrentVel, currentUnit)}
+                        </div>
+                        <div className={`text-[11px] font-medium shrink-0 ml-1 ${isCurrentDanger ? 'text-rose-300' : 'text-slate-300'}`}>
+                          {getCompassDirection(simCurrentDir)}
+                        </div>
+                      </div>
+                      <div className={`text-[10px] pt-1 border-t flex justify-between ${isCurrentDanger ? 'border-rose-800/80 text-rose-300' : 'border-slate-700/50 text-slate-400'}`}>
+                        <span>흐름:</span>
+                        <span className={`font-mono text-[10px] font-semibold ${isCurrentDanger ? 'text-rose-200' : isCurrentWarning ? 'text-amber-300' : 'text-emerald-400'}`}>
+                          {simCurrentVel > 0.8 ? '급류 (위험)' : simCurrentVel > 0.5 ? '빠른 본류대' : simCurrentVel > 0.2 ? '완만한 조류' : '정조/약류'}
+                        </span>
+                      </div>
+                    </div>
 
-              {/* 4. 파고 / 날씨 위젯 (표층수온 바로 옆에 배치) */}
-              <div className="p-2.5 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
-                <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                  <span className="flex items-center gap-1 font-semibold truncate">
-                    <Waves size={13} className="text-blue-400 shrink-0" /> 파고 · 날씨
-                  </span>
-                </div>
-                <div className="flex items-baseline justify-between mt-0.5">
-                  <div className="text-sm sm:text-base font-bold text-blue-300 truncate">
-                    {simWaveHeight.toFixed(1)} m
+                    {/* 3. 표층 수온 및 기온 위젯 */}
+                    <div className="p-2.5 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
+                      <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                        <span className="flex items-center gap-1 font-semibold truncate">
+                          <Thermometer size={13} className="text-rose-400 shrink-0" /> 표층 수온 (SST)
+                        </span>
+                      </div>
+                      <div className="flex items-baseline justify-between mt-0.5">
+                        <div className="text-sm sm:text-base font-bold text-rose-300 truncate">
+                          {simWaterTemp.toFixed(1)}°C
+                        </div>
+                        <span className="text-[11px] text-slate-300 shrink-0 ml-1">
+                          기온 {simTemp.toFixed(1)}°C
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 flex justify-between pt-1 border-t border-slate-700/50">
+                        <span>강수확률:</span>
+                        <span className="text-cyan-300 font-medium">{simPop}%</span>
+                      </div>
+                    </div>
+
+                    {/* 4. 파고 / 날씨 위젯 (표층수온 바로 옆에 배치) */}
+                    <div
+                      className={`p-2.5 rounded-xl space-y-1 transition-colors border ${
+                        isWaveDanger
+                          ? 'bg-rose-950/80 border-rose-600 shadow-[0_0_15px_rgba(244,63,94,0.35)]'
+                          : isWaveWarning
+                          ? 'bg-amber-950/60 border-amber-600 shadow-[0_0_10px_rgba(245,158,11,0.2)]'
+                          : 'bg-slate-800/70 border-slate-700/60'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                        <span className="flex items-center gap-1 font-semibold truncate">
+                          <Waves
+                            size={13}
+                            className={isWaveDanger ? 'text-rose-400 shrink-0 animate-bounce' : isWaveWarning ? 'text-amber-400 shrink-0' : 'text-blue-400 shrink-0'}
+                          />{' '}
+                          <span className={isWaveDanger ? 'text-rose-200 font-bold' : isWaveWarning ? 'text-amber-200 font-bold' : ''}>
+                            파고 · 날씨
+                          </span>
+                        </span>
+                        {isWaveDanger ? (
+                          <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white font-bold text-[9px] animate-pulse">
+                            위험
+                          </span>
+                        ) : isWaveWarning ? (
+                          <span className="px-1.5 py-0.2 rounded bg-amber-600 text-slate-950 font-bold text-[9px]">
+                            주의
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="flex items-baseline justify-between mt-0.5">
+                        <div
+                          className={`text-sm sm:text-base font-bold truncate ${
+                            isWaveDanger ? 'text-rose-200' : isWaveWarning ? 'text-amber-300' : 'text-blue-300'
+                          }`}
+                        >
+                          {simWaveHeight.toFixed(1)} m
+                        </div>
+                        <span className={`text-[11px] shrink-0 ml-1 ${isWaveDanger ? 'text-rose-300' : 'text-slate-300'}`}>
+                          {marine?.wavePeriod ? `${marine.wavePeriod}초 주기` : '--'}
+                        </span>
+                      </div>
+                      <div className={`text-[10px] pt-1 border-t flex justify-between ${isWaveDanger ? 'border-rose-800/80 text-rose-300' : 'border-slate-700/50 text-slate-300'}`}>
+                        <span className={isWaveDanger ? 'text-rose-300' : 'text-slate-400'}>날씨:</span>
+                        <span className={`font-semibold truncate ${isWaveDanger ? 'text-rose-200' : 'text-cyan-300'}`}>
+                          {simWeatherText}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <span className="text-[11px] text-slate-300 shrink-0 ml-1">
-                    {marine?.wavePeriod ? `${marine.wavePeriod}초 주기` : '--'}
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-300 pt-1 border-t border-slate-700/50 flex justify-between">
-                  <span className="text-slate-400">날씨:</span>
-                  <span className="font-semibold text-cyan-300 truncate">{simWeatherText}</span>
-                </div>
-              </div>
-            </div>
+                </>
+              );
+            })()}
 
             {/* 3. 72시간 연속 조석 곡선 & 가로 스크롤 차트 */}
             {tide && (
@@ -1020,6 +1151,162 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 <span>조과/꽝 등록</span>
               </button>
             </div>
+
+            {/* 1. 이 포인트에서 낚이는 어종별 실시간 입질 지수 & 공략 팁 (내 관심어종 우선 정렬) */}
+            {(() => {
+              // 해당 포인트의 대표 대상어종 + 실제 조과 로그에 등록된 어종 목록 취합
+              const spotTargetSpecies = spot.target_species || [];
+              const caughtSpeciesFromLogs = Array.from(new Set(catchLogs.map((l) => l.fish_species).filter(Boolean)));
+              const combinedSpecies = Array.from(new Set([...spotTargetSpecies, ...caughtSpeciesFromLogs]));
+              const availableSpeciesList = combinedSpecies.length > 0 ? combinedSpecies : ['우럭', '광어', '감성돔', '농어'];
+
+              // 사용자 관심 어종 목록 (props 또는 localStorage)
+              const userFavorites = (favoriteSpecies && favoriteSpecies.length > 0)
+                ? favoriteSpecies
+                : (() => {
+                    try {
+                      const local = localStorage.getItem('exfish_favorite_species');
+                      return local ? JSON.parse(local) : ['우럭', '광어'];
+                    } catch {
+                      return ['우럭', '광어'];
+                    }
+                  })();
+
+              const now = new Date();
+              const curHour = now.getHours();
+              const curMonth = now.getMonth() + 1;
+
+              const scoredList = availableSpeciesList.map((spName) => {
+                const ecology =
+                  SPECIES_ENCYCLOPEDIA[spName] ||
+                  Object.values(SPECIES_ENCYCLOPEDIA).find((sp) => sp.name.includes(spName) || spName.includes(sp.name)) ||
+                  SPECIES_ENCYCLOPEDIA['우럭'];
+
+                const scoreInfo = (weather && marine && tide)
+                  ? calculateSingleSpeciesScore(ecology, spot, weather, marine, tide, curHour, curMonth)
+                  : {
+                      speciesName: spName,
+                      score: 50,
+                      verdict: '환경 데이터 수신 중...',
+                      activityMatch: ecology.activityName,
+                      tempMatch: `최적수온 ${ecology.tempRange.optMin}~${ecology.tempRange.optMax}°C`,
+                    };
+
+                const isFavorite = userFavorites.some((fav: string) => fav.includes(spName) || spName.includes(fav));
+                const hitsCount = catchLogs.filter((l) => l.fish_species === spName && (l.fish_count ?? 0) > 0 && !l.is_hitless).length;
+                const hitlessCount = catchLogs.filter((l) => l.fish_species === spName && ((l.fish_count ?? 0) === 0 || l.is_hitless)).length;
+                const isPeakSeason = ecology.peakMonths ? ecology.peakMonths.includes(curMonth) : false;
+
+                return {
+                  name: spName,
+                  ecology,
+                  scoreInfo,
+                  isFavorite,
+                  hitsCount,
+                  hitlessCount,
+                  isPeakSeason,
+                };
+              });
+
+              // 정렬: 1순위 내 관심어종(⭐), 2순위 실시간 입질 점수 높은 순
+              scoredList.sort((a, b) => {
+                if (a.isFavorite && !b.isFavorite) return -1;
+                if (!a.isFavorite && b.isFavorite) return 1;
+                return b.scoreInfo.score - a.scoreInfo.score;
+              });
+
+              return (
+                <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl shadow-lg space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Fish size={15} className="text-cyan-400" />
+                      <span className="text-xs font-bold text-slate-100">
+                        포인트 출현 어종별 실시간 입질 지수
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-amber-300 font-semibold bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                      <Star size={10} className="fill-amber-300 text-amber-300" /> 내 관심어종 우선
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    현재 시각({curHour}시) 수온·물때·일출몰 및 어종별 생태 주기를 반영한 실시간 입질 예측입니다.
+                  </p>
+
+                  <div className="space-y-2 pt-1">
+                    {scoredList.map((item) => {
+                      const { name, ecology, scoreInfo, isFavorite, hitsCount, isPeakSeason } = item;
+                      const score = scoreInfo.score;
+
+                      // 점수 등급별 스타일
+                      const scoreBg = score >= 80
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
+                        : score >= 65
+                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
+                        : score >= 50
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                        : 'bg-slate-800/80 text-slate-400 border-slate-700';
+
+                      const scoreLabel = score >= 80 ? '대박 찬스' : score >= 65 ? '호조황 기대' : score >= 50 ? '무난한 편' : '비활성';
+
+                      return (
+                        <div
+                          key={`scored-species-${name}`}
+                          className={`p-2.5 rounded-xl border transition ${
+                            isFavorite
+                              ? 'bg-gradient-to-r from-amber-950/20 via-slate-900 to-slate-900/90 border-amber-500/50 shadow-sm'
+                              : 'bg-slate-900/70 border-slate-800/80 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {isFavorite && (
+                                <span className="flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-bold">
+                                  <Star size={9} className="fill-amber-300" /> 관심어종
+                                </span>
+                              )}
+                              <span className="font-bold text-sm text-slate-100">{name}</span>
+                              <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[10px]">
+                                {ecology.categoryName}
+                              </span>
+                              {isPeakSeason && (
+                                <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[9px] font-semibold">
+                                  🔥 지금 제철
+                                </span>
+                              )}
+                              {hitsCount > 0 && (
+                                <span className="text-[10px] text-emerald-400 font-mono">
+                                  (실측 {hitsCount}수 성공)
+                                </span>
+                              )}
+                            </div>
+
+                            {/* 입질 점수 뱃지 */}
+                            <div className={`px-2 py-0.5 rounded-lg border font-mono font-bold text-xs flex items-center gap-1 shrink-0 ${scoreBg}`}>
+                              <span>{score}점</span>
+                              <span className="text-[9px] font-sans font-normal opacity-90">({scoreLabel})</span>
+                            </div>
+                          </div>
+
+                          {/* 생태 설명 및 현재 입질 타이밍 */}
+                          <div className="mt-1.5 space-y-1 text-[11px] leading-relaxed">
+                            <div className="text-slate-300 flex items-center gap-1.5 flex-wrap">
+                              <span className="text-cyan-300 font-medium">🕒 {scoreInfo.activityMatch}</span>
+                              <span className="text-slate-500">·</span>
+                              <span className="text-rose-300 font-medium">🌡️ {scoreInfo.tempMatch}</span>
+                              <span className="text-slate-500">·</span>
+                              <span className="text-slate-400">🌊 {ecology.currentPrefName}</span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 line-clamp-2">
+                              💡 {scoreInfo.verdict} {ecology.description}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* 빅데이터 조과 & 꽝 통계 카드 (출조 1건 이상일 때 표시) */}
             {catchLogs.length > 0 && (() => {
