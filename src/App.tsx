@@ -95,7 +95,8 @@ export function App() {
       setSpots(cSpots);
       setCatchLogs(cLogs);
       if (cSpots.length > 0 && !selectedSpot) {
-        handleSelectSpot(cSpots[0]);
+        // 첫 진입 시 포인트 정보는 로드하되, 지도는 내 위치 중심으로 유지하도록 shouldRecenter=false 전달
+        handleSelectSpot(cSpots[0], false);
       }
     } catch (err) {
       console.error('Supabase 데이터 로드 실패:', err);
@@ -106,15 +107,20 @@ export function App() {
     reloadData();
   }, [reloadData]);
 
-  // 사용자 GPS 현재 위치 백그라운드 확인
+  // 사용자 GPS 현재 위치 백그라운드 확인 및 초기 지도 중심을 내 위치로 이동
   React.useEffect(() => {
     if (typeof navigator !== 'undefined' && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setUserLocation(userPos);
+          // 웹 진입 시 지도를 내 위치로 우선 자동 이동
+          setRecenterTarget({ lat: userPos.lat, lng: userPos.lng, zoom: 14 });
         },
-        () => {},
-        { enableHighAccuracy: false, timeout: 5000 }
+        (err) => {
+          console.warn('Geolocation 권한 미허용 또는 에러:', err);
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
       );
     }
   }, []);
@@ -213,10 +219,12 @@ export function App() {
   }, []);
 
   // 포인트 선택 시 날씨/해양/물때/입질지수 Fetch & 연산
-  const handleSelectSpot = async (spot: FishingSpot) => {
+  const handleSelectSpot = async (spot: FishingSpot, shouldRecenter: boolean = true) => {
     setSelectedSpot(spot);
     setIsMobileDrawerOpen(true); // 모바일에서 선택 시 드로워 열기
-    setRecenterTarget({ lat: spot.lat, lng: spot.lng, zoom: 14 });
+    if (shouldRecenter) {
+      setRecenterTarget({ lat: spot.lat, lng: spot.lng, zoom: 14 });
+    }
 
     // 1. 한국형 물때 & 72시간 연속 조석 곡선 & 3일간 일출일몰 즉시 계산
     const tideData = calculateTideDay(spot.lat, spot.lng, new Date());

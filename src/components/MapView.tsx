@@ -167,6 +167,30 @@ export const MapView: React.FC<MapViewProps> = ({
     );
   };
 
+  // 초기 진입 시 사용자 위치 자동 이동 보장을 위한 플래그
+  const hasAutoLocatedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!hasAutoLocatedRef.current && typeof navigator !== 'undefined' && navigator.geolocation) {
+      hasAutoLocatedRef.current = true;
+      setIsLocating(true);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setIsLocating(false);
+          const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setMyLocation(userPos);
+          setCenter(userPos);
+          setLevel(4); // 약 100m~250m 상세 레벨
+        },
+        (err) => {
+          setIsLocating(false);
+          console.warn('Initial geolocation failed or denied:', err);
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+  }, []);
+
   // 최근 선택 타겟 또는 포인트 이동 감지
   React.useEffect(() => {
     if (recenterTarget) {
@@ -180,8 +204,13 @@ export const MapView: React.FC<MapViewProps> = ({
     }
   }, [recenterTarget]);
 
-  // 선택된 포인트 변경 시 센터 자동 동기화
+  // 선택된 포인트 변경 시 센터 자동 동기화 (초기 자동 위치 이동과 충돌 방지)
+  const isInitialMount = React.useRef(true);
   React.useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     if (selectedSpot) {
       setCenter({ lat: selectedSpot.lat, lng: selectedSpot.lng });
       setLevel(3);

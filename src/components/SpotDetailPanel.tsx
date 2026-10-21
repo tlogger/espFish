@@ -77,8 +77,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   onClose,
   onMinimize,
 }) => {
-  const [activeTab, setActiveTab] = React.useState<'CONDITIONS' | 'TIDE' | 'LOGS' | 'DIRECTIONS' | 'MEMOS'>('CONDITIONS');
+  const [activeTab, setActiveTab] = React.useState<'WEATHER_TIDE' | 'LOGS' | 'DIRECTIONS' | 'MEMOS'>('WEATHER_TIDE');
   const [activePhotoIndex, setActivePhotoIndex] = React.useState(0);
+  const [isWindyOpen, setIsWindyOpen] = React.useState(false);
 
   // 포인트별 커뮤니티 현장 메모 (Spot Memos) 상태
   const [spotMemos, setSpotMemos] = React.useState<SpotMemo[]>([]);
@@ -480,64 +481,90 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
         </div>
       </div>
 
-      {/* 서브 탭 바 */}
-      <div className="flex border-b border-slate-800 bg-slate-900/90 text-xs font-semibold shrink-0">
+      {/* 머티리얼 디자인 M3 스타일의 직관적인 4대 아이콘 탭 바 */}
+      <div className="flex border-b border-slate-800 bg-slate-900/95 text-xs font-semibold shrink-0 p-1.5 gap-1.5">
         <button
-          onClick={() => setActiveTab('CONDITIONS')}
-          className={`flex-1 py-2.5 text-center transition border-b-2 ${
-            activeTab === 'CONDITIONS'
-              ? 'border-cyan-400 text-cyan-400 bg-slate-800/40'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+          onClick={() => setActiveTab('WEATHER_TIDE')}
+          className={`flex-1 py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition relative ${
+            activeTab === 'WEATHER_TIDE'
+              ? 'bg-gradient-to-b from-cyan-500/20 to-blue-600/10 text-cyan-300 ring-1 ring-cyan-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
+          title="기상 & 물때 통합 뷰"
         >
-          기상 & 해양
+          <Waves size={19} className={activeTab === 'WEATHER_TIDE' ? 'text-cyan-400 scale-110 transition-transform' : ''} />
+          <span className="text-[11px] font-medium tracking-tight">기상·물때</span>
+          {activeTab === 'WEATHER_TIDE' && (
+            <span className="absolute bottom-0 w-8 h-0.5 bg-cyan-400 rounded-full" />
+          )}
         </button>
-        <button
-          onClick={() => setActiveTab('TIDE')}
-          className={`flex-1 py-2.5 text-center transition border-b-2 ${
-            activeTab === 'TIDE'
-              ? 'border-cyan-400 text-cyan-400 bg-slate-800/40'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          물때 & 일출일몰
-        </button>
+
         <button
           onClick={() => setActiveTab('LOGS')}
-          className={`flex-1 py-2.5 text-center transition border-b-2 ${
+          className={`flex-1 py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition relative ${
             activeTab === 'LOGS'
-              ? 'border-cyan-400 text-cyan-400 bg-slate-800/40'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'bg-gradient-to-b from-emerald-500/20 to-teal-600/10 text-emerald-300 ring-1 ring-emerald-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
+          title="조과 기록 및 실측 통계"
         >
-          조과 기록 ({catchLogs.length})
+          <div className="relative">
+            <Fish size={19} className={activeTab === 'LOGS' ? 'text-emerald-400 scale-110 transition-transform' : ''} />
+            {catchLogs.length > 0 && (
+              <span className="absolute -top-1.5 -right-3 px-1.5 py-0.2 rounded-full bg-emerald-500 text-slate-950 text-[9px] font-bold">
+                {catchLogs.length}
+              </span>
+            )}
+          </div>
+          <span className="text-[11px] font-medium tracking-tight">조과</span>
+          {activeTab === 'LOGS' && (
+            <span className="absolute bottom-0 w-8 h-0.5 bg-emerald-400 rounded-full" />
+          )}
         </button>
+
         <button
           onClick={() => setActiveTab('DIRECTIONS')}
-          className={`flex-1 py-2.5 text-center transition border-b-2 ${
+          className={`flex-1 py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition relative ${
             activeTab === 'DIRECTIONS'
-              ? 'border-cyan-400 text-cyan-400 bg-slate-800/40'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'bg-gradient-to-b from-amber-500/20 to-orange-600/10 text-amber-300 ring-1 ring-amber-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
+          title="도보 진입로, 주차 및 공략 팁"
         >
-          진입로 & 공략
+          <Navigation size={19} className={activeTab === 'DIRECTIONS' ? 'text-amber-400 scale-110 transition-transform' : ''} />
+          <span className="text-[11px] font-medium tracking-tight">진입로</span>
+          {activeTab === 'DIRECTIONS' && (
+            <span className="absolute bottom-0 w-8 h-0.5 bg-amber-400 rounded-full" />
+          )}
         </button>
+
         <button
           onClick={() => setActiveTab('MEMOS')}
-          className={`flex-1 py-2.5 text-center transition border-b-2 flex items-center justify-center gap-1 ${
+          className={`flex-1 py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition relative ${
             activeTab === 'MEMOS'
-              ? 'border-cyan-400 text-cyan-400 bg-slate-800/40'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'bg-gradient-to-b from-indigo-500/20 to-purple-600/10 text-indigo-300 ring-1 ring-indigo-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
+          title="조사님들의 실시간 현장 메모 & 방명록"
         >
-          <MessageSquare size={12} />
-          <span>현장 메모 ({spotMemos.length})</span>
+          <div className="relative">
+            <MessageSquare size={19} className={activeTab === 'MEMOS' ? 'text-indigo-400 scale-110 transition-transform' : ''} />
+            {spotMemos.length > 0 && (
+              <span className="absolute -top-1.5 -right-3 px-1.5 py-0.2 rounded-full bg-indigo-500 text-white text-[9px] font-bold">
+                {spotMemos.length}
+              </span>
+            )}
+          </div>
+          <span className="text-[11px] font-medium tracking-tight">현장메모</span>
+          {activeTab === 'MEMOS' && (
+            <span className="absolute bottom-0 w-8 h-0.5 bg-indigo-400 rounded-full" />
+          )}
         </button>
       </div>
 
       {/* 탭 본문 영역 */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {activeTab === 'CONDITIONS' && (
+        {activeTab === 'WEATHER_TIDE' && (
           <div className="space-y-4">
             {/* 단위 빠른 전환 토글 바 */}
             {(onToggleWindUnit || onToggleCurrentUnit) && (
@@ -559,6 +586,67 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     조류: {currentUnit}
                   </button>
                 )}
+              </div>
+            )}
+
+            {/* 1. 오늘 물때 & 실시간 조위 요약 카드 (물때명, 만·간조 시각표, 일출일몰) */}
+            {tide && (
+              <div className="p-3.5 bg-gradient-to-r from-blue-950/70 via-slate-900 to-indigo-950/60 border border-blue-900/60 rounded-2xl shadow-lg space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs text-blue-300 font-semibold">{tide.lunarDateStr}</span>
+                    <div className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+                      <span>{tide.mulText}</span>
+                    </div>
+                  </div>
+                  <div className="text-right text-xs space-y-0.5">
+                    <div className="text-amber-300 font-bold">🌅 일출 {tide.sunrise} (해창)</div>
+                    <div className="text-indigo-300 font-bold">🌇 일몰 {tide.sunset} (피딩)</div>
+                  </div>
+                </div>
+
+                {/* 현재 시각 조위 강조 표시 */}
+                {currentTidePoint && (
+                  <div className="p-2.5 rounded-xl bg-cyan-950/60 border border-cyan-700/60 flex items-center justify-between text-xs">
+                    <span className="font-semibold text-cyan-300">
+                      ⏱️ 현재 시각 ({currentHourStr}) 실시간 조위:
+                    </span>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-base font-extrabold text-white font-mono">
+                        {currentTidePoint.height} cm
+                      </span>
+                      <span className="text-[11px] text-cyan-200">({currentTidePoint.stateText})</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 오늘 만조 / 간조 시각표 및 조위 정보 */}
+                <div className="grid grid-cols-2 gap-2 text-xs pt-1.5 border-t border-slate-800">
+                  <div className="p-2 rounded-xl bg-rose-950/40 border border-rose-900/50">
+                    <div className="text-rose-400 font-semibold mb-1 flex items-center justify-between text-[11px]">
+                      <span>🔴 만조</span>
+                      <span className="text-[10px] text-slate-400">조위(cm)</span>
+                    </div>
+                    {tide.highTides.map((t, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-slate-200 py-0.5 text-xs">
+                        <span className="font-medium">{t.time}</span>
+                        <span className="font-mono font-bold text-rose-300">{t.height} cm</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="p-2 rounded-xl bg-blue-950/40 border border-blue-900/50">
+                    <div className="text-blue-400 font-semibold mb-1 flex items-center justify-between text-[11px]">
+                      <span>🔵 간조</span>
+                      <span className="text-[10px] text-slate-400">조위(cm)</span>
+                    </div>
+                    {tide.lowTides.map((t, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-slate-200 py-0.5 text-xs">
+                        <span className="font-medium">{t.time}</span>
+                        <span className="font-mono font-bold text-blue-300">{t.height} cm</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
             {/* 48시간 미래 환경 타임라인 시뮬레이터 (모바일 및 패널 전용 통합) */}
@@ -730,219 +818,126 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             </div>
 
-            {/* Windy.com 웹 실시간 레이어 임베드 및 안내 */}
-            <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-cyan-400 flex items-center gap-1.5">
-                  🌀 Windy 실시간 바람/파도 레이어
-                </span>
-                <a
-                  href={windyUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
-                >
-                  새 창으로 열기 <ExternalLink size={11} />
-                </a>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                위경도({spot.lat.toFixed(3)}, {spot.lng.toFixed(3)}) 지점의 바람 입자 및 ECMWF/GFS 기상 예측 화면:
-              </p>
-              <div className="relative w-full h-44 rounded-lg overflow-hidden border border-slate-800 bg-slate-900">
-                <iframe
-                  title="Windy Map"
-                  src={`https://embed.windy.com/embed2.html?lat=${spot.lat}&lon=${spot.lng}&detailLat=${spot.lat}&detailLon=${spot.lng}&width=400&height=200&zoom=11&level=surface&overlay=wind&product=ecmwf&menu=&message=&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=m%2Fs&metricTemp=%C2%B0C&radarRange=-1`}
-                  className="w-full h-full border-0"
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'TIDE' && tide && (
-          <div className="space-y-4">
-            {/* 오늘 물때 & 일출일몰 요약 카드 */}
-            <div className="p-3.5 bg-gradient-to-r from-blue-950/60 to-slate-900 border border-blue-900/60 rounded-xl space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-xs text-blue-300 font-semibold">{tide.lunarDateStr}</span>
-                  <div className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
-                    <span>{tide.mulText}</span>
-                  </div>
-                </div>
-                <div className="text-right text-xs space-y-0.5">
-                  <div className="text-amber-300 font-bold">🌅 일출 {tide.sunrise} (해창)</div>
-                  <div className="text-indigo-300 font-bold">🌇 일몰 {tide.sunset} (피딩)</div>
-                </div>
-              </div>
-
-              {/* 현재 시각 조위 강조 표시 */}
-              {currentTidePoint && (
-                <div className="p-2.5 rounded-lg bg-cyan-950/60 border border-cyan-700/60 flex items-center justify-between text-xs">
-                  <span className="font-semibold text-cyan-300">
-                    ⏱️ 현재 시각 ({currentHourStr}) 실시간 조위:
+            {/* 3. 72시간 연속 조석 곡선 & 가로 스크롤 차트 */}
+            {tide && (
+              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-semibold text-slate-200">
+                    🌊 72시간 연속 조위 변화 (3일간 만·간조 흐름)
                   </span>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-base font-extrabold text-white font-mono">
-                      {currentTidePoint.height} cm
-                    </span>
-                    <span className="text-[11px] text-cyan-200">({currentTidePoint.stateText})</span>
-                  </div>
+                  <span className="text-[10px] text-cyan-400 font-medium">
+                    ← 좌우 스크롤 탐색 →
+                  </span>
                 </div>
-              )}
 
-              {/* 오늘 만조 / 간조 시각표 및 조위 정보 */}
-              <div className="grid grid-cols-2 gap-2 text-xs pt-1.5 border-t border-slate-800">
-                <div className="p-2 rounded bg-rose-950/40 border border-rose-900/50">
-                  <div className="text-rose-400 font-semibold mb-1 flex items-center justify-between text-[11px]">
-                    <span>🔴 만조</span>
-                    <span className="text-[10px] text-slate-400">조위(cm)</span>
-                  </div>
-                  {tide.highTides.map((t, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-slate-200 py-0.5 text-xs">
-                      <span className="font-medium">{t.time}</span>
-                      <span className="font-mono font-bold text-rose-300">{t.height} cm</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="p-2 rounded bg-blue-950/40 border border-blue-900/50">
-                  <div className="text-blue-400 font-semibold mb-1 flex items-center justify-between text-[11px]">
-                    <span>🔵 간조</span>
-                    <span className="text-[10px] text-slate-400">조위(cm)</span>
-                  </div>
-                  {tide.lowTides.map((t, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-slate-200 py-0.5 text-xs">
-                      <span className="font-medium">{t.time}</span>
-                      <span className="font-mono font-bold text-blue-300">{t.height} cm</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* 72시간 연속 조석 곡선 & 가로 스크롤 차트 (황금 피딩타임보다 먼저 표시) */}
-            <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
-              <div className="flex justify-between items-center text-xs">
-                <span className="font-semibold text-slate-200">
-                  🌊 72시간 연속 조위 변화 (오늘 0시 기준 3일간)
-                </span>
-                <span className="text-[10px] text-cyan-400 font-medium">
-                  ← 좌우로 스크롤하여 탐색 →
-                </span>
-              </div>
-
-              {/* 가로 스크롤 래퍼 (최소 너비 1300px로 72시간 정밀 시각화) */}
-              <div className="overflow-x-auto w-full pb-2 scrollbar-thin scrollbar-thumb-slate-700">
-                <div className="h-52 w-[1300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={tide.hourly72Curve || tide.hourlyCurve}
-                      margin={{ top: 15, right: 20, left: -20, bottom: 0 }}
-                    >
-                      <defs>
-                        <linearGradient id="tideGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.6} />
-                          <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis
-                        dataKey="timeStr"
-                        stroke="#64748b"
-                        fontSize={10}
-                        tickLine={false}
-                        interval={3}
-                      />
-                      <YAxis stroke="#64748b" fontSize={10} tickLine={false} unit="cm" />
-                      <Tooltip
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            const data = payload[0].payload;
-                            return (
-                              <div className="bg-slate-800 border border-slate-700 p-2.5 rounded-lg text-xs shadow-xl">
-                                <div className="font-bold text-cyan-300">
-                                  {data.dayLabel && <span className="mr-1 text-slate-400">[{data.dayLabel}]</span>}
-                                  {data.timeStr}
+                <div className="overflow-x-auto w-full pb-2 scrollbar-thin scrollbar-thumb-slate-700">
+                  <div className="h-52 w-[1300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart
+                        data={tide.hourly72Curve || tide.hourlyCurve}
+                        margin={{ top: 15, right: 20, left: -20, bottom: 0 }}
+                      >
+                        <defs>
+                          <linearGradient id="tideGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.6} />
+                            <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
+                          </linearGradient>
+                        </defs>
+                        <XAxis
+                          dataKey="timeStr"
+                          stroke="#64748b"
+                          fontSize={10}
+                          tickLine={false}
+                          interval={3}
+                        />
+                        <YAxis stroke="#64748b" fontSize={10} tickLine={false} unit="cm" />
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              return (
+                                <div className="bg-slate-800 border border-slate-700 p-2.5 rounded-lg text-xs shadow-xl">
+                                  <div className="font-bold text-cyan-300">
+                                    {data.dayLabel && <span className="mr-1 text-slate-400">[{data.dayLabel}]</span>}
+                                    {data.timeStr}
+                                  </div>
+                                  <div className="text-slate-100 font-mono">
+                                    조위: <strong className="text-white">{data.height} cm</strong>
+                                  </div>
+                                  <div className="text-slate-400">{data.stateText}</div>
                                 </div>
-                                <div className="text-slate-100 font-mono">
-                                  조위: <strong className="text-white">{data.height} cm</strong>
-                                </div>
-                                <div className="text-slate-400">{data.stateText}</div>
-                              </div>
-                            );
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+
+                        {/* 황금 피딩 타임(Golden Feeding Times) 시간대 밴드 시각화 */}
+                        {tide.feedingTimes?.map((f, fIdx) => {
+                          const curveData = tide.hourly72Curve || tide.hourlyCurve;
+                          const matchStart = curveData.find((c) => c.timeStr === f.startTimeStr) || curveData.find((c) => c.hour === f.startHour);
+                          const matchEnd = curveData.find((c) => c.timeStr === f.endTimeStr) || curveData.find((c) => c.hour === f.endHour);
+
+                          if (!matchStart || !matchEnd) return null;
+
+                          return (
+                            <ReferenceArea
+                              key={`feeding-${fIdx}`}
+                              x1={matchStart.timeStr}
+                              x2={matchEnd.timeStr}
+                              stroke="#f59e0b"
+                              strokeOpacity={0.6}
+                              strokeDasharray="2 2"
+                              fill="#f59e0b"
+                              fillOpacity={0.18}
+                              label={{
+                                value: f.label.split(' ')[0] + ' ' + f.label.split(' ')[1],
+                                position: 'insideTop',
+                                fill: '#fbbf24',
+                                fontSize: 9,
+                                fontWeight: 'bold',
+                              }}
+                            />
+                          );
+                        })}
+
+                        {/* 현재 시각 세로선 표시 */}
+                        <ReferenceLine
+                          x={
+                            tide.hourly72Curve
+                              ? tide.hourly72Curve.find((c) => c.hour === currentHour)?.timeStr
+                              : currentHourStr
                           }
-                          return null;
-                        }}
-                      />
+                          stroke="#22d3ee"
+                          strokeWidth={2}
+                          strokeDasharray="3 3"
+                          label={{
+                            value: `현재 (${currentTidePoint?.height ?? ''}cm)`,
+                            position: 'top',
+                            fill: '#22d3ee',
+                            fontSize: 10,
+                            fontWeight: 'bold',
+                          }}
+                        />
 
-                      {/* 황금 피딩 타임(Golden Feeding Times) 시간대 밴드 시각화 */}
-                      {tide.feedingTimes?.map((f, fIdx) => {
-                        const curveData = tide.hourly72Curve || tide.hourlyCurve;
-                        const matchStart = curveData.find((c) => c.timeStr === f.startTimeStr) || curveData.find((c) => c.hour === f.startHour);
-                        const matchEnd = curveData.find((c) => c.timeStr === f.endTimeStr) || curveData.find((c) => c.hour === f.endHour);
-
-                        if (!matchStart || !matchEnd) return null;
-
-                        return (
-                          <ReferenceArea
-                            key={`feeding-${fIdx}`}
-                            x1={matchStart.timeStr}
-                            x2={matchEnd.timeStr}
-                            stroke="#f59e0b"
-                            strokeOpacity={0.6}
-                            strokeDasharray="2 2"
-                            fill="#f59e0b"
-                            fillOpacity={0.18}
-                            label={{
-                              value: f.label.split(' ')[0] + ' ' + f.label.split(' ')[1],
-                              position: 'insideTop',
-                              fill: '#fbbf24',
-                              fontSize: 9,
-                              fontWeight: 'bold',
-                            }}
-                          />
-                        );
-                      })}
-
-                      {/* 현재 시각 세로선 표시 */}
-                      <ReferenceLine
-                        x={
-                          tide.hourly72Curve
-                            ? tide.hourly72Curve.find((c) => c.hour === currentHour)?.timeStr
-                            : currentHourStr
-                        }
-                        stroke="#22d3ee"
-                        strokeWidth={2}
-                        strokeDasharray="3 3"
-                        label={{
-                          value: `현재 (${currentTidePoint?.height ?? ''}cm)`,
-                          position: 'top',
-                          fill: '#22d3ee',
-                          fontSize: 10,
-                          fontWeight: 'bold',
-                        }}
-                      />
-
-                      <Area
-                        type="monotone"
-                        dataKey="height"
-                        stroke="#22d3ee"
-                        strokeWidth={2.5}
-                        fillOpacity={1}
-                        fill="url(#tideGradient)"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                        <Area
+                          type="monotone"
+                          dataKey="height"
+                          stroke="#22d3ee"
+                          strokeWidth={2.5}
+                          fillOpacity={1}
+                          fill="url(#tideGradient)"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               </div>
+            )}
 
-              <p className="text-[11px] text-slate-400">
-                💡 <strong>골든타임 공략</strong>: 점선(현재 시각 조위) 위치와 만조 시각 사이의 중들물 구간, 그리고 일출(해창)/일몰(피딩) 타임이 겹치는 시점이 최고의 입질 찬스입니다.
-              </p>
-            </div>
-
-            {/* 다가오는 미래 황금 피딩 타임 카드 (조위 그래프 아래에 위치) */}
-            {tide.feedingTimes && tide.feedingTimes.length > 0 && (
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+            {/* 4. 다가오는 황금 피딩 타임 카드 */}
+            {tide?.feedingTimes && tide.feedingTimes.length > 0 && (
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
                   <Clock size={13} />
                   <span>🔥 다가오는 황금 피딩 타임 (현재 시각 이후 입질 찬스)</span>
@@ -951,7 +946,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   {tide.feedingTimes.map((f, idx) => (
                     <div
                       key={idx}
-                      className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-between"
+                      className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between"
                     >
                       <div>
                         <div className="font-bold text-amber-200">{f.label}</div>
@@ -965,8 +960,50 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 </div>
               </div>
             )}
+
+            {/* 5. Windy 정밀 해양기상 레이더 (접이식 아코디언 버튼으로 단순화 & 스크롤 최적화) */}
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setIsWindyOpen(!isWindyOpen)}
+                  className="flex items-center gap-1.5 text-xs font-bold text-cyan-300 hover:text-cyan-200 transition"
+                >
+                  <ChevronDown
+                    size={15}
+                    className={`transition-transform duration-200 ${isWindyOpen ? 'rotate-180' : ''}`}
+                  />
+                  <span>🗺️ Windy 정밀 해양기상 레이더 {isWindyOpen ? '접기' : '펼치기'}</span>
+                </button>
+                <a
+                  href={windyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
+                >
+                  새 창으로 열기 <ExternalLink size={10} />
+                </a>
+              </div>
+
+              {isWindyOpen && (
+                <div className="pt-2 space-y-1">
+                  <p className="text-[10px] text-slate-400">
+                    위경도({spot.lat.toFixed(3)}, {spot.lng.toFixed(3)}) 지점의 바람 입자 및 ECMWF/GFS 기상 예측 화면:
+                  </p>
+                  <div className="relative w-full h-52 rounded-xl overflow-hidden border border-slate-800 bg-slate-900">
+                    <iframe
+                      title="Windy Map"
+                      src={`https://embed.windy.com/embed2.html?lat=${spot.lat}&lon=${spot.lng}&detailLat=${spot.lat}&detailLon=${spot.lng}&width=400&height=200&zoom=11&level=surface&overlay=wind&product=ecmwf&menu=&message=&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=m%2Fs&metricTemp=%C2%B0C&radarRange=-1`}
+                      className="w-full h-full border-0"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
+
+
 
         {activeTab === 'LOGS' && (
           <div className="space-y-3">
