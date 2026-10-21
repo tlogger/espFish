@@ -7,9 +7,11 @@ import {
   Circle,
   useKakaoLoader,
 } from 'react-kakao-maps-sdk';
-import { AlertCircle, Check, Crosshair, Star } from 'lucide-react';
+import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon } from 'lucide-react';
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo } from '../types';
 import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
+import { KOREA_DEPTH_CONTOURS, estimateDepthAtPoint } from '../data/depthContours';
+import { getSavedTackleConfig, saveTackleConfig, TackleRigConfig } from '../utils/tackleCalibration';
 
 // 카카오 디벨로퍼스 JavaScript 앱 키
 const KAKAO_APP_KEY = '61ebf0b7a0daf24cba357d92677c8d8a';
@@ -145,6 +147,36 @@ export const MapView: React.FC<MapViewProps> = ({
       return next;
     });
   };
+
+  // KHOA 국가해양격자 수심 등심선 오버레이 표시 여부
+  const [showDepthContours, setShowDepthContours] = React.useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('exfish_show_depth_contours') === 'true';
+    }
+    return false;
+  });
+
+  const toggleDepthContours = () => {
+    setShowDepthContours((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('exfish_show_depth_contours', String(next));
+      }
+      return next;
+    });
+  };
+
+  // 공기역학 채비 캘리브레이션 (루어 무게 g & PE 라인 호수)
+  const [tackleConfig, setTackleConfig] = React.useState<TackleRigConfig>(() => getSavedTackleConfig());
+  const [isTacklePopoverOpen, setIsTacklePopoverOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleTackleUpdate = () => {
+      setTackleConfig(getSavedTackleConfig());
+    };
+    window.addEventListener('exfish_tackle_updated', handleTackleUpdate);
+    return () => window.removeEventListener('exfish_tackle_updated', handleTackleUpdate);
+  }, []);
 
   // 모드 변경 시 localStorage 영구 저장
   const handleModeChange = (mode: MapMode) => {
@@ -363,7 +395,43 @@ export const MapView: React.FC<MapViewProps> = ({
           setCenter({ lat: latLng.getLat(), lng: latLng.getLng() });
         }}
       >
-        {/* 선택된 포인트의 캐스팅 비거리 동심원 눈금 링 및 유효 공략 부채꼴 섹터 (30m / 60m / 100m 거리 표기) */}
+        {/* KHOA 국가해양격자 벡터 수심 등심선 오버레이 (5m, 10m, 20m, 50m) */}
+        {showDepthContours && (
+          <React.Fragment key="khoa-depth-contours-layer">
+            {KOREA_DEPTH_CONTOURS.map((contour) => (
+              <React.Fragment key={`contour-${contour.id}`}>
+                <Polyline
+                  path={contour.path}
+                  strokeWeight={contour.depthMeters <= 5 ? 2.2 : contour.depthMeters <= 10 ? 2 : 1.5}
+                  strokeColor={contour.color}
+                  strokeOpacity={0.85}
+                  strokeStyle={contour.depthMeters === 5 ? 'shortdash' : contour.depthMeters === 10 ? 'solid' : 'dash'}
+                  zIndex={15}
+                />
+                <CustomOverlayMap
+                  position={contour.labelPos}
+                  yAnchor={0.5}
+                  xAnchor={0.5}
+                  zIndex={16}
+                  clickable={false}
+                >
+                  <div
+                    className="px-1.5 py-0.5 rounded text-[8.5px] font-bold font-mono shadow-md pointer-events-none kakao-invert-restore select-none whitespace-nowrap border"
+                    style={{
+                      backgroundColor: '#020617f0',
+                      color: contour.color,
+                      borderColor: `${contour.color}77`,
+                    }}
+                  >
+                    -{contour.depthMeters}m ({contour.name})
+                  </div>
+                </CustomOverlayMap>
+              </React.Fragment>
+            ))}
+          </React.Fragment>
+        )}
+
+        {/* 선택된 포인트의 캐스팅 비거리 동심원 눈금 링 및 유효 공략 부채꼴 섹터 (채비 캘리브레이션 거리 반영) */}
         {showCastingArrows && selectedSpot && (() => {
           let startDeg = selectedSpot.casting_start_deg;
           let endDeg = selectedSpot.casting_end_deg;
@@ -386,11 +454,12 @@ export const MapView: React.FC<MapViewProps> = ({
 
           const span = endDeg >= startDeg ? endDeg - startDeg : 360 - startDeg + endDeg;
           const centerBearing = (startDeg + span / 2) % 360;
-          const radii = [30, 60, 100];
+          const radii = tackleConfig.radii;
+          const maxRadius = radii[2];
 
-          // 좌우 유효 경계선 (100m 지점까지 뻗어나가는 레이더 가이드 선)
-          const leftEdge = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, startDeg, 100);
-          const rightEdge = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, endDeg, 100);
+          // 좌우 유효 경계선 (최대 사거리 지점까지 뻗어나가는 레이더 가이드 선)
+          const leftEdge = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, startDeg, maxRadius);
+          const rightEdge = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, endDeg, maxRadius);
 
           return (
             <React.Fragment key={`range-sector-${selectedSpot.id}`}>
@@ -510,9 +579,19 @@ export const MapView: React.FC<MapViewProps> = ({
           const span = endDeg >= startDeg ? endDeg - startDeg : 360 - startDeg + endDeg;
           const bearing = (startDeg + span / 2) % 360; // 중심 방위각
 
-          // 1. 파란색 캐스팅 방향 화살표 (공략 유효 범위 중심 방위)
-          const tip = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, 55);
-          const badgePos = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, 58);
+          const baseDist = tackleConfig.calibratedDistanceMeters;
+          const tipDist = Math.max(20, Math.round(baseDist * 0.9));
+          const tip = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, tipDist);
+          const badgePos = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, tipDist + 4);
+
+          // 착수 지점 수심 선형 추정 (KHOA 국가해양격자 수심 모델 기반)
+          const landingDepth = estimateDepthAtPoint(
+            selectedSpot.lat,
+            selectedSpot.lng,
+            tip[0],
+            tip[1],
+            selectedSpot.spot_type
+          );
 
           const castingLines = (
             <React.Fragment key={`selected-casting-${selectedSpot.id}`}>
@@ -534,8 +613,15 @@ export const MapView: React.FC<MapViewProps> = ({
                 zIndex={55}
                 clickable={false}
               >
-                <div className="px-2 py-0.5 rounded-full bg-blue-950/95 text-blue-300 border border-blue-400/80 text-[9px] font-bold shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                  🎯 캐스팅 공략각 {startDeg}°~{endDeg}° ({getCompassDirection(bearing)})
+                <div className="flex flex-col items-center gap-1 pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
+                  <div className="px-2 py-0.5 rounded-full bg-blue-950/95 text-blue-300 border border-blue-400/80 text-[9px] font-bold shadow-lg">
+                    🎯 캐스팅 공략각 {startDeg}°~{endDeg}° ({getCompassDirection(bearing)})
+                  </div>
+                  <div className="px-2 py-0.5 rounded-full bg-slate-950/95 text-cyan-300 border border-cyan-500/80 text-[8.5px] font-mono font-bold shadow-lg flex items-center gap-1">
+                    <span>🌊 착수 예상수심: 약 -{landingDepth}m</span>
+                    <span className="text-slate-500">|</span>
+                    <span className="text-slate-300">{tackleConfig.weightGrams}g ({tackleConfig.peLineSize}호)</span>
+                  </div>
                 </div>
               </CustomOverlayMap>
             </React.Fragment>
@@ -562,13 +648,13 @@ export const MapView: React.FC<MapViewProps> = ({
               windColor = '#10b981'; // 에메랄드 그린
               const tailFactor = Math.cos((angleDiff * Math.PI) / 180);
               ratio = Math.min(1.35, 1 + tailFactor * (weather.windSpeed / 10) * 0.28);
-              const plusMeters = Math.round((ratio - 1) * 60);
+              const plusMeters = Math.round((ratio - 1) * baseDist);
               windTypeLabel = `등바람 (비거리 +${plusMeters}m)`;
             } else if (isHeadwind) {
               windColor = '#ef4444'; // 로즈 레드
               const headFactor = Math.abs(Math.cos((angleDiff * Math.PI) / 180));
               ratio = Math.max(0.65, 1 - headFactor * (weather.windSpeed / 10) * 0.28);
-              const minusMeters = Math.round((1 - ratio) * 60);
+              const minusMeters = Math.round((1 - ratio) * baseDist);
               windTypeLabel = `맞바람 (비거리 -${minusMeters}m)`;
             } else {
               windColor = '#f59e0b'; // 황금/호박색
@@ -577,7 +663,7 @@ export const MapView: React.FC<MapViewProps> = ({
               windTypeLabel = '옆바람 (줄날림 주의)';
             }
 
-            const effDist = Math.round(60 * ratio);
+            const effDist = Math.round(baseDist * ratio);
 
             // 바람 진행 벡터 화살표 (바람이 불어가는 방향으로 45m 뻗어감)
             const windTip = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, windVectorDeg, 45);
@@ -650,7 +736,7 @@ export const MapView: React.FC<MapViewProps> = ({
                       borderColor: `${windColor}aa`,
                     }}
                   >
-                    🎯 실질 비거리 {effDist}m ({isTailwind ? `등바람 +${Math.round((ratio - 1) * 60)}m` : isHeadwind ? `맞바람 -${Math.round((1 - ratio) * 60)}m` : '옆바람 감쇄'})
+                    🎯 실질 비거리 {effDist}m ({isTailwind ? `등바람 +${Math.round((ratio - 1) * baseDist)}m` : isHeadwind ? `맞바람 -${Math.round((1 - ratio) * baseDist)}m` : '옆바람 감쇄'})
                   </div>
                 </CustomOverlayMap>
               </React.Fragment>
@@ -999,8 +1085,34 @@ export const MapView: React.FC<MapViewProps> = ({
           </button>
         </div>
 
-        {/* 보조 액션 버튼들 (찜한 포인트 필터 & GPS 내 위치) */}
+        {/* 보조 액션 버튼들 (수심선 토글 & 채비 캘리브레이션 & 찜한 포인트 필터 & GPS 내 위치) */}
         <div className="flex items-center gap-2">
+          {/* KHOA 수심 등심선(5m/10m/20m/50m) 토글 버튼 */}
+          <button
+            onClick={toggleDepthContours}
+            className={`p-2.5 border rounded-xl shadow-xl backdrop-blur flex items-center justify-center transition active:scale-95 ${
+              showDepthContours
+                ? 'bg-blue-600 text-white border-blue-400 shadow-blue-500/30 ring-1 ring-blue-400'
+                : 'bg-slate-900/95 hover:bg-slate-800 text-slate-400 border-slate-700/80'
+            }`}
+            title={showDepthContours ? 'KHOA 수심 등심선(5m/10m/20m/50m) 숨기기' : 'KHOA 수심 등심선(5m/10m/20m/50m) 켜기'}
+          >
+            <WavesIcon size={16} className={showDepthContours ? 'text-white' : 'text-slate-400'} />
+          </button>
+
+          {/* 공기역학 채비 캘리브레이션 버튼 */}
+          <button
+            onClick={() => setIsTacklePopoverOpen(!isTacklePopoverOpen)}
+            className={`p-2.5 border rounded-xl shadow-xl backdrop-blur flex items-center justify-center transition active:scale-95 ${
+              isTacklePopoverOpen
+                ? 'bg-cyan-600 text-white border-cyan-400 ring-1 ring-cyan-400'
+                : 'bg-slate-900/95 hover:bg-slate-800 text-slate-400 border-slate-700/80'
+            }`}
+            title="채비 공기역학 캘리브레이션 (루어 무게 & PE 라인 호수 설정)"
+          >
+            <Sliders size={16} className={isTacklePopoverOpen ? 'text-white' : 'text-slate-400'} />
+          </button>
+
           {/* 찜한 포인트만 보기 필터 */}
           <button
             onClick={() => setViewOnlyFavorites(!viewOnlyFavorites)}
@@ -1028,6 +1140,88 @@ export const MapView: React.FC<MapViewProps> = ({
             )}
           </button>
         </div>
+
+        {/* 채비 공기역학 캘리브레이션 플로팅 팝업 */}
+        {isTacklePopoverOpen && (
+          <div className="w-64 bg-slate-950/95 border border-cyan-500/60 rounded-2xl p-3.5 shadow-2xl backdrop-blur text-white flex flex-col gap-3 animate-fade-in text-xs pointer-events-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+              <div className="flex items-center gap-1.5 font-bold text-cyan-300">
+                <Sliders size={14} className="text-cyan-400" />
+                <span>채비 공기역학 캘리브레이터</span>
+              </div>
+              <button
+                onClick={() => setIsTacklePopoverOpen(false)}
+                className="text-slate-400 hover:text-white text-xs px-1.5 py-0.5 rounded bg-slate-800"
+              >
+                닫기
+              </button>
+            </div>
+
+            {/* 루어/싱커 무게 슬라이더 */}
+            <div className="space-y-1">
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-slate-300">루어/싱커 무게</span>
+                <span className="font-mono font-bold text-cyan-300">{tackleConfig.weightGrams}g</span>
+              </div>
+              <input
+                type="range"
+                min={5}
+                max={80}
+                step={1}
+                value={tackleConfig.weightGrams}
+                onChange={(e) => {
+                  const w = Number(e.target.value);
+                  const updated = saveTackleConfig(w, tackleConfig.peLineSize);
+                  setTackleConfig(updated);
+                }}
+                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+              />
+              <div className="flex justify-between text-[9px] text-slate-500 font-mono">
+                <span>5g (웜/지그)</span>
+                <span>25g (스푼)</span>
+                <span>80g (메탈)</span>
+              </div>
+            </div>
+
+            {/* 합사 라인 호수 슬라이더 */}
+            <div className="space-y-1">
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-slate-300">원줄 합사(PE)</span>
+                <span className="font-mono font-bold text-cyan-300">{tackleConfig.peLineSize.toFixed(1)}호</span>
+              </div>
+              <input
+                type="range"
+                min={0.4}
+                max={2.5}
+                step={0.1}
+                value={tackleConfig.peLineSize}
+                onChange={(e) => {
+                  const pe = Number(e.target.value);
+                  const updated = saveTackleConfig(tackleConfig.weightGrams, pe);
+                  setTackleConfig(updated);
+                }}
+                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+              />
+              <div className="flex justify-between text-[9px] text-slate-500 font-mono">
+                <span>0.4호 (아징)</span>
+                <span>1.0호 (에깅/농어)</span>
+                <span>2.5호 (쇼어지깅)</span>
+              </div>
+            </div>
+
+            {/* 계산된 물리 기준 비거리 및 3단 동심원 반경 */}
+            <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1 text-[11px]">
+              <div className="flex justify-between text-slate-300">
+                <span>공기역학 기준 비거리:</span>
+                <span className="font-mono font-bold text-cyan-300">{tackleConfig.calibratedDistanceMeters}m</span>
+              </div>
+              <div className="flex justify-between text-slate-400 text-[10px]">
+                <span>동심원 반경 3단:</span>
+                <span className="font-mono text-emerald-400">{tackleConfig.radii.join('m / ')}m</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* [요구사항 2] 위성지도 기반 2D 평면 포인트 마커 드래깅 미세 조정 HUD (좌표 표시 + 1m D-Pad 보조 + 확정/취소) */}
@@ -1140,7 +1334,12 @@ export const MapView: React.FC<MapViewProps> = ({
         <span>💡 해안·갯바위를 클릭하면 <strong>새 포인트를 추가</strong>할 수 있습니다.</span>
         {showCastingArrows && (
           <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
-            🎯 캐스팅 공략 화살표 표시 중 (30/60/100m 비거리)
+            🎯 채비 기준비거리 {tackleConfig.calibratedDistanceMeters}m ({tackleConfig.radii.join('/')}m 링)
+          </span>
+        )}
+        {showDepthContours && (
+          <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 font-bold">
+            🌊 KHOA 수심 등심선(5/10/20/50m) 표시 중
           </span>
         )}
       </div>

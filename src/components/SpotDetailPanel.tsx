@@ -28,7 +28,10 @@ import {
   Thermometer,
   Trash2,
   Waves,
-  Wind
+  Wind,
+  Volume2,
+  Sliders,
+  Bell
 } from 'lucide-react';
 import { Area, AreaChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type {
@@ -51,6 +54,9 @@ import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 import { getSpeciesRigInfo } from '../utils/speciesRigs';
 import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeatherText, getWindyWebUrl, calculateSwellRisk } from '../utils/weatherApi';
 import { generatePostMortemReport } from '../utils/postMortemEngine';
+import { findNearestKhoaStation } from '../utils/khoaTideEngine';
+import { playEvacuationBeep } from '../utils/tideAlertSound';
+import { getSavedTackleConfig, saveTackleConfig, TackleRigConfig } from '../utils/tackleCalibration';
 
 interface SpotDetailPanelProps {
   spot: FishingSpot;
@@ -98,6 +104,40 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   const [isWindyOpen, setIsWindyOpen] = React.useState(false);
   const [isChecklistOpen, setIsChecklistOpen] = React.useState(false);
   const [expandedSpecies, setExpandedSpecies] = React.useState<string | null>(null);
+
+  // 채비 공기역학 캘리브레이션 동기화 상태
+  const [tackleConfig, setTackleConfig] = React.useState<TackleRigConfig>(() => getSavedTackleConfig());
+
+  React.useEffect(() => {
+    const handleTackleUpdate = () => {
+      setTackleConfig(getSavedTackleConfig());
+    };
+    window.addEventListener('exfish_tackle_updated', handleTackleUpdate);
+    return () => window.removeEventListener('exfish_tackle_updated', handleTackleUpdate);
+  }, []);
+
+  // 갯바위 들물 탈출 골든타임 비프 경보 활성화 상태
+  const [isEvacAlarmEnabled, setIsEvacAlarmEnabled] = React.useState(false);
+  const evacAlarmIntervalRef = React.useRef<any>(null);
+
+  React.useEffect(() => {
+    if (isEvacAlarmEnabled) {
+      playEvacuationBeep();
+      evacAlarmIntervalRef.current = setInterval(() => {
+        playEvacuationBeep();
+      }, 25000); // 25초마다 위험 경보음 발생
+    } else {
+      if (evacAlarmIntervalRef.current) {
+        clearInterval(evacAlarmIntervalRef.current);
+        evacAlarmIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (evacAlarmIntervalRef.current) {
+        clearInterval(evacAlarmIntervalRef.current);
+      }
+    };
+  }, [isEvacAlarmEnabled]);
 
   // 포인트별 커뮤니티 현장 메모 (Spot Memos) 상태
   const [spotMemos, setSpotMemos] = React.useState<SpotMemo[]>([]);
@@ -665,6 +705,131 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               );
             })()}
 
+            {/* [항목 1] 갯바위 들물 고립 방지 탈출 골든타임 카운트다운 타이머 & 비프 경보 */}
+            {tide && (() => {
+              if (!tide.lowTides || tide.lowTides.length === 0) return null;
+              const now = new Date();
+              const curMins = now.getHours() * 60 + now.getMinutes();
+
+              // 가장 인접한 간조(들물 시작점) 찾기
+              let nearestLow: { time: string; height: number; diffMinutes: number } | null = null;
+              for (const lt of tide.lowTides) {
+                const [lh, lm] = lt.time.split(':').map(Number);
+                const lowMins = lh * 60 + lm;
+                const diff = curMins - lowMins;
+                if (diff >= -60 && diff <= 300) {
+                  if (!nearestLow || Math.abs(diff) < Math.abs(nearestLow.diffMinutes)) {
+                    nearestLow = { time: lt.time, height: lt.height, diffMinutes: diff };
+                  }
+                }
+              }
+
+              if (!nearestLow) return null;
+
+              const isFloodStarted = nearestLow.diffMinutes >= 0;
+              const elapsedMinutes = Math.max(0, nearestLow.diffMinutes);
+              const safeWindowMinutes = 90; // 간조 후 90분 이내 철수 권장
+              const remainingMinutes = safeWindowMinutes - elapsedMinutes;
+
+              const isDanger = isFloodStarted && remainingMinutes <= 0;
+              const isCaution = isFloodStarted && remainingMinutes > 0 && remainingMinutes <= 30;
+              const isSafe = isFloodStarted && remainingMinutes > 30;
+
+              return (
+                <div
+                  className={`p-3 rounded-2xl border text-xs shadow-xl space-y-2 transition-all ${
+                    isDanger
+                      ? 'bg-rose-950/95 border-rose-500 text-rose-100 ring-2 ring-rose-500/50 animate-pulse'
+                      : isCaution
+                      ? 'bg-amber-950/90 border-amber-500/80 text-amber-100 shadow-amber-950/50'
+                      : 'bg-slate-900/90 border-slate-700/80 text-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <Clock size={16} className={isDanger ? 'text-rose-400 animate-spin' : isCaution ? 'text-amber-400' : 'text-cyan-400'} />
+                      <span className={isDanger ? 'text-rose-200 text-sm' : isCaution ? 'text-amber-200' : 'text-cyan-200'}>
+                        {isDanger
+                          ? '🚨 [갯바위 침수 고립 위험] 즉시 철수하십시오!'
+                          : isCaution
+                          ? '⚠️ [들물 탈출 골든타임 임박] 안전 철수 준비'
+                          : isSafe
+                          ? '⏱️ 갯바위 들물 탈출 골든타임 카운트다운'
+                          : '🌊 [간조 임박] 들물 안전 계획'}
+                      </span>
+                    </div>
+
+                    {/* 비프 경보음 토글 및 테스트 버튼 */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => playEvacuationBeep()}
+                        className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[10px] flex items-center gap-1 transition active:scale-95"
+                        title="대피 비프 경보음 1회 테스트"
+                      >
+                        <Volume2 size={12} className="text-cyan-400" />
+                        <span>소리 테스트</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsEvacAlarmEnabled(!isEvacAlarmEnabled)}
+                        className={`px-2 py-0.5 rounded-lg border text-[10px] flex items-center gap-1 font-bold transition active:scale-95 ${
+                          isEvacAlarmEnabled
+                            ? 'bg-rose-600 text-white border-rose-400 ring-1 ring-rose-300 animate-pulse'
+                            : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+                        }`}
+                        title="주기적 비프 경보 알람 토글"
+                      >
+                        <Bell size={12} className={isEvacAlarmEnabled ? 'text-white' : 'text-slate-400'} />
+                        <span>{isEvacAlarmEnabled ? '경보음 켜짐' : '비프 알람'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800/80">
+                    <div>
+                      <span className="text-slate-400">기준 간조: </span>
+                      <strong className="text-cyan-300 font-mono">{nearestLow.time}</strong>
+                      <span className="text-slate-400"> ({nearestLow.height}cm)</span>
+                      {isFloodStarted ? (
+                        <span className="text-slate-400 ml-1.5">
+                          · 들물 <strong className="text-amber-300 font-mono">{elapsedMinutes}분</strong> 경과
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 ml-1.5">
+                          · 간조까지 <strong className="text-cyan-300 font-mono">{Math.abs(nearestLow.diffMinutes)}분</strong> 전
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-right">
+                      {isFloodStarted ? (
+                        remainingMinutes > 0 ? (
+                          <span className="font-bold text-amber-300">
+                            탈출 잔여: <span className="text-sm font-mono text-white">{remainingMinutes}분</span>
+                          </span>
+                        ) : (
+                          <span className="font-bold text-rose-400 animate-pulse">
+                            골든타임 초과 (+{Math.abs(remainingMinutes)}분)
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-cyan-300 font-bold">간조 후 90분 골든타임 예정</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-slate-300 leading-snug">
+                    {isDanger
+                      ? '⚠️ 바닷물이 갯바위 하산로나 낮은 진입로를 이미 삼켰을 수 있습니다. 테트라포드나 갯바위에 서 있지 말고 해경(119/122)에 구조를 요청하거나 즉시 고지대로 대피하세요.'
+                      : isCaution
+                      ? '💡 갯바위는 간조 후 1시간 30분이 지나면 발목 이상 물이 차올라 짐을 챙기기 어려워집니다. 지금 즉시 낚싯대를 접고 철수하십시오.'
+                      : '💡 서해/남해 갯바위는 들물 시작 시 퇴로가 가장 먼저 잠깁니다. 안전을 위해 간조 후 90분 이내에 반드시 육지로 철수하세요.'}
+                  </p>
+                </div>
+              );
+            })()}
+
             {/* [요구사항 3] 오늘 물때 & 일출/일몰, 만조/간조 텍스트 간단 요약 표기 */}
             {tide && (
               <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-2xl shadow-md space-y-1.5 text-xs">
@@ -1026,6 +1191,30 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             {/* 3. [제안 6] 현재 시각 기준 연속 조위 변화 곡선 (-6h ~ +36h, 스크롤 없는 반응형 100% 뷰) */}
             {tide && (
               <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2.5">
+                {/* [항목 5] KHOA 53개 관측소 실시간 API 연동 & 잔차 지수감쇄 하이브리드 엔진 뱃지 */}
+                {(() => {
+                  const stationInfo = findNearestKhoaStation(spot.lat, spot.lng);
+                  return (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-cyan-800/60 text-xs">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                        <span className="font-bold text-cyan-200">
+                          📍 KHOA 국립해양조사원 {stationInfo.station.name} 관측소
+                        </span>
+                        <span className="font-mono text-[10.5px] text-slate-400">
+                          (직선거리 {stationInfo.distanceKm}km, 코드 {stationInfo.station.code})
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px]">
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono font-bold flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          <span>하이브리드 잔차(e^-λt) 보정 가동중</span>
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-bold text-slate-200 flex items-center gap-1.5">
                     🌊 조위 변화 곡선 (-6h ~ +36h 실시간 예측)
@@ -1818,6 +2007,87 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 <p className="text-xs text-slate-300 leading-relaxed">{spot.description}</p>
               </div>
             )}
+
+            {/* [항목 3] 유저 맞춤형 공기역학 채비 항력 계수(Cd) 캘리브레이터 */}
+            <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                  <Sliders size={14} className="text-cyan-400" />
+                  <span>공기역학 채비 캘리브레이터 (비거리/눈금링 연동)</span>
+                </span>
+                <span className="text-[10.5px] font-mono text-cyan-400 font-bold bg-cyan-950/80 px-2 py-0.5 rounded-full border border-cyan-800/60">
+                  기준 {tackleConfig.calibratedDistanceMeters}m
+                </span>
+              </div>
+
+              <div className="space-y-2.5 text-xs">
+                {/* 루어 / 싱커 무게 */}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-slate-300">루어/봉돌 무게:</span>
+                    <span className="font-mono font-bold text-cyan-300">{tackleConfig.weightGrams}g</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={5}
+                    max={80}
+                    step={1}
+                    value={tackleConfig.weightGrams}
+                    onChange={(e) => {
+                      const w = Number(e.target.value);
+                      const updated = saveTackleConfig(w, tackleConfig.peLineSize);
+                      setTackleConfig(updated);
+                    }}
+                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                  />
+                  <div className="flex justify-between text-[9px] text-slate-500 font-mono">
+                    <span>5g (지그헤드)</span>
+                    <span>25g (스푼/원투)</span>
+                    <span>80g (헤비 메탈)</span>
+                  </div>
+                </div>
+
+                {/* 원줄 합사 PE 호수 */}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-slate-300">합사(PE) 라인 굵기:</span>
+                    <span className="font-mono font-bold text-cyan-300">{tackleConfig.peLineSize.toFixed(1)}호</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.4}
+                    max={2.5}
+                    step={0.1}
+                    value={tackleConfig.peLineSize}
+                    onChange={(e) => {
+                      const pe = Number(e.target.value);
+                      const updated = saveTackleConfig(tackleConfig.weightGrams, pe);
+                      setTackleConfig(updated);
+                    }}
+                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                  />
+                  <div className="flex justify-between text-[9px] text-slate-500 font-mono">
+                    <span>0.4호 (극세 라인)</span>
+                    <span>1.0호 (표준)</span>
+                    <span>2.5호 (태클 헤비)</span>
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1 text-[11px]">
+                  <div className="flex justify-between text-slate-300">
+                    <span>공기역학 산출 사거리:</span>
+                    <strong className="text-cyan-300 font-mono">{tackleConfig.calibratedDistanceMeters}m</strong>
+                  </div>
+                  <div className="flex justify-between text-slate-400 text-[10.5px]">
+                    <span>지도 동심원 눈금 링 반경:</span>
+                    <span className="text-emerald-400 font-mono font-semibold">{tackleConfig.radii.join('m · ')}m</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-800 leading-snug">
+                    * 지도 화면의 3단 동심원과 파란색 캐스팅 화살표 착수 지점, 착수 수심이 위 설정에 맞춰 실시간으로 동적 갱신됩니다.
+                  </p>
+                </div>
+              </div>
+            </div>
 
             {/* 유튜브 실시간 현장 조황 & 낚시 영상 링크 (최신순 검색) */}
             <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
