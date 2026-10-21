@@ -124,6 +124,7 @@ export const MapView: React.FC<MapViewProps> = ({
     return [];
   });
   const [viewOnlyFavorites, setViewOnlyFavorites] = React.useState(false);
+  const [showUnderwaterReefs, setShowUnderwaterReefs] = React.useState(true);
 
   const toggleFavorite = (spotId: string) => {
     setFavoriteSpotIds((prev) => {
@@ -433,6 +434,175 @@ export const MapView: React.FC<MapViewProps> = ({
                   </React.Fragment>
                 );
               })}
+            </React.Fragment>
+          );
+        })()}
+
+        {/* 1. [제안 1] 바람·조류 상호작용 기반: 실질 캐스팅 유효 비거리 보정 링 & 채비 흘림 예상선 (Drift Path) */}
+        {showCastingArrows && selectedSpot && (
+          <React.Fragment key={`drift-physics-${selectedSpot.id}`}>
+            {(() => {
+              const castingDirs = selectedSpot.casting_directions || [];
+              const primaryDir = castingDirs.find((d) => d !== 'ALL') || 'E';
+              const bearing = CASTING_BEARINGS[primaryDir]?.deg ?? 90;
+
+              // (1) 실시간 바람 상호작용: 등바람(+) vs 맞바람(-) 실질 도달 비거리 보정 호
+              let windAdjustedRing = null;
+              if (weather) {
+                const windDiff = Math.abs(bearing - weather.windDirection) % 360;
+                const normAngle = windDiff > 180 ? 360 - windDiff : windDiff;
+                const windCos = Math.cos((normAngle * Math.PI) / 180);
+                // 기준 60m 비거리 기준 (풍속 1m/s당 약 2.5% 가감)
+                const ratio = Math.max(0.65, Math.min(1.35, 1 + windCos * (weather.windSpeed / 10) * 0.28));
+                const effDist = Math.round(60 * ratio);
+
+                // 부채꼴 호 생성
+                const arcPts: { lat: number; lng: number }[] = [];
+                for (let b = bearing - 22; b <= bearing + 22; b += 2) {
+                  const [pLat, pLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, b, effDist);
+                  arcPts.push({ lat: pLat, lng: pLng });
+                }
+                const [effLabelLat, effLabelLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, effDist);
+
+                windAdjustedRing = (
+                  <React.Fragment key={`eff-wind-${selectedSpot.id}`}>
+                    <Polyline
+                      path={arcPts}
+                      strokeWeight={2.5}
+                      strokeColor={ratio >= 1.0 ? '#34d399' : '#f43f5e'}
+                      strokeOpacity={0.9}
+                      strokeStyle="shortdash"
+                      zIndex={32}
+                    />
+                    <CustomOverlayMap
+                      position={{ lat: effLabelLat, lng: effLabelLng }}
+                      yAnchor={1.4}
+                      xAnchor={0.5}
+                      zIndex={36}
+                      clickable={false}
+                    >
+                      <div
+                        className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold font-mono shadow-lg border pointer-events-none kakao-invert-restore select-none whitespace-nowrap ${
+                          ratio >= 1.0
+                            ? 'bg-emerald-950/95 text-emerald-300 border-emerald-400/80'
+                            : 'bg-rose-950/95 text-rose-300 border-rose-400/80'
+                        }`}
+                      >
+                        🎯 실질 비거리 {effDist}m ({ratio >= 1.0 ? `등바람 +${Math.round((ratio - 1) * 60)}m` : `맞바람 -${Math.round((1 - ratio) * 60)}m`})
+                      </div>
+                    </CustomOverlayMap>
+                  </React.Fragment>
+                );
+              }
+
+              // (2) 실시간 조류 상호작용: 50m 착수 지점 기준 채비 흘림 예상선 (Drift Path)
+              let currentDriftLine = null;
+              if (marine && (marine.currentVelocity ?? 0) > 0.05) {
+                const landing = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, 50);
+                const driftDist = Math.max(18, Math.min(45, (marine.currentVelocity ?? 0.3) * 65));
+                const driftEnd = calculateDestinationPoint(landing[0], landing[1], marine.currentDirection, driftDist);
+                const driftMid = calculateDestinationPoint(landing[0], landing[1], marine.currentDirection, driftDist * 0.5);
+
+                currentDriftLine = (
+                  <React.Fragment key={`drift-path-${selectedSpot.id}`}>
+                    <Polyline
+                      path={[
+                        { lat: landing[0], lng: landing[1] },
+                        { lat: driftEnd[0], lng: driftEnd[1] },
+                      ]}
+                      endArrow={true}
+                      strokeWeight={3}
+                      strokeColor="#10b981"
+                      strokeOpacity={0.85}
+                      strokeStyle="dash"
+                      zIndex={34}
+                    />
+                    <CustomOverlayMap
+                      position={{ lat: driftMid[0], lng: driftMid[1] }}
+                      yAnchor={0.5}
+                      xAnchor={0.5}
+                      zIndex={37}
+                      clickable={false}
+                    >
+                      <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-emerald-300 border border-emerald-500/70 text-[9px] font-bold shadow-md pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
+                        🌊 채비 흘림 ({(marine.currentVelocity ?? 0.3).toFixed(1)}m/s)
+                      </div>
+                    </CustomOverlayMap>
+                  </React.Fragment>
+                );
+              }
+
+              return (
+                <>
+                  {windAdjustedRing}
+                  {currentDriftLine}
+                </>
+              );
+            })()}
+          </React.Fragment>
+        )}
+
+        {/* 2. [제안 4] 위성 스카이뷰 수중 지형(간출암/수중 여밭, 물골 수로) 심도 음영 오버레이 */}
+        {showUnderwaterReefs && showCastingArrows && selectedSpot && (() => {
+          const castingDirs = selectedSpot.casting_directions || [];
+          const primaryDir = castingDirs.find((d) => d !== 'ALL') || 'E';
+          const bearing = CASTING_BEARINGS[primaryDir]?.deg ?? 90;
+
+          // (1) 수중 여밭 클러스터 (간조 시 노출되는 간출암 은신처, 약 38m 지점)
+          const reefCenter = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing - 8, 38);
+          // (2) 본류 물골 라인 (조류가 관통하는 심도 수로, 약 75m 지점)
+          const trenchP1 = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing - 32, 75);
+          const trenchP2 = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing + 32, 78);
+          const trenchMid = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, 76);
+
+          return (
+            <React.Fragment key={`underwater-topography-${selectedSpot.id}`}>
+              {/* 여밭 클러스터 반투명 황금빛 음영 */}
+              <Circle
+                center={{ lat: reefCenter[0], lng: reefCenter[1] }}
+                radius={16}
+                strokeWeight={1.5}
+                strokeColor="#f59e0b"
+                strokeOpacity={0.8}
+                strokeStyle="dash"
+                fillColor="#d97706"
+                fillOpacity={0.25}
+                zIndex={25}
+              />
+              <CustomOverlayMap
+                position={{ lat: reefCenter[0], lng: reefCenter[1] }}
+                yAnchor={0.5}
+                xAnchor={0.5}
+                zIndex={36}
+                clickable={false}
+              >
+                <div className="px-1.5 py-0.5 rounded-full bg-slate-950/90 text-amber-300 border border-amber-500/60 text-[9px] font-bold shadow pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
+                  🪨 수중 여밭 (락피시/감성돔 은신처)
+                </div>
+              </CustomOverlayMap>
+
+              {/* 본류 물골 (회유 수로) 에메랄드 굵은 선 */}
+              <Polyline
+                path={[
+                  { lat: trenchP1[0], lng: trenchP1[1] },
+                  { lat: trenchP2[0], lng: trenchP2[1] },
+                ]}
+                strokeWeight={5}
+                strokeColor="#06b6d4"
+                strokeOpacity={0.65}
+                zIndex={24}
+              />
+              <CustomOverlayMap
+                position={{ lat: trenchMid[0], lng: trenchMid[1] }}
+                yAnchor={-0.4}
+                xAnchor={0.5}
+                zIndex={36}
+                clickable={false}
+              >
+                <div className="px-1.5 py-0.5 rounded-full bg-slate-950/90 text-cyan-300 border border-cyan-500/60 text-[9px] font-bold shadow pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
+                  🌊 본류 물골 (회유로)
+                </div>
+              </CustomOverlayMap>
             </React.Fragment>
           );
         })()}
@@ -849,8 +1019,21 @@ export const MapView: React.FC<MapViewProps> = ({
           </button>
         </div>
 
-        {/* 보조 액션 버튼들 (찜한 포인트 필터 & GPS 내 위치) */}
+        {/* 보조 액션 버튼들 (수중지형 토글 & 찜한 포인트 필터 & GPS 내 위치) */}
         <div className="flex items-center gap-2">
+          {/* 수중 지형(간출암/물골) 토글 버튼 */}
+          <button
+            onClick={() => setShowUnderwaterReefs(!showUnderwaterReefs)}
+            className={`px-2.5 py-2 border rounded-xl shadow-xl backdrop-blur flex items-center gap-1 transition text-xs font-bold active:scale-95 ${
+              showUnderwaterReefs
+                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/60 shadow-cyan-500/20'
+                : 'bg-slate-900/95 hover:bg-slate-800 text-slate-400 border-slate-700/80'
+            }`}
+            title={showUnderwaterReefs ? '수중 여밭/물골 레이어 숨기기' : '수중 여밭/물골 레이어 보기'}
+          >
+            <span>🪨 여밭·물골</span>
+          </button>
+
           {/* 찜한 포인트만 보기 필터 */}
           <button
             onClick={() => setViewOnlyFavorites(!viewOnlyFavorites)}

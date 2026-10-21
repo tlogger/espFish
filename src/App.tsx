@@ -7,6 +7,7 @@ import { CatchLogModal } from './components/CatchLogModal';
 import { type AuthUser, getSavedAuthUser, LoginModal } from './components/LoginModal';
 import { SpotListModal, type SpotRealtimeSummary } from './components/SpotListModal';
 import { BiteScoreHelpModal } from './components/BiteScoreHelpModal';
+import { ChecklistModal } from './components/ChecklistModal';
 import type {
   BiteScoreBreakdown,
   CatchLog,
@@ -78,6 +79,7 @@ export function App() {
   const [isCatchLogModalOpen, setIsCatchLogModalOpen] = React.useState(false);
   const [isSpotListModalOpen, setIsSpotListModalOpen] = React.useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = React.useState(false);
+  const [isChecklistModalOpen, setIsChecklistModalOpen] = React.useState(false);
   const [newSpotLat, setNewSpotLat] = React.useState<number | undefined>();
   const [newSpotLng, setNewSpotLng] = React.useState<number | undefined>();
 
@@ -523,6 +525,16 @@ export function App() {
             <span className="hidden sm:inline">입질지수 기준</span>
           </button>
 
+          {/* 출조 필수품 & 안전 점검 체크리스트 버튼 */}
+          <button
+            onClick={() => setIsChecklistModalOpen(true)}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-950/70 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/60 font-semibold text-xs transition shadow-sm"
+            title="출조 필수품 & 안전 점검 체크리스트"
+          >
+            <span>🎒</span>
+            <span className="hidden sm:inline">체크리스트</span>
+          </button>
+
           {/* PC 웹 로그인 / 회원 정보 버튼 (모바일에서는 아래 서브바로 이동) */}
           <button
             onClick={() => setIsLoginModalOpen(true)}
@@ -826,6 +838,13 @@ export function App() {
         currentUnit={currentUnit}
         currentUserId={currentUser?.id}
         userCoords={userLocation}
+      />
+      {/* 출조 필수품 & 안전 점검 체크리스트 모달 */}
+      <ChecklistModal
+        isOpen={isChecklistModalOpen}
+        onClose={() => setIsChecklistModalOpen(false)}
+        spotName={selectedSpot?.name || '전국 포인트'}
+        mulText={tide?.mulText}
       />
     </div>
   );

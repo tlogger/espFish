@@ -1,7 +1,10 @@
 import React from 'react';
 import {
   AlertTriangle,
+  CheckCircle2,
+  CheckSquare,
   ChevronDown,
+  ChevronUp,
   Clock,
   Compass,
   Edit,
@@ -17,7 +20,9 @@ import {
   RotateCcw,
   Send,
   Share2,
+  Shield,
   ShieldAlert,
+  ShieldCheck,
   Star,
   Thermometer,
   Trash2,
@@ -38,8 +43,10 @@ import type {
   WindUnit
 } from '../types';
 import { calculateSingleSpeciesScore } from '../utils/biteScore';
+import { ChecklistModal } from './ChecklistModal';
 import { deleteCloudMemo, fetchCloudMemos, saveCloudMemo } from '../utils/cloudDb';
 import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
+import { getSpeciesRigInfo } from '../utils/speciesRigs';
 import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeatherText, getWindyWebUrl } from '../utils/weatherApi';
 
 interface SpotDetailPanelProps {
@@ -86,6 +93,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   const [activeTab, setActiveTab] = React.useState<'WEATHER_TIDE' | 'LOGS' | 'DIRECTIONS' | 'MEMOS'>('WEATHER_TIDE');
   const [activePhotoIndex, setActivePhotoIndex] = React.useState(0);
   const [isWindyOpen, setIsWindyOpen] = React.useState(false);
+  const [isChecklistOpen, setIsChecklistOpen] = React.useState(false);
+  const [expandedSpecies, setExpandedSpecies] = React.useState<string | null>(null);
 
   // 포인트별 커뮤니티 현장 메모 (Spot Memos) 상태
   const [spotMemos, setSpotMemos] = React.useState<SpotMemo[]>([]);
@@ -484,6 +493,13 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             <span className="truncate">Windy</span>
             <ExternalLink size={10} />
           </a>
+          <button
+            onClick={() => setIsChecklistOpen(true)}
+            className="flex items-center justify-center gap-0.5 py-1.5 px-1 rounded-lg bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 transition font-medium border border-indigo-500/30 shadow-sm"
+            title="출조 필수품 및 안전 체크리스트 열기"
+          >
+            <span className="truncate">🎒 점검표</span>
+          </button>
         </div>
       </div>
 
@@ -594,6 +610,86 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 )}
               </div>
             )}
+
+            {/* [제안 2] 국립해양조사원·해양경찰청 연안안전사고 위험예보제 위젯 */}
+            {(() => {
+              const isSpringTide = tide ? (tide.mulNumber >= 6 && tide.mulNumber <= 10) : false;
+              const now = new Date();
+              const curMinutes = now.getHours() * 60 + now.getMinutes();
+              let isNearHighTide = false;
+              let nextHighTideTimeStr = '';
+
+              if (tide?.highTides && tide.highTides.length > 0) {
+                for (const ht of tide.highTides) {
+                  const parts = ht.time.split(':').map(Number);
+                  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                    const htMinutes = parts[0] * 60 + parts[1];
+                    if (Math.abs(curMinutes - htMinutes) <= 120) {
+                      isNearHighTide = true;
+                      nextHighTideTimeStr = ht.time;
+                      break;
+                    }
+                  }
+                }
+                if (!nextHighTideTimeStr && tide.highTides[0]) {
+                  nextHighTideTimeStr = tide.highTides[0].time;
+                }
+              }
+
+              const isHighWave = simWaveHeight >= 1.5;
+              const isHighWind = simWindSpeed >= 8.5;
+
+              // 연안안전사고 예보 등급 판정
+              const safetyLevel: 'WARNING' | 'ADVISORY' | 'NORMAL' =
+                (isSpringTide && isNearHighTide && isHighWave) || simWaveHeight >= 2.0 || simWindSpeed >= 11.0
+                  ? 'WARNING' // 경보
+                  : (isSpringTide && isNearHighTide) || isHighWave || isHighWind || (tide && tide.mulNumber >= 7 && tide.mulNumber <= 9)
+                  ? 'ADVISORY' // 주의보
+                  : 'NORMAL'; // 관심
+
+              if (safetyLevel === 'NORMAL') return null;
+
+              const isWarning = safetyLevel === 'WARNING';
+
+              return (
+                <div
+                  className={`p-3 rounded-2xl border text-xs shadow-lg space-y-1.5 ${
+                    isWarning
+                      ? 'bg-rose-950/90 border-rose-600 text-rose-100 shadow-rose-950/60 animate-pulse'
+                      : 'bg-amber-950/70 border-amber-600/80 text-amber-100 shadow-amber-950/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <ShieldAlert size={16} className={isWarning ? 'text-rose-400' : 'text-amber-400'} />
+                      <span className={isWarning ? 'text-rose-200' : 'text-amber-200'}>
+                        해양경찰청 연안안전사고 위험예보 [{isWarning ? '🚨 경보' : '⚡ 주의보'}]
+                      </span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-slate-900/80 border border-slate-700">
+                      {isSpringTide ? '사리(대조기)' : '연안위험'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 text-[11px] leading-relaxed">
+                    {isSpringTide && isNearHighTide && (
+                      <p className="font-semibold text-rose-200">
+                        🚨 <strong>[만조 전후 갯바위 고립 주의]</strong> 현재 대조기(사리) 만조({nextHighTideTimeStr}) 전후 2시간 구간입니다. 바닷물이 빠르게 유입되어 갯바위 하산로나 진입로가 침수될 수 있으니 미리 퇴로를 확보하세요!
+                      </p>
+                    )}
+                    {isHighWave && (
+                      <p className="text-amber-200">
+                        🌊 <strong>[너울성 파도 월파 주의]</strong> 테트라포드(TTP) 및 간출암에 너울이 덮칠 수 있습니다. 미끄럼 방지 펠트화 및 구명조끼를 반드시 착용하세요.
+                      </p>
+                    )}
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-[10px] text-slate-300">
+                      <span>연안사고 예방법 낚시통제구역 진입 금지</span>
+                      <span className="font-bold text-amber-300">📞 해양긴급신고 119 / 122</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* 1. 오늘 물때 & 실시간 조위 요약 카드 (물때명, 만·간조 시각표, 일출일몰) */}
             {tide && (
@@ -1236,6 +1332,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     {scoredList.map((item) => {
                       const { name, ecology, scoreInfo, isFavorite, hitsCount, isPeakSeason } = item;
                       const score = scoreInfo.score;
+                      const isExpanded = expandedSpecies === name;
+                      const rigInfo = getSpeciesRigInfo(name);
 
                       // 점수 등급별 스타일
                       const scoreBg = score >= 80
@@ -1251,11 +1349,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       return (
                         <div
                           key={`scored-species-${name}`}
-                          className={`p-2.5 rounded-xl border transition ${
+                          className={`p-2.5 rounded-xl border transition cursor-pointer select-none ${
                             isFavorite
                               ? 'bg-gradient-to-r from-amber-950/20 via-slate-900 to-slate-900/90 border-amber-500/50 shadow-sm'
                               : 'bg-slate-900/70 border-slate-800/80 hover:border-slate-700'
                           }`}
+                          onClick={() => setExpandedSpecies(isExpanded ? null : name)}
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -1300,6 +1399,67 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               💡 {scoreInfo.verdict} {ecology.description}
                             </p>
                           </div>
+
+                          {/* 원클릭 추천 채비 토글 버튼 */}
+                          <div className="pt-1.5 flex items-center justify-between text-[10px]">
+                            <span className="text-cyan-400 flex items-center gap-0.5 font-semibold hover:underline">
+                              <span>{isExpanded ? '추천 채비 및 골든타임 접기' : '🎣 추천 채비 & 히트 골든타임 보기'}</span>
+                              <ChevronDown
+                                size={12}
+                                className={`transition-transform duration-200 ${isExpanded ? 'rotate-180 text-cyan-300' : ''}`}
+                              />
+                            </span>
+                            <span className="text-slate-500 text-[9px]">클릭 시 펼침</span>
+                          </div>
+
+                          {/* [제안 3] 원클릭 추천 채비 & 히트 골든타임 상세 확장 뷰 */}
+                          {isExpanded && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="mt-2.5 pt-2.5 border-t border-slate-800 space-y-2 animate-in fade-in duration-150"
+                            >
+                              {/* 맞춤 추천 채비 */}
+                              <div className="p-2.5 bg-slate-950/80 rounded-xl border border-cyan-900/50 space-y-1.5 text-[11px]">
+                                <div className="font-bold text-cyan-300 flex items-center justify-between">
+                                  <span>🎣 오늘 맞춤 추천 채비 ({name})</span>
+                                  <span className="text-[10px] text-slate-400">
+                                    수온 {simWaterTemp.toFixed(1)}°C · 조류 {simCurrentVel.toFixed(1)}m/s 기준
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-slate-300 text-[10px]">
+                                  <div>
+                                    <strong className="text-slate-400">· 루어:</strong> {rigInfo.recommendedRig.lure}
+                                  </div>
+                                  <div>
+                                    <strong className="text-slate-400">· 생미끼:</strong> {rigInfo.recommendedRig.bait}
+                                  </div>
+                                  <div>
+                                    <strong className="text-slate-400">· 원줄/목줄:</strong> {rigInfo.recommendedRig.line}
+                                  </div>
+                                  <div>
+                                    <strong className="text-slate-400">· 봉돌/싱커:</strong> {rigInfo.recommendedRig.hookWeight}
+                                  </div>
+                                </div>
+                                <div className="text-[10px] text-amber-200/90 bg-amber-950/40 p-1.5 rounded-lg border border-amber-900/40">
+                                  ⚡ <strong>핵심 액션 요령:</strong> {rigInfo.recommendedRig.action}
+                                </div>
+                              </div>
+
+                              {/* 오늘 히트 골든타임 타임라인 */}
+                              <div className="p-2.5 bg-gradient-to-r from-amber-950/20 to-indigo-950/30 rounded-xl border border-amber-500/30 space-y-1 text-[11px]">
+                                <div className="font-bold text-amber-300 flex items-center gap-1">
+                                  <Clock size={12} />
+                                  <span>⏰ 오늘 이 어종의 최적 히트 골든타임</span>
+                                </div>
+                                <p className="text-[10px] text-slate-200">
+                                  {rigInfo.goldenHoursText(tide?.sunrise || '06:30', tide?.sunset || '18:30', tide?.mulNumber || 7)}
+                                </p>
+                                <p className="text-[10px] text-slate-400">
+                                  💡 <strong>섭이 전략:</strong> {rigInfo.feedingStrategy}
+                                </p>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1835,6 +1995,14 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
           </div>
         )}
       </div>
+
+      {/* 출조 필수품 & 안전 점검 체크리스트 모달 */}
+      <ChecklistModal
+        isOpen={isChecklistOpen}
+        onClose={() => setIsChecklistOpen(false)}
+        spotName={spot.name}
+        mulText={tide?.mulText}
+      />
     </div>
   );
 };
