@@ -160,7 +160,104 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
     });
   }
 
-  // 1. [제안 6] 현재 시각 -6시간 ~ 향후 +36시간 실시간 연속 조위 곡선 (총 42시간, 스크롤 없이 한 화면용)
+  // 1. 미래 황금 피딩 타임(Golden Feeding Times) 사전 계산 (오늘/내일 정확한 날짜 기준)
+  const allFeedingTimes: {
+    label: string;
+    timeRange: string;
+    reason: string;
+    startHour: number;
+    endHour: number;
+    startTimeStr: string;
+    endTimeStr: string;
+    startTimestamp: number;
+    endTimestamp: number;
+    dayLabel: string;
+    startDisplayTime?: string;
+    endDisplayTime?: string;
+  }[] = [];
+
+  for (let d = 0; d < 3; d++) {
+    // 12시 기준으로 날짜 객체를 생성하여 자정/표준시 왜곡 원천 차단
+    const dayDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() + d, 12, 0, 0);
+    const dayTimes = SunCalc.getTimes(dayDate, lat, lng);
+    const daySummary = threeDays[d];
+    const prefix = d === 0 ? '오늘' : d === 1 ? '내일' : '모레';
+
+    // (1) 아침 해창 피딩 (일출 전 40분 ~ 일출 후 60분)
+    if (dayTimes.sunrise && !isNaN(dayTimes.sunrise.getTime())) {
+      const srStart = new Date(dayTimes.sunrise.getTime() - 40 * 60000);
+      const srEnd = new Date(dayTimes.sunrise.getTime() + 60 * 60000);
+      const sHour = srStart.getHours() + d * 24;
+      const eHour = srEnd.getHours() + d * 24;
+      const sTimeStr = `${padZero(srStart.getMonth() + 1)}/${padZero(srStart.getDate())} ${padZero(srStart.getHours())}:00`;
+      const eTimeStr = `${padZero(srEnd.getMonth() + 1)}/${padZero(srEnd.getDate())} ${padZero(srEnd.getHours())}:00`;
+
+      allFeedingTimes.push({
+        label: `🌅 ${prefix} 아침 해창`,
+        timeRange: `${d > 0 ? `(${prefix}) ` : ''}${formatTime(srStart)} ~ ${formatTime(srEnd)}`,
+        reason: '일출 전후 먹이활동 집중 (시각 어종 활성)',
+        startHour: sHour,
+        endHour: Math.max(eHour, sHour + 1),
+        startTimeStr: sTimeStr,
+        endTimeStr: eTimeStr,
+        startTimestamp: srStart.getTime(),
+        endTimestamp: srEnd.getTime(),
+        dayLabel: prefix,
+      });
+    }
+
+    // (2) 들물 본류대 피딩 (각 만조 2시간 전 ~ 만조 시점)
+    if (daySummary && daySummary.highTides) {
+      daySummary.highTides.forEach((ht, htIdx) => {
+        const [hHour, hMin] = ht.time.split(':').map(Number);
+        const htDate = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), hHour, hMin, 0);
+        const htStartDate = new Date(htDate.getTime() - 2 * 3600 * 1000);
+
+        const sHour = (hHour - 2 + 24) % 24 + d * 24;
+        const eHour = hHour + d * 24;
+        const sTimeStr = `${padZero(htStartDate.getMonth() + 1)}/${padZero(htStartDate.getDate())} ${padZero(htStartDate.getHours())}:00`;
+        const eTimeStr = `${padZero(htDate.getMonth() + 1)}/${padZero(htDate.getDate())} ${padZero(htDate.getHours())}:00`;
+
+        allFeedingTimes.push({
+          label: `🌊 ${prefix} 들물 피딩${daySummary.highTides.length > 1 ? ` (${htIdx + 1}차)` : ''}`,
+          timeRange: `${d > 0 ? `(${prefix}) ` : ''}${formatTime(htStartDate)} ~ ${formatTime(htDate)}`,
+          reason: `만조 전 조류 유입 활성 (${ht.height}cm 만조 전)`,
+          startHour: sHour,
+          endHour: Math.max(eHour, sHour + 1),
+          startTimeStr: sTimeStr,
+          endTimeStr: eTimeStr,
+          startTimestamp: htStartDate.getTime(),
+          endTimestamp: htDate.getTime(),
+          dayLabel: prefix,
+        });
+      });
+    }
+
+    // (3) 저녁 해질녘 피딩 (일몰 전 60분 ~ 일몰 후 40분)
+    if (dayTimes.sunset && !isNaN(dayTimes.sunset.getTime())) {
+      const ssStart = new Date(dayTimes.sunset.getTime() - 60 * 60000);
+      const ssEnd = new Date(dayTimes.sunset.getTime() + 40 * 60000);
+      const sHour = ssStart.getHours() + d * 24;
+      const eHour = ssEnd.getHours() + d * 24;
+      const sTimeStr = `${padZero(ssStart.getMonth() + 1)}/${padZero(ssStart.getDate())} ${padZero(ssStart.getHours())}:00`;
+      const eTimeStr = `${padZero(ssEnd.getMonth() + 1)}/${padZero(ssEnd.getDate())} ${padZero(ssEnd.getHours())}:00`;
+
+      allFeedingTimes.push({
+        label: `🌇 ${prefix} 저녁 일몰`,
+        timeRange: `${d > 0 ? `(${prefix}) ` : ''}${formatTime(ssStart)} ~ ${formatTime(ssEnd)}`,
+        reason: '일몰 골든아워 (포식성 어종 연안 접근)',
+        startHour: sHour,
+        endHour: Math.max(eHour, sHour + 1),
+        startTimeStr: sTimeStr,
+        endTimeStr: eTimeStr,
+        startTimestamp: ssStart.getTime(),
+        endTimestamp: ssEnd.getTime(),
+        dayLabel: prefix,
+      });
+    }
+  }
+
+  // 2. 현재 시각 -6시간 ~ 향후 +36시간 실시간 연속 조위 곡선 (총 42시간, 황금 피딩 타임 구간 태깅)
   const curve36: TideCurvePoint[] = [];
   const baseTimestamp = baseDate.getTime();
 
@@ -197,17 +294,28 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
     const isLowTide = cosVal <= -0.96;
     const tideDiff = Math.round(amplitude * 2); // 조차 (만조-간조차 cm)
 
+    // [요구사항 2] 황금 피딩 타임 구간 매칭 확인
+    const matchedFeeding = allFeedingTimes.find(
+      (f) => pointDate.getTime() >= f.startTimestamp && pointDate.getTime() <= f.endTimestamp
+    );
+    const isFeedingTime = Boolean(matchedFeeding);
+    const feedingReason = matchedFeeding?.reason;
+    const feedingLabel = matchedFeeding?.label;
+
     let eventLabel = '';
     if (offset === 0) eventLabel = `현재 (${height}cm)`;
     else if (isHighTide) eventLabel = `만조 ${height}cm (조차 ${tideDiff}cm)`;
     else if (isLowTide) eventLabel = `간조 ${height}cm (조차 ${tideDiff}cm)`;
     else if (isSunrise) eventLabel = `일출 ${formatTime(pTimes.sunrise)}`;
     else if (isSunset) eventLabel = `일몰 ${formatTime(pTimes.sunset)}`;
+    else if (isFeedingTime && feedingLabel) eventLabel = `✨ ${feedingLabel}`;
+
+    const displayTime = `${dayLabel !== '오늘' ? `${dayLabel} ` : ''}${padZero(pointDate.getHours())}:00`;
 
     curve36.push({
       hour: offset,
       timeStr: `${padZero(pointDate.getHours())}:00`,
-      displayTime: `${dayLabel !== '오늘' ? `${dayLabel} ` : ''}${padZero(pointDate.getHours())}:00`,
+      displayTime,
       dateStr: `${padZero(pointDate.getMonth() + 1)}/${padZero(pointDate.getDate())}`,
       dayLabel,
       height,
@@ -217,9 +325,25 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
       isSunset,
       isHighTide,
       isLowTide,
+      isFeedingTime,
+      feedingReason,
+      feedingLabel,
       tideDiff,
       eventLabel: eventLabel || undefined,
     });
+  }
+
+  // 3. 피딩 타임에 curve36의 시작/종료 displayTime 매핑 (차트 ReferenceArea 렌더링용)
+  for (const f of allFeedingTimes) {
+    const startPt = curve36.find((c) => Math.abs(c.hour * 3600000 + baseTimestamp - f.startTimestamp) <= 45 * 60000) ||
+      curve36.find((c) => c.hour * 3600000 + baseTimestamp >= f.startTimestamp);
+    const endPt = curve36.slice().reverse().find((c) => Math.abs(c.hour * 3600000 + baseTimestamp - f.endTimestamp) <= 45 * 60000) ||
+      curve36.slice().reverse().find((c) => c.hour * 3600000 + baseTimestamp <= f.endTimestamp);
+
+    if (startPt && endPt) {
+      f.startDisplayTime = startPt.displayTime;
+      f.endDisplayTime = endPt.displayTime;
+    }
   }
 
   // 72시간 연속 시간별 조위 곡선 (기존 하위 호환 유지)
@@ -274,97 +398,6 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
   const todayMoonAge = getMoonAge(baseDate);
   const todayMul = getMulInfo(todayMoonAge);
   const todayTimes = SunCalc.getTimes(new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 12, 0, 0), lat, lng);
-
-  // [제안 7] 미래 황금 피딩 타임(Golden Feeding Times) 계산 (오늘/내일 정확한 날짜 기준 산출)
-  const allFeedingTimes: {
-    label: string;
-    timeRange: string;
-    reason: string;
-    startHour: number;
-    endHour: number;
-    startTimeStr: string;
-    endTimeStr: string;
-    endTimestamp: number;
-    dayLabel: string;
-  }[] = [];
-
-  for (let d = 0; d < 3; d++) {
-    // 12시 기준으로 날짜 객체를 생성하여 자정/표준시 왜곡 원천 차단
-    const dayDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() + d, 12, 0, 0);
-    const dayTimes = SunCalc.getTimes(dayDate, lat, lng);
-    const daySummary = threeDays[d];
-    const prefix = d === 0 ? '오늘' : d === 1 ? '내일' : '모레';
-
-    // 1. 아침 해창 피딩 (일출 전 40분 ~ 일출 후 60분)
-    if (dayTimes.sunrise && !isNaN(dayTimes.sunrise.getTime())) {
-      const srStart = new Date(dayTimes.sunrise.getTime() - 40 * 60000);
-      const srEnd = new Date(dayTimes.sunrise.getTime() + 60 * 60000);
-      const sHour = srStart.getHours() + d * 24;
-      const eHour = srEnd.getHours() + d * 24;
-      const sTimeStr = `${padZero(srStart.getMonth() + 1)}/${padZero(srStart.getDate())} ${padZero(srStart.getHours())}:00`;
-      const eTimeStr = `${padZero(srEnd.getMonth() + 1)}/${padZero(srEnd.getDate())} ${padZero(srEnd.getHours())}:00`;
-
-      allFeedingTimes.push({
-        label: `🌅 ${prefix} 아침 해창`,
-        timeRange: `${d > 0 ? `(${prefix}) ` : ''}${formatTime(srStart)} ~ ${formatTime(srEnd)}`,
-        reason: '일출 전후 먹이활동 집중 (시각 어종 활성)',
-        startHour: sHour,
-        endHour: Math.max(eHour, sHour + 1),
-        startTimeStr: sTimeStr,
-        endTimeStr: eTimeStr,
-        endTimestamp: srEnd.getTime(),
-        dayLabel: prefix,
-      });
-    }
-
-    // 2. 들물 본류대 피딩 (각 만조 2시간 전 ~ 만조 시점)
-    if (daySummary && daySummary.highTides) {
-      daySummary.highTides.forEach((ht, htIdx) => {
-        const [hHour, hMin] = ht.time.split(':').map(Number);
-        const htDate = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), hHour, hMin, 0);
-        const htStartDate = new Date(htDate.getTime() - 2 * 3600 * 1000);
-
-        const sHour = (hHour - 2 + 24) % 24 + d * 24;
-        const eHour = hHour + d * 24;
-        const sTimeStr = `${padZero(htStartDate.getMonth() + 1)}/${padZero(htStartDate.getDate())} ${padZero(htStartDate.getHours())}:00`;
-        const eTimeStr = `${padZero(htDate.getMonth() + 1)}/${padZero(htDate.getDate())} ${padZero(htDate.getHours())}:00`;
-
-        allFeedingTimes.push({
-          label: `🌊 ${prefix} 들물 피딩${daySummary.highTides.length > 1 ? ` (${htIdx + 1}차)` : ''}`,
-          timeRange: `${d > 0 ? `(${prefix}) ` : ''}${formatTime(htStartDate)} ~ ${formatTime(htDate)}`,
-          reason: `만조 전 조류 유입 활성 (${ht.height}cm 만조 전)`,
-          startHour: sHour,
-          endHour: Math.max(eHour, sHour + 1),
-          startTimeStr: sTimeStr,
-          endTimeStr: eTimeStr,
-          endTimestamp: htDate.getTime(),
-          dayLabel: prefix,
-        });
-      });
-    }
-
-    // 3. 저녁 해질녘 피딩 (일몰 전 60분 ~ 일몰 후 40분)
-    if (dayTimes.sunset && !isNaN(dayTimes.sunset.getTime())) {
-      const ssStart = new Date(dayTimes.sunset.getTime() - 60 * 60000);
-      const ssEnd = new Date(dayTimes.sunset.getTime() + 40 * 60000);
-      const sHour = ssStart.getHours() + d * 24;
-      const eHour = ssEnd.getHours() + d * 24;
-      const sTimeStr = `${padZero(ssStart.getMonth() + 1)}/${padZero(ssStart.getDate())} ${padZero(ssStart.getHours())}:00`;
-      const eTimeStr = `${padZero(ssEnd.getMonth() + 1)}/${padZero(ssEnd.getDate())} ${padZero(ssEnd.getHours())}:00`;
-
-      allFeedingTimes.push({
-        label: `🌇 ${prefix} 저녁 일몰`,
-        timeRange: `${d > 0 ? `(${prefix}) ` : ''}${formatTime(ssStart)} ~ ${formatTime(ssEnd)}`,
-        reason: '일몰 골든아워 (포식성 어종 연안 접근)',
-        startHour: sHour,
-        endHour: Math.max(eHour, sHour + 1),
-        startTimeStr: sTimeStr,
-        endTimeStr: eTimeStr,
-        endTimestamp: ssEnd.getTime(),
-        dayLabel: prefix,
-      });
-    }
-  }
 
   // 시간순 정렬 및 현재 시각(baseDate) 기준 종료되지 않은 미래 피딩 타임만 필터링
   const nowMs = baseDate.getTime();

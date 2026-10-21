@@ -22,7 +22,9 @@ export interface FishingSpot {
   best_times?: string[]; // 선호 시간대 (예: 새벽 해창, 해질녘 등)
   best_seasons?: number[]; // 선호 월 (예: 9, 10, 11)
   description?: string; // 채비 및 수심 팁
-  casting_directions?: string[]; // 캐스팅 공략 방향 (예: 북(N), 동북(NE), 전방위 등)
+  casting_start_deg?: number; // 캐스팅 공략 유효 시작각 (0~359°, 북쪽 0° 기준 시계방향)
+  casting_end_deg?: number; // 캐스팅 공략 유효 끝각 (0~359°)
+  casting_directions?: string[]; // 캐스팅 공략 방향 (레거시 하위 호환)
   created_at: string;
 }
 
@@ -125,6 +127,9 @@ export interface TideCurvePoint {
   isCurrent?: boolean;
   tideDiff?: number; // 조차 (cm)
   eventLabel?: string; // e.g. "만조 720cm (+580)", "간조 140cm", "일출", "일몰"
+  isFeedingTime?: boolean; // 황금 피딩 타임 여부
+  feedingReason?: string;
+  feedingLabel?: string;
 }
 
 export interface TideDaySummary {
@@ -159,6 +164,10 @@ export interface TideDayInfo {
     endHour: number;
     startTimeStr: string;
     endTimeStr: string;
+    startDisplayTime?: string;
+    endDisplayTime?: string;
+    startTimestamp?: number;
+    endTimestamp?: number;
   }[];
 }
 

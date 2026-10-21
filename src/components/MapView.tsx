@@ -309,122 +309,121 @@ export const MapView: React.FC<MapViewProps> = ({
           setCenter({ lat: latLng.getLat(), lng: latLng.getLng() });
         }}
       >
-        {/* 선택된 포인트의 캐스팅 비거리 동심원 눈금 링 (캐스팅 방향만 부채꼴 호로 표기 + 각 동심원에 30m / 60m / 100m 거리 표기) */}
+        {/* 선택된 포인트의 캐스팅 비거리 동심원 눈금 링 및 유효 공략 부채꼴 섹터 (30m / 60m / 100m 거리 표기) */}
         {showCastingArrows && selectedSpot && (() => {
-          const castingDirs = selectedSpot.casting_directions || [];
-          const isAllDirections = castingDirs.includes('ALL');
-          const radii = [30, 60, 100];
-          const fanHalfAngle = 30; // 투척 방향 중심 좌우 30도 (총 60도 부채꼴 호)
+          let startDeg = selectedSpot.casting_start_deg;
+          let endDeg = selectedSpot.casting_end_deg;
 
-          // 1. 'ALL' (전방위) 또는 방향 미지정인 경우: 360도 전체 동심원 + 북쪽 기준 거리 표기
-          if (isAllDirections || castingDirs.length === 0) {
-            return (
-              <React.Fragment key={`range-rings-${selectedSpot.id}`}>
-                {radii.map((r, idx) => {
-                  const [labelLat, labelLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, 0, r);
-                  return (
-                    <React.Fragment key={`all-ring-${selectedSpot.id}-${r}`}>
-                      <Circle
-                        center={{ lat: selectedSpot.lat, lng: selectedSpot.lng }}
-                        radius={r}
-                        strokeWeight={1.5}
-                        strokeColor="#06b6d4"
-                        strokeOpacity={idx === 0 ? 0.75 : idx === 1 ? 0.5 : 0.3}
-                        strokeStyle="dash"
-                        zIndex={30}
-                      />
-                      <CustomOverlayMap
-                        position={{ lat: labelLat, lng: labelLng }}
-                        yAnchor={0.5}
-                        xAnchor={0.5}
-                        zIndex={35}
-                        clickable={false}
-                      >
-                        <div className="px-1.5 py-0.5 rounded-full bg-slate-950/90 text-cyan-300 border border-cyan-400/60 text-[9px] font-bold font-mono shadow-md backdrop-blur-xs select-none pointer-events-none kakao-invert-restore whitespace-nowrap">
-                          {r}m
-                        </div>
-                      </CustomOverlayMap>
-                    </React.Fragment>
-                  );
-                })}
-              </React.Fragment>
-            );
+          // 레거시 하위 호환 매핑
+          if (startDeg === undefined || endDeg === undefined) {
+            const dirs = selectedSpot.casting_directions || [];
+            if (dirs.length > 0 && !dirs.includes('ALL')) {
+              const info = CASTING_BEARINGS[dirs[0]];
+              if (info) {
+                startDeg = (info.deg - 30 + 360) % 360;
+                endDeg = (info.deg + 30) % 360;
+              }
+            }
           }
 
-          // 2. 개별 지정 방향(N, NE, E 등)인 경우: 캐스팅 투척 방향으로만 30m, 60m, 100m 부채꼴 호 및 거리 라벨 렌더링
-          return (
-            <React.Fragment key={`range-arcs-${selectedSpot.id}`}>
-              {castingDirs.map((dir) => {
-                const info = CASTING_BEARINGS[dir];
-                if (!info) return null;
-                const bearing = info.deg;
+          if (startDeg === undefined || endDeg === undefined) {
+            return null;
+          }
 
-                // 좌우 부채꼴 경계선 (100m 지점까지 뻗어나가는 은은한 레이더 가이드 선)
-                const leftEdge = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing - fanHalfAngle, 100);
-                const rightEdge = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing + fanHalfAngle, 100);
+          const span = endDeg >= startDeg ? endDeg - startDeg : 360 - startDeg + endDeg;
+          const centerBearing = (startDeg + span / 2) % 360;
+          const radii = [30, 60, 100];
+
+          // 좌우 유효 경계선 (100m 지점까지 뻗어나가는 레이더 가이드 선)
+          const leftEdge = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, startDeg, 100);
+          const rightEdge = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, endDeg, 100);
+
+          return (
+            <React.Fragment key={`range-sector-${selectedSpot.id}`}>
+              {/* 시작각 경계선 */}
+              <Polyline
+                path={[
+                  { lat: selectedSpot.lat, lng: selectedSpot.lng },
+                  { lat: leftEdge[0], lng: leftEdge[1] },
+                ]}
+                strokeWeight={1.5}
+                strokeColor="#10b981"
+                strokeOpacity={0.65}
+                strokeStyle="dash"
+                zIndex={28}
+              />
+              <CustomOverlayMap
+                position={{ lat: leftEdge[0], lng: leftEdge[1] }}
+                yAnchor={0.5}
+                xAnchor={0.5}
+                zIndex={36}
+                clickable={false}
+              >
+                <div className="px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-500/60 text-[9px] font-bold font-mono shadow pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
+                  시작 {startDeg}°
+                </div>
+              </CustomOverlayMap>
+
+              {/* 종료각 경계선 */}
+              <Polyline
+                path={[
+                  { lat: selectedSpot.lat, lng: selectedSpot.lng },
+                  { lat: rightEdge[0], lng: rightEdge[1] },
+                ]}
+                strokeWeight={1.5}
+                strokeColor="#06b6d4"
+                strokeOpacity={0.65}
+                strokeStyle="dash"
+                zIndex={28}
+              />
+              <CustomOverlayMap
+                position={{ lat: rightEdge[0], lng: rightEdge[1] }}
+                yAnchor={0.5}
+                xAnchor={0.5}
+                zIndex={36}
+                clickable={false}
+              >
+                <div className="px-1.5 py-0.5 rounded bg-cyan-950/90 text-cyan-300 border border-cyan-500/60 text-[9px] font-bold font-mono shadow pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
+                  종료 {endDeg}°
+                </div>
+              </CustomOverlayMap>
+
+              {/* 거리(30m / 60m / 100m)별 부채꼴 호 및 거리 라벨 오버레이 */}
+              {radii.map((r, rIdx) => {
+                const step = Math.max(1, Math.min(3, Math.round(span / 25)));
+                const arcPoints: { lat: number; lng: number }[] = [];
+                for (let offset = 0; offset <= span; offset += step) {
+                  const b = (startDeg! + offset) % 360;
+                  const [pLat, pLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, b, r);
+                  arcPoints.push({ lat: pLat, lng: pLng });
+                }
+                const [endLat, endLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, endDeg!, r);
+                arcPoints.push({ lat: endLat, lng: endLng });
+
+                // 호 중심 지점에 거리 m 표기 오버레이
+                const [labelLat, labelLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, centerBearing, r);
 
                 return (
-                  <React.Fragment key={`casting-fan-${selectedSpot.id}-${dir}`}>
-                    {/* 부채꼴 좌측 경계선 */}
+                  <React.Fragment key={`arc-r-${selectedSpot.id}-${r}`}>
                     <Polyline
-                      path={[
-                        { lat: selectedSpot.lat, lng: selectedSpot.lng },
-                        { lat: leftEdge[0], lng: leftEdge[1] },
-                      ]}
-                      strokeWeight={1}
+                      path={arcPoints}
+                      strokeWeight={rIdx === 0 ? 2 : 1.5}
                       strokeColor="#06b6d4"
-                      strokeOpacity={0.25}
+                      strokeOpacity={rIdx === 0 ? 0.85 : rIdx === 1 ? 0.6 : 0.4}
                       strokeStyle="dash"
-                      zIndex={28}
+                      zIndex={30}
                     />
-                    {/* 부채꼴 우측 경계선 */}
-                    <Polyline
-                      path={[
-                        { lat: selectedSpot.lat, lng: selectedSpot.lng },
-                        { lat: rightEdge[0], lng: rightEdge[1] },
-                      ]}
-                      strokeWeight={1}
-                      strokeColor="#06b6d4"
-                      strokeOpacity={0.25}
-                      strokeStyle="dash"
-                      zIndex={28}
-                    />
-
-                    {/* 각 거리(30m / 60m / 100m)별 부채꼴 호 및 거리 m 라벨 오버레이 */}
-                    {radii.map((r, rIdx) => {
-                      const arcPoints: { lat: number; lng: number }[] = [];
-                      for (let b = bearing - fanHalfAngle; b <= bearing + fanHalfAngle; b += 2) {
-                        const [pLat, pLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, b, r);
-                        arcPoints.push({ lat: pLat, lng: pLng });
-                      }
-
-                      // 호 중심 지점에 m 거리 표기 오버레이
-                      const [labelLat, labelLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, r);
-
-                      return (
-                        <React.Fragment key={`arc-r-${selectedSpot.id}-${dir}-${r}`}>
-                          <Polyline
-                            path={arcPoints}
-                            strokeWeight={rIdx === 0 ? 2 : 1.5}
-                            strokeColor="#06b6d4"
-                            strokeOpacity={rIdx === 0 ? 0.85 : rIdx === 1 ? 0.6 : 0.4}
-                            strokeStyle="dash"
-                            zIndex={30}
-                          />
-                          <CustomOverlayMap
-                            position={{ lat: labelLat, lng: labelLng }}
-                            yAnchor={0.5}
-                            xAnchor={0.5}
-                            zIndex={35}
-                            clickable={false}
-                          >
-                            <div className="px-1.5 py-0.5 rounded-full bg-slate-950/90 text-cyan-300 border border-cyan-400/60 text-[9px] font-bold font-mono shadow-md backdrop-blur-xs select-none pointer-events-none kakao-invert-restore whitespace-nowrap">
-                              {r}m
-                            </div>
-                          </CustomOverlayMap>
-                        </React.Fragment>
-                      );
-                    })}
+                    <CustomOverlayMap
+                      position={{ lat: labelLat, lng: labelLng }}
+                      yAnchor={0.5}
+                      xAnchor={0.5}
+                      zIndex={35}
+                      clickable={false}
+                    >
+                      <div className="px-1.5 py-0.5 rounded-full bg-slate-950/90 text-cyan-300 border border-cyan-400/60 text-[9px] font-bold font-mono shadow-md backdrop-blur-xs select-none pointer-events-none kakao-invert-restore whitespace-nowrap">
+                        {r}m
+                      </div>
+                    </CustomOverlayMap>
                   </React.Fragment>
                 );
               })}
@@ -432,70 +431,59 @@ export const MapView: React.FC<MapViewProps> = ({
           );
         })()}
 
-        {/* 선택된 포인트의 파란색 캐스팅 방향 화살표 + 실시간 바람·조류 상호작용 HUD (요구사항 3, 4, 5) */}
+        {/* 선택된 포인트의 파란색 캐스팅 방향 화살표 + 실시간 바람·조류 상호작용 HUD */}
         {showCastingArrows && selectedSpot && (() => {
-          const castingDirs = selectedSpot.casting_directions || [];
-          const primaryDir = castingDirs.find((d) => d !== 'ALL') || 'E';
-          const primaryInfo = CASTING_BEARINGS[primaryDir];
-          const bearing = primaryInfo?.deg ?? 90;
+          let startDeg = selectedSpot.casting_start_deg;
+          let endDeg = selectedSpot.casting_end_deg;
 
-          // 1. 파란색 캐스팅 방향 화살표 (요구사항 4: 파란색 화살표 적용)
-          const isAllDirections = castingDirs.includes('ALL');
-          const castingLines = isAllDirections ? (
-            <React.Fragment key={`selected-casting-all-${selectedSpot.id}`}>
-              {[0, 90, 180, 270].map((deg) => {
-                const tip = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, deg, 55);
-                return (
-                  <Polyline
-                    key={`all-arrow-${selectedSpot.id}-${deg}`}
-                    path={[
-                      { lat: selectedSpot.lat, lng: selectedSpot.lng },
-                      { lat: tip[0], lng: tip[1] },
-                    ]}
-                    endArrow={true}
-                    strokeWeight={4.5}
-                    strokeColor="#2563eb"
-                    strokeOpacity={0.95}
-                    zIndex={50}
-                  />
-                );
-              })}
-            </React.Fragment>
-          ) : (
+          // 레거시 하위 호환 매핑
+          if (startDeg === undefined || endDeg === undefined) {
+            const dirs = selectedSpot.casting_directions || [];
+            if (dirs.length > 0 && !dirs.includes('ALL')) {
+              const info = CASTING_BEARINGS[dirs[0]];
+              if (info) {
+                startDeg = (info.deg - 30 + 360) % 360;
+                endDeg = (info.deg + 30) % 360;
+              }
+            }
+          }
+
+          if (startDeg === undefined || endDeg === undefined) {
+            startDeg = 45;
+            endDeg = 135;
+          }
+
+          const span = endDeg >= startDeg ? endDeg - startDeg : 360 - startDeg + endDeg;
+          const bearing = (startDeg + span / 2) % 360; // 중심 방위각
+
+          // 1. 파란색 캐스팅 방향 화살표 (공략 유효 범위 중심 방위)
+          const tip = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, 55);
+          const badgePos = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, 58);
+
+          const castingLines = (
             <React.Fragment key={`selected-casting-${selectedSpot.id}`}>
-              {castingDirs.map((dir) => {
-                const info = CASTING_BEARINGS[dir];
-                if (!info) return null;
-                const tip = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, info.deg, 55);
-                const badgePos = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, info.deg, 58);
-
-                return (
-                  <React.Fragment key={`casting-arrow-${selectedSpot.id}-${dir}`}>
-                    <Polyline
-                      path={[
-                        { lat: selectedSpot.lat, lng: selectedSpot.lng },
-                        { lat: tip[0], lng: tip[1] },
-                      ]}
-                      endArrow={true}
-                      strokeWeight={4.5}
-                      strokeColor="#2563eb"
-                      strokeOpacity={0.95}
-                      zIndex={50}
-                    />
-                    <CustomOverlayMap
-                      position={{ lat: badgePos[0], lng: badgePos[1] }}
-                      yAnchor={0.5}
-                      xAnchor={0.5}
-                      zIndex={55}
-                      clickable={false}
-                    >
-                      <div className="px-1.5 py-0.5 rounded-full bg-blue-950/95 text-blue-300 border border-blue-400/80 text-[9px] font-bold shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                        🎯 캐스팅 {info.label} ({info.deg}°)
-                      </div>
-                    </CustomOverlayMap>
-                  </React.Fragment>
-                );
-              })}
+              <Polyline
+                path={[
+                  { lat: selectedSpot.lat, lng: selectedSpot.lng },
+                  { lat: tip[0], lng: tip[1] },
+                ]}
+                endArrow={true}
+                strokeWeight={4.5}
+                strokeColor="#2563eb"
+                strokeOpacity={0.95}
+                zIndex={50}
+              />
+              <CustomOverlayMap
+                position={{ lat: badgePos[0], lng: badgePos[1] }}
+                yAnchor={0.5}
+                xAnchor={0.5}
+                zIndex={55}
+                clickable={false}
+              >
+                <div className="px-2 py-0.5 rounded-full bg-blue-950/95 text-blue-300 border border-blue-400/80 text-[9px] font-bold shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
+                  🎯 캐스팅 공략각 {startDeg}°~{endDeg}° ({getCompassDirection(bearing)})
+                </div>
+              </CustomOverlayMap>
             </React.Fragment>
           );
 

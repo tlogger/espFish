@@ -257,219 +257,207 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   return (
     <div className="flex flex-col h-full bg-slate-900 border-l border-slate-800 text-white overflow-hidden shadow-2xl">
       {/* 헤더 및 포인트 사진 슬라이드 (모바일에서는 화면 높이 절약을 위해 사진 높이 대폭 축소) */}
-      <div className="relative h-28 sm:h-44 md:h-52 shrink-0 bg-slate-950 overflow-hidden">
-        {spot.photo_urls && spot.photo_urls.length > 0 ? (
-          <img
-            src={spot.photo_urls[activePhotoIndex] || spot.photo_urls[0]}
-            alt={spot.name}
-            className="w-full h-full object-cover opacity-85 transition-opacity duration-300"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-slate-800 text-slate-500 text-xs">
-            사진 없음
-          </div>
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
-
-        {/* 상단 액션 버튼 그룹 (수정, 삭제, 닫기 및 모바일 지도보기) */}
-        <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
-          {onMinimize && (
-            <button
-              onClick={onMinimize}
-              className="px-2 py-0.5 rounded-full bg-cyan-600/90 hover:bg-cyan-500 text-white flex items-center gap-1 text-[11px] font-bold transition shadow md:hidden"
-              title="지도 보기 (창 접기)"
-            >
-              <span>지도보기</span>
-              <ChevronDown size={13} />
-            </button>
+      {/* 1. 상단 일체형 히어로: 흐릿한 배경 사진 + 포인트명 + 입질 종합지수 + 안전 주의보 오버레이 (모바일 세로 공간 대폭 확보) */}
+      <div className="relative shrink-0 bg-slate-950 overflow-hidden border-b border-slate-800">
+        {/* 배경 사진 (흐릿하게 처리 및 딤 오버레이) */}
+        <div className="absolute inset-0 z-0 overflow-hidden">
+          {spot.photo_urls && spot.photo_urls.length > 0 ? (
+            <img
+              src={spot.photo_urls[activePhotoIndex] || spot.photo_urls[0]}
+              alt={spot.name}
+              className="w-full h-full object-cover filter blur-[2px] brightness-[0.35] opacity-45 scale-105 transition-all duration-300"
+            />
+          ) : (
+            <div className="w-full h-full bg-slate-950" />
           )}
-          <button
-            onClick={() => onEditSpot(spot)}
-            className="p-1 rounded-full bg-black/60 text-slate-200 hover:text-cyan-400 hover:bg-black/90 transition shadow"
-            title="포인트 수정"
-          >
-            <Edit size={14} />
-          </button>
-          <button
-            onClick={() => {
-              if (window.confirm(`'${spot.name}' 포인트를 정말 삭제하시겠습니까?`)) {
-                onDeleteSpot(spot.id);
-              }
-            }}
-            className="p-1 rounded-full bg-black/60 text-slate-200 hover:text-rose-400 hover:bg-black/90 transition shadow"
-            title="포인트 삭제"
-          >
-            <Trash2 size={14} />
-          </button>
-          <button
-            onClick={onClose}
-            className="w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/90 transition shadow text-xs"
-            title="닫기"
-          >
-            ✕
-          </button>
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-slate-950/80" />
         </div>
 
-        {/* 복수 사진 썸네일 인디케이터 */}
-        {spot.photo_urls && spot.photo_urls.length > 1 && (
-          <div className="absolute bottom-2 right-2 z-10 flex gap-1 bg-black/50 p-1 rounded-full backdrop-blur-sm">
-            {spot.photo_urls.map((_, idx) => (
-              <button
-                key={idx}
-                onClick={() => setActivePhotoIndex(idx)}
-                className={`w-1.5 h-1.5 rounded-full transition-all ${
-                  idx === activePhotoIndex ? 'bg-cyan-400 w-3' : 'bg-white/50'
-                }`}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* 포인트명 및 메타데이터 오버레이 */}
-        <div className="absolute bottom-2 left-3 right-20 z-10">
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-cyan-500/80 text-white backdrop-blur-sm">
-              {spot.spot_type === 'ROCK' ? '갯바위' : spot.spot_type === 'BREAKWATER' ? '방파제/석축' : '해변/선착장'}
-            </span>
-            <span className="text-[10px] text-slate-300">작성자: {spot.author_name}</span>
-          </div>
-          <h1 className="text-base sm:text-lg font-bold truncate drop-shadow-md text-white">{spot.name}</h1>
-          {spot.navi_name && (
-            <div className="text-[10px] text-amber-300 truncate">
-              📍 네비 목적지: {spot.navi_name}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ExFish AI 입질 지수 & 안전 상태 브리핑 바 */}
-      {biteScore && (
-        <div className="px-4 py-2.5 bg-gradient-to-r from-cyan-950/70 via-slate-900 to-blue-950/70 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="flex flex-col items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white font-extrabold shadow-md shadow-cyan-500/30">
-              <span className="text-xs leading-none opacity-80">Ex</span>
-              <span className="text-base leading-none">{biteScore.totalScore}</span>
-            </div>
-            <div>
-              <div className="text-xs font-semibold text-cyan-300 flex items-center gap-1.5 flex-wrap">
-                <span>입질 종합 지수: {biteScore.totalScore}점</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded text-[10px] ${
-                    biteScore.windRelation.includes('최적')
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                      : biteScore.windRelation.includes('주의')
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-                  }`}
-                >
-                  {biteScore.windRelation}
+        {/* 오버레이 콘텐츠 */}
+        <div className="relative z-10 p-3 sm:p-3.5 space-y-2">
+          {/* 1행: 포인트명 & 작성자 & 타입 뱃지 & 액션 버튼들 */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-cyan-600/90 text-white shadow-sm">
+                  {spot.spot_type === 'ROCK' ? '갯바위' : spot.spot_type === 'BREAKWATER' ? '방파제/석축' : '해변/선착장'}
                 </span>
-                {biteScore.targetSummaryLabel && (
-                  <span className="px-1.5 py-0.2 rounded text-[10px] bg-cyan-900/60 text-cyan-200 border border-cyan-700/50">
-                    🎯 {biteScore.targetSummaryLabel}
-                  </span>
+                <span className="text-[10px] text-slate-300">작성자: {spot.author_name}</span>
+                {spot.photo_urls && spot.photo_urls.length > 1 && (
+                  <div className="flex gap-1 ml-1 bg-black/40 px-1.5 py-0.5 rounded-full">
+                    {spot.photo_urls.map((_, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setActivePhotoIndex(idx)}
+                        className={`w-1.5 h-1.5 rounded-full transition-all ${
+                          idx === activePhotoIndex ? 'bg-cyan-400 w-3' : 'bg-white/40'
+                        }`}
+                      />
+                    ))}
+                  </div>
                 )}
               </div>
-              <p className="text-[11px] text-slate-300 line-clamp-1">{biteScore.verdict}</p>
+              <h1 className="text-base sm:text-lg font-bold text-white truncate drop-shadow-md">
+                {spot.name}
+              </h1>
+            </div>
+
+            {/* 버튼 그룹 (지도보기, 수정, 삭제, 공유, 닫기) */}
+            <div className="flex items-center gap-1 shrink-0">
+              {onMinimize && (
+                <button
+                  onClick={onMinimize}
+                  className="px-2 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white flex items-center gap-0.5 text-[11px] font-bold transition shadow md:hidden"
+                  title="지도 보기 (창 접기)"
+                >
+                  <span>지도</span>
+                  <ChevronDown size={13} />
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  if (navigator.share) {
+                    navigator.share({
+                      title: `ExFish - ${spot.name}`,
+                      text: `현재 입질 지수 ${biteScore?.totalScore ?? 0}점!`,
+                      url: window.location.href,
+                    }).catch(() => {});
+                  } else {
+                    navigator.clipboard.writeText(window.location.href);
+                    alert('포인트 링크가 클립보드에 복사되었습니다.');
+                  }
+                }}
+                className="p-1.5 rounded-lg bg-black/50 text-slate-200 hover:text-cyan-400 transition"
+                title="공유"
+              >
+                <Share2 size={13} />
+              </button>
+              <button
+                onClick={() => onEditSpot(spot)}
+                className="p-1.5 rounded-lg bg-black/50 text-slate-200 hover:text-cyan-400 transition"
+                title="수정"
+              >
+                <Edit size={13} />
+              </button>
+              <button
+                onClick={() => {
+                  if (window.confirm(`'${spot.name}' 포인트를 정말 삭제하시겠습니까?`)) {
+                    onDeleteSpot(spot.id);
+                  }
+                }}
+                className="p-1.5 rounded-lg bg-black/50 text-slate-200 hover:text-rose-400 transition"
+                title="삭제"
+              >
+                <Trash2 size={13} />
+              </button>
+              <button
+                onClick={onClose}
+                className="p-1.5 rounded-lg bg-black/50 text-slate-300 hover:text-white transition text-xs"
+                title="닫기"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {/* 2행: 입질 종합 지수 브리핑 오버레이 */}
+          {biteScore && (
+            <div className="p-2.5 rounded-xl bg-slate-900/80 backdrop-blur-md border border-cyan-500/40 flex items-center justify-between gap-2 shadow-lg">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="flex flex-col items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white font-extrabold shadow shrink-0">
+                  <span className="text-[10px] leading-none opacity-80">Ex</span>
+                  <span className="text-base leading-none font-mono">{biteScore.totalScore}</span>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-cyan-300 flex items-center gap-1.5 flex-wrap">
+                    <span>입질 {biteScore.totalScore}점</span>
+                    <span
+                      className={`px-1.5 py-0.2 rounded text-[9px] ${
+                        biteScore.windRelation.includes('최적')
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : biteScore.windRelation.includes('주의')
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                      }`}
+                    >
+                      {biteScore.windRelation}
+                    </span>
+                    {biteScore.targetSummaryLabel && (
+                      <span className="px-1.5 py-0.2 rounded text-[9px] bg-cyan-900/60 text-cyan-200 border border-cyan-700/50 truncate max-w-[140px]">
+                        🎯 {biteScore.targetSummaryLabel}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-300 truncate pt-0.5">{biteScore.verdict}</p>
+                </div>
+              </div>
               {biteScore.topSpecies && (
-                <div className="text-[10px] text-emerald-300 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
-                  <span>🏆 추천 1순위: {biteScore.topSpecies.speciesName} ({biteScore.topSpecies.score}점)</span>
-                  <span className="text-slate-400">· {biteScore.topSpecies.activityMatch}</span>
-                  <span className="text-cyan-300/80">({biteScore.topSpecies.tempMatch})</span>
+                <div className="hidden sm:block text-right shrink-0">
+                  <div className="text-[11px] font-bold text-emerald-300">
+                    🏆 {biteScore.topSpecies.speciesName} ({biteScore.topSpecies.score}점)
+                  </div>
+                  <div className="text-[10px] text-slate-400">
+                    {biteScore.topSpecies.activityMatch}
+                  </div>
                 </div>
               )}
             </div>
-          </div>
-          <button
-            onClick={() => {
-              if (navigator.share) {
-                navigator.share({
-                  title: `ExFish - ${spot.name}`,
-                  text: `현재 입질 지수 ${biteScore.totalScore}점! ${biteScore.verdict}`,
-                  url: window.location.href,
-                }).catch(() => {});
-              } else {
-                navigator.clipboard.writeText(window.location.href);
-                alert('포인트 링크가 클립보드에 복사되었습니다.');
-              }
-            }}
-            className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
-            title="포인트 공유"
-          >
-            <Share2 size={16} />
-          </button>
-        </div>
-      )}
-
-      {/* 안전 경보 & 고립 주의 배너 (너울성 파도, 강풍, 만조 고립 위험 자동 감지) */}
-      {(() => {
-        const warnings: string[] = [];
-        if (weather && weather.windSpeed >= 8) {
-          warnings.push(`순간 강풍 주의 (${weather.windSpeed}m/s)`);
-        }
-        if (marine && marine.waveHeight >= 1.5) {
-          warnings.push(`높은 파고/너울 주의 (${marine.waveHeight}m)`);
-        }
-        if (spot.spot_type === 'ROCK' && tide?.highTides && tide.highTides.length > 0) {
-          // 다음 만조까지 남은 시간 체크
-          const nowMinutes = now.getHours() * 60 + now.getMinutes();
-          for (const ht of tide.highTides) {
-            const [h, m] = ht.time.split(':').map(Number);
-            const htMinutes = h * 60 + m;
-            const diff = htMinutes - nowMinutes;
-            if (diff > 0 && diff <= 120) {
-              warnings.push(`만조(${ht.time}) ${diff}분 전! 갯바위 퇴로 확보 필수`);
-              break;
-            }
-          }
-        }
-
-        if (warnings.length === 0) return null;
-
-        return (
-          <div className="mx-4 mt-2 p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs flex items-start gap-2 shadow-sm animate-pulse">
-            <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
-            <div className="space-y-0.5">
-              <span className="font-bold text-amber-300">⚠️ 해안 안전 주의보:</span>
-              <div className="text-[11px] leading-tight text-amber-100 font-medium">
-                {warnings.join(' · ')}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* 내비게이션 & 정밀 예보 액션 바 (반응형 3분할 그리드) */}
-      <div className="px-4 py-2.5 bg-slate-950/60 border-b border-slate-800 space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <div className="flex items-center gap-1 text-slate-400">
-            <MapPin size={13} className="text-cyan-400" />
-            <span className="font-mono">
-              {spot.lat.toFixed(4)}, {spot.lng.toFixed(4)}
-            </span>
-          </div>
-          {spot.navi_name && (
-            <span className="text-[11px] text-amber-300 font-medium truncate max-w-[180px]">
-              목적지: {spot.navi_name}
-            </span>
           )}
+
+          {/* 3행: 안전 경보 & 고립 주의 배너 오버레이 (너울성 파도, 강풍, 만조 고립 위험 자동 감지) */}
+          {(() => {
+            const warnings: string[] = [];
+            if (weather && weather.windSpeed >= 8) {
+              warnings.push(`순간 강풍 주의 (${weather.windSpeed}m/s)`);
+            }
+            if (marine && marine.waveHeight >= 1.5) {
+              warnings.push(`높은 파고/너울 주의 (${marine.waveHeight}m)`);
+            }
+            if (spot.spot_type === 'ROCK' && tide?.highTides && tide.highTides.length > 0) {
+              const nowMinutes = now.getHours() * 60 + now.getMinutes();
+              for (const ht of tide.highTides) {
+                const [h, m] = ht.time.split(':').map(Number);
+                const htMinutes = h * 60 + m;
+                const diff = htMinutes - nowMinutes;
+                if (diff > 0 && diff <= 120) {
+                  warnings.push(`만조(${ht.time}) ${diff}분 전! 갯바위 퇴로 확보 필수`);
+                  break;
+                }
+              }
+            }
+            if (warnings.length === 0) return null;
+
+            return (
+              <div className="p-2 rounded-xl bg-amber-950/80 backdrop-blur-md border border-amber-500/50 text-amber-200 text-xs flex items-center gap-2 shadow-sm animate-pulse">
+                <AlertTriangle size={14} className="text-amber-400 shrink-0" />
+                <span className="font-bold text-amber-300 shrink-0 text-[11px]">⚠️ 안전주의:</span>
+                <span className="text-[11px] text-amber-100 font-medium truncate">
+                  {warnings.join(' · ')}
+                </span>
+              </div>
+            );
+          })()}
         </div>
-        <div className="grid grid-cols-4 gap-1 text-[11px]">
+      </div>
+
+      {/* 2. 내비게이션 퀵 버튼 바 (경위도 및 목적지 텍스트 제거로 초슬림화) */}
+      <div className="px-3 py-1.5 bg-slate-950/90 border-b border-slate-800">
+        <div className="grid grid-cols-4 gap-1.5 text-[11px]">
           <a
             href={kakaoNaviUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-0.5 py-1.5 px-1 rounded-lg bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 transition font-medium border border-yellow-500/30 shadow-sm"
+            className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 transition font-medium border border-yellow-500/30 shadow-sm"
             title="카카오맵 길찾기"
           >
-            <Navigation size={11} />
+            <Navigation size={12} />
             <span className="truncate">카카오길</span>
           </a>
           <a
             href={`https://map.kakao.com/link/roadview/${spot.lat},${spot.lng}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-0.5 py-1.5 px-1 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition font-medium border border-amber-500/30 shadow-sm"
+            className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition font-medium border border-amber-500/30 shadow-sm"
             title="카카오 로드뷰로 현장 주차장 및 진입로 360도 확인"
           >
             <span className="truncate">🚗 로드뷰</span>
@@ -478,7 +466,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             href={windyUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-0.5 py-1.5 px-1 rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 transition font-semibold border border-cyan-500/30 shadow-sm"
+            className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 transition font-semibold border border-cyan-500/30 shadow-sm"
             title="Windy 정밀 해양기상 예보"
           >
             <span className="truncate">Windy</span>
@@ -486,7 +474,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
           </a>
           <button
             onClick={() => setIsChecklistOpen(true)}
-            className="flex items-center justify-center gap-0.5 py-1.5 px-1 rounded-lg bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 transition font-medium border border-indigo-500/30 shadow-sm"
+            className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 transition font-medium border border-indigo-500/30 shadow-sm"
             title="출조 필수품 및 안전 체크리스트 열기"
           >
             <span className="truncate">🎒 점검표</span>
@@ -494,83 +482,79 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
         </div>
       </div>
 
-      {/* 머티리얼 디자인 M3 스타일의 직관적인 4대 아이콘 탭 바 */}
-      <div className="flex border-b border-slate-800 bg-slate-900/95 text-xs font-semibold shrink-0 p-1.5 gap-1.5">
+      {/* 3. 아이콘 전용 탭 바 (텍스트 라벨 완전 제거로 높이 최소화) */}
+      <div className="flex border-b border-slate-800 bg-slate-900/95 shrink-0 px-2 py-1 gap-1.5">
         <button
           onClick={() => setActiveTab('WEATHER_TIDE')}
-          className={`flex-1 py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition relative ${
+          className={`flex-1 py-2 rounded-xl flex items-center justify-center transition relative ${
             activeTab === 'WEATHER_TIDE'
-              ? 'bg-gradient-to-b from-cyan-500/20 to-blue-600/10 text-cyan-300 ring-1 ring-cyan-500/40 shadow-sm'
+              ? 'bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-500/40 shadow-sm'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
           title="기상 & 물때 통합 뷰"
         >
-          <Waves size={19} className={activeTab === 'WEATHER_TIDE' ? 'text-cyan-400 scale-110 transition-transform' : ''} />
-          <span className="text-[11px] font-medium tracking-tight">기상·물때</span>
+          <Waves size={20} className={activeTab === 'WEATHER_TIDE' ? 'text-cyan-400 scale-110' : ''} />
           {activeTab === 'WEATHER_TIDE' && (
-            <span className="absolute bottom-0 w-8 h-0.5 bg-cyan-400 rounded-full" />
+            <span className="absolute bottom-0 w-6 h-0.5 bg-cyan-400 rounded-full" />
           )}
         </button>
 
         <button
           onClick={() => setActiveTab('LOGS')}
-          className={`flex-1 py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition relative ${
+          className={`flex-1 py-2 rounded-xl flex items-center justify-center transition relative ${
             activeTab === 'LOGS'
-              ? 'bg-gradient-to-b from-emerald-500/20 to-teal-600/10 text-emerald-300 ring-1 ring-emerald-500/40 shadow-sm'
+              ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40 shadow-sm'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
           title="조과 기록 및 실측 통계"
         >
           <div className="relative">
-            <Fish size={19} className={activeTab === 'LOGS' ? 'text-emerald-400 scale-110 transition-transform' : ''} />
+            <Fish size={20} className={activeTab === 'LOGS' ? 'text-emerald-400 scale-110' : ''} />
             {catchLogs.length > 0 && (
-              <span className="absolute -top-1.5 -right-3 px-1.5 py-0.2 rounded-full bg-emerald-500 text-slate-950 text-[9px] font-bold">
+              <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full bg-emerald-500 text-slate-950 text-[9px] font-bold">
                 {catchLogs.length}
               </span>
             )}
           </div>
-          <span className="text-[11px] font-medium tracking-tight">조과</span>
           {activeTab === 'LOGS' && (
-            <span className="absolute bottom-0 w-8 h-0.5 bg-emerald-400 rounded-full" />
+            <span className="absolute bottom-0 w-6 h-0.5 bg-emerald-400 rounded-full" />
           )}
         </button>
 
         <button
           onClick={() => setActiveTab('DIRECTIONS')}
-          className={`flex-1 py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition relative ${
+          className={`flex-1 py-2 rounded-xl flex items-center justify-center transition relative ${
             activeTab === 'DIRECTIONS'
-              ? 'bg-gradient-to-b from-amber-500/20 to-orange-600/10 text-amber-300 ring-1 ring-amber-500/40 shadow-sm'
+              ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/40 shadow-sm'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
           title="포인트 상세 정보 및 도보 진입로, 주차 안내"
         >
-          <Info size={19} className={activeTab === 'DIRECTIONS' ? 'text-amber-400 scale-110 transition-transform' : ''} />
-          <span className="text-[11px] font-medium tracking-tight">정보</span>
+          <Info size={20} className={activeTab === 'DIRECTIONS' ? 'text-amber-400 scale-110' : ''} />
           {activeTab === 'DIRECTIONS' && (
-            <span className="absolute bottom-0 w-8 h-0.5 bg-amber-400 rounded-full" />
+            <span className="absolute bottom-0 w-6 h-0.5 bg-amber-400 rounded-full" />
           )}
         </button>
 
         <button
           onClick={() => setActiveTab('MEMOS')}
-          className={`flex-1 py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition relative ${
+          className={`flex-1 py-2 rounded-xl flex items-center justify-center transition relative ${
             activeTab === 'MEMOS'
-              ? 'bg-gradient-to-b from-indigo-500/20 to-purple-600/10 text-indigo-300 ring-1 ring-indigo-500/40 shadow-sm'
+              ? 'bg-indigo-500/20 text-indigo-300 ring-1 ring-indigo-500/40 shadow-sm'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
           title="조사님들의 실시간 현장 메모 & 방명록"
         >
           <div className="relative">
-            <MessageSquare size={19} className={activeTab === 'MEMOS' ? 'text-indigo-400 scale-110 transition-transform' : ''} />
+            <MessageSquare size={20} className={activeTab === 'MEMOS' ? 'text-indigo-400 scale-110' : ''} />
             {spotMemos.length > 0 && (
-              <span className="absolute -top-1.5 -right-3 px-1.5 py-0.2 rounded-full bg-indigo-500 text-white text-[9px] font-bold">
+              <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full bg-indigo-500 text-white text-[9px] font-bold">
                 {spotMemos.length}
               </span>
             )}
           </div>
-          <span className="text-[11px] font-medium tracking-tight">현장메모</span>
           {activeTab === 'MEMOS' && (
-            <span className="absolute bottom-0 w-8 h-0.5 bg-indigo-400 rounded-full" />
+            <span className="absolute bottom-0 w-6 h-0.5 bg-indigo-400 rounded-full" />
           )}
         </button>
       </div>
@@ -682,62 +666,38 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               );
             })()}
 
-            {/* 1. 오늘 물때 & 실시간 조위 요약 카드 (물때명, 만·간조 시각표, 일출일몰) */}
+            {/* [요구사항 3] 오늘 물때 & 일출/일몰, 만조/간조 텍스트 간단 요약 표기 */}
             {tide && (
-              <div className="p-3.5 bg-gradient-to-r from-blue-950/70 via-slate-900 to-indigo-950/60 border border-blue-900/60 rounded-2xl shadow-lg space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-xs text-blue-300 font-semibold">{tide.lunarDateStr}</span>
-                    <div className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
-                      <span>{tide.mulText}</span>
-                    </div>
+              <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-2xl shadow-md space-y-1.5 text-xs">
+                <div className="flex items-center justify-between text-slate-200">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-cyan-300">🌊 {tide.mulText}</span>
+                    <span className="text-[11px] text-slate-400">({tide.lunarDateStr})</span>
+                    {currentTidePoint && (
+                      <span className="text-[11px] text-cyan-200 font-mono bg-cyan-950/70 border border-cyan-800/60 px-1.5 py-0.5 rounded">
+                        현재 {currentTidePoint.height}cm ({currentTidePoint.stateText})
+                      </span>
+                    )}
                   </div>
-                  <div className="text-right text-xs space-y-0.5">
-                    <div className="text-amber-300 font-bold">🌅 일출 {tide.sunrise} (해창)</div>
-                    <div className="text-indigo-300 font-bold">🌇 일몰 {tide.sunset} (피딩)</div>
+                  <div className="text-[11px] text-slate-300 flex items-center gap-1.5">
+                    <span>🌅 일출 {tide.sunrise}</span>
+                    <span className="text-slate-600">·</span>
+                    <span>🌇 일몰 {tide.sunset}</span>
                   </div>
                 </div>
 
-                {/* 현재 시각 조위 강조 표시 */}
-                {currentTidePoint && (
-                  <div className="p-2.5 rounded-xl bg-cyan-950/60 border border-cyan-700/60 flex items-center justify-between text-xs">
-                    <span className="font-semibold text-cyan-300">
-                      ⏱️ 현재 시각 ({currentHourStr}) 실시간 조위:
+                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800/80 text-slate-300 flex-wrap gap-y-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-rose-400 font-bold">🔴 만조:</span>
+                    <span className="font-mono text-slate-200">
+                      {tide.highTides.map((t) => `${t.time} (${t.height}cm)`).join(', ')}
                     </span>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-base font-extrabold text-white font-mono">
-                        {currentTidePoint.height} cm
-                      </span>
-                      <span className="text-[11px] text-cyan-200">({currentTidePoint.stateText})</span>
-                    </div>
                   </div>
-                )}
-
-                {/* 오늘 만조 / 간조 시각표 및 조위 정보 */}
-                <div className="grid grid-cols-2 gap-2 text-xs pt-1.5 border-t border-slate-800">
-                  <div className="p-2 rounded-xl bg-rose-950/40 border border-rose-900/50">
-                    <div className="text-rose-400 font-semibold mb-1 flex items-center justify-between text-[11px]">
-                      <span>🔴 만조</span>
-                      <span className="text-[10px] text-slate-400">조위(cm)</span>
-                    </div>
-                    {tide.highTides.map((t, idx) => (
-                      <div key={idx} className="flex justify-between items-center text-slate-200 py-0.5 text-xs">
-                        <span className="font-medium">{t.time}</span>
-                        <span className="font-mono font-bold text-rose-300">{t.height} cm</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="p-2 rounded-xl bg-blue-950/40 border border-blue-900/50">
-                    <div className="text-blue-400 font-semibold mb-1 flex items-center justify-between text-[11px]">
-                      <span>🔵 간조</span>
-                      <span className="text-[10px] text-slate-400">조위(cm)</span>
-                    </div>
-                    {tide.lowTides.map((t, idx) => (
-                      <div key={idx} className="flex justify-between items-center text-slate-200 py-0.5 text-xs">
-                        <span className="font-medium">{t.time}</span>
-                        <span className="font-mono font-bold text-blue-300">{t.height} cm</span>
-                      </div>
-                    ))}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-blue-400 font-bold">🔵 간조:</span>
+                    <span className="font-mono text-slate-200">
+                      {tide.lowTides.map((t) => `${t.time} (${t.height}cm)`).join(', ')}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1041,11 +1001,16 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2.5">
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-bold text-slate-200 flex items-center gap-1.5">
-                    🌊 조위 변화 곡선 (현재 -6h ~ 향후 +36h 실시간 예측)
+                    🌊 조위 변화 곡선 (-6h ~ +36h 실시간 예측)
                   </span>
-                  <span className="text-[10px] text-cyan-400 font-mono font-semibold">
-                    한 화면 맞춤 (무스크롤)
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-bold">
+                      ✨ 피딩 구간 표시
+                    </span>
+                    <span className="text-[10px] text-cyan-400 font-mono font-semibold hidden sm:inline">
+                      한 화면 맞춤
+                    </span>
+                  </div>
                 </div>
 
                 {/* 그래프 본체: 스크롤 없이 가로 100% 반응형으로 채움 */}
@@ -1061,6 +1026,24 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
                         </linearGradient>
                       </defs>
+
+                      {/* 황금 피딩 타임 영역 시각화 (요구사항 2: 조위 그래프에 황금 피딩 타임 표시) */}
+                      {tide.feedingTimes?.map((f, fIdx) => {
+                        if (!f.startDisplayTime || !f.endDisplayTime) return null;
+                        return (
+                          <ReferenceArea
+                            key={`feed-zone-${fIdx}`}
+                            x1={f.startDisplayTime}
+                            x2={f.endDisplayTime}
+                            fill="#f59e0b"
+                            fillOpacity={0.16}
+                            stroke="#f59e0b"
+                            strokeOpacity={0.5}
+                            strokeDasharray="2 2"
+                          />
+                        );
+                      })}
+
                       <XAxis
                         dataKey="displayTime"
                         stroke="#64748b"
@@ -1103,6 +1086,16 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                 {data.eventLabel && (
                                   <div className="text-[10px] text-amber-300 font-semibold pt-1 border-t border-slate-800">
                                     📌 {data.eventLabel}
+                                  </div>
+                                )}
+                                {data.isFeedingTime && (
+                                  <div className="text-[10px] text-amber-300 font-bold pt-1 border-t border-slate-800 flex items-center gap-1">
+                                    <span>✨ {data.feedingLabel || '황금 피딩 타임'}</span>
+                                    {data.feedingReason && (
+                                      <span className="text-slate-400 font-normal truncate max-w-[170px]">
+                                        ({data.feedingReason})
+                                      </span>
+                                    )}
                                   </div>
                                 )}
                               </div>

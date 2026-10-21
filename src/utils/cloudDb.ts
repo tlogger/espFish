@@ -19,9 +19,14 @@ export interface CloudDbConfig {
 
 /** fishing_spots 테이블에 존재하는 컬럼만 추출하여 Supabase 스키마 불일치 에러 방지 */
 function toDbSpotRecord(spot: FishingSpot): Record<string, unknown> {
-  // description 필드 끝에 캐스팅 방향 정보를 안전하게 인코딩하여 스키마 변경 전/후 모두 무결성 유지
+  // description 필드 끝에 캐스팅 방향 및 각도 정보를 안전하게 인코딩하여 스키마 변경 전/후 모두 무결성 유지
   let desc = spot.description || '';
-  if (spot.casting_directions && spot.casting_directions.length > 0) {
+  if (spot.casting_start_deg !== undefined && spot.casting_end_deg !== undefined) {
+    const rangeTag = `[CASTING_RANGE:${spot.casting_start_deg},${spot.casting_end_deg}]`;
+    if (!desc.includes('[CASTING_RANGE:')) {
+      desc = desc ? `${desc}\n${rangeTag}` : rangeTag;
+    }
+  } else if (spot.casting_directions && spot.casting_directions.length > 0) {
     const castingTag = `[CASTING:${spot.casting_directions.join(',')}]`;
     if (!desc.includes('[CASTING:')) {
       desc = desc ? `${desc}\n${castingTag}` : castingTag;
@@ -171,10 +176,21 @@ export async function testCloudConnection(url: string, anonKey: string): Promise
   }
 }
 
-/** DB 레코드로부터 FishingSpot 객체로 변환 (description 내 [CASTING:...] 태그 파싱) */
+/** DB 레코드로부터 FishingSpot 객체로 변환 (description 내 [CASTING_RANGE:...], [CASTING:...] 태그 파싱) */
 function fromDbSpotRecord(record: any): FishingSpot {
   let desc = record.description || '';
   let castingDirections: string[] = record.casting_directions || [];
+  let castingStartDeg: number | undefined = record.casting_start_deg;
+  let castingEndDeg: number | undefined = record.casting_end_deg;
+
+  if (desc && desc.includes('[CASTING_RANGE:')) {
+    const match = desc.match(/\[CASTING_RANGE:(\d+),(\d+)\]/);
+    if (match && match[1] && match[2]) {
+      castingStartDeg = parseInt(match[1], 10);
+      castingEndDeg = parseInt(match[2], 10);
+      desc = desc.replace(/\n?\[CASTING_RANGE:[^\]]+\]/, '').trim();
+    }
+  }
 
   if (desc && desc.includes('[CASTING:')) {
     const match = desc.match(/\[CASTING:([^\]]+)\]/);
@@ -188,6 +204,8 @@ function fromDbSpotRecord(record: any): FishingSpot {
     ...record,
     description: desc,
     casting_directions: castingDirections,
+    casting_start_deg: castingStartDeg,
+    casting_end_deg: castingEndDeg,
   };
 }
 

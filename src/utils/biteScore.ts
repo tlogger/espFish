@@ -166,13 +166,24 @@ export function calculateBiteScore(
   else windScore = 5;
 
   let windRelation: BiteScoreBreakdown['windRelation'] = '등바람 (최적)';
-  const primaryCastingDir = spot.casting_directions?.find((d) => d !== 'ALL');
   const CASTING_DEG: Record<string, number> = {
     N: 0, NE: 45, E: 90, SE: 135, S: 180, SW: 225, W: 270, NW: 315
   };
 
-  if (primaryCastingDir && CASTING_DEG[primaryCastingDir] !== undefined) {
-    const bearing = CASTING_DEG[primaryCastingDir];
+  let bearing: number | null = null;
+  if (spot.casting_start_deg !== undefined && spot.casting_end_deg !== undefined) {
+    const span = spot.casting_end_deg >= spot.casting_start_deg
+      ? spot.casting_end_deg - spot.casting_start_deg
+      : 360 - spot.casting_start_deg + spot.casting_end_deg;
+    bearing = (spot.casting_start_deg + span / 2) % 360;
+  } else {
+    const primaryCastingDir = spot.casting_directions?.find((d) => d !== 'ALL');
+    if (primaryCastingDir && CASTING_DEG[primaryCastingDir] !== undefined) {
+      bearing = CASTING_DEG[primaryCastingDir];
+    }
+  }
+
+  if (bearing !== null) {
     // 바람이 불어가는 방향 (windDirection은 불어오는 방향이므로 180도 반대)
     const windVectorDeg = (weather.windDirection + 180) % 360;
     const diff = Math.abs(bearing - windVectorDeg) % 360;
