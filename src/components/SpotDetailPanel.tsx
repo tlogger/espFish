@@ -7,6 +7,7 @@ import {
   ChevronUp,
   Clock,
   Compass,
+  Crosshair,
   Edit,
   ExternalLink,
   Fish,
@@ -60,8 +61,8 @@ interface SpotDetailPanelProps {
   favoriteSpecies?: string[];
   windUnit: WindUnit;
   currentUnit: CurrentUnit;
-  onToggleWindUnit?: () => void;
-  onToggleCurrentUnit?: () => void;
+  currentUser?: { id: string; name: string } | null;
+  onStartMicroAdjust?: (spot: FishingSpot) => void;
   onOpenCatchLogModal: () => void;
   onEditLog: (log: CatchLog) => void;
   onDeleteLog: (logId: string) => void;
@@ -81,8 +82,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   favoriteSpecies,
   windUnit,
   currentUnit,
-  onToggleWindUnit,
-  onToggleCurrentUnit,
+  currentUser,
+  onStartMicroAdjust,
   onOpenCatchLogModal,
   onEditLog,
   onDeleteLog,
@@ -440,47 +441,62 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
         </div>
       </div>
 
-      {/* 2. 내비게이션 퀵 버튼 바 (경위도 및 목적지 텍스트 제거로 초슬림화) */}
-      <div className="px-3 py-1.5 bg-slate-950/90 border-b border-slate-800">
-        <div className="grid grid-cols-4 gap-1.5 text-[11px]">
-          <a
-            href={kakaoNaviUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 transition font-medium border border-yellow-500/30 shadow-sm"
-            title="카카오맵 길찾기"
-          >
-            <Navigation size={12} />
-            <span className="truncate">카카오길</span>
-          </a>
-          <a
-            href={`https://map.kakao.com/link/roadview/${spot.lat},${spot.lng}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition font-medium border border-amber-500/30 shadow-sm"
-            title="카카오 로드뷰로 현장 주차장 및 진입로 360도 확인"
-          >
-            <span className="truncate">🚗 로드뷰</span>
-          </a>
-          <a
-            href={windyUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 transition font-semibold border border-cyan-500/30 shadow-sm"
-            title="Windy 정밀 해양기상 예보"
-          >
-            <span className="truncate">Windy</span>
-            <ExternalLink size={10} />
-          </a>
-          <button
-            onClick={() => setIsChecklistOpen(true)}
-            className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 transition font-medium border border-indigo-500/30 shadow-sm"
-            title="출조 필수품 및 안전 체크리스트 열기"
-          >
-            <span className="truncate">🎒 점검표</span>
-          </button>
-        </div>
-      </div>
+      {/* 2. 내비게이션 퀵 버튼 바 (경위도 및 목적지 텍스트 제거로 초슬림화, 작성자일 때만 위치조정 버튼 노출) */}
+      {(() => {
+        const isAuthor = Boolean(currentUser && (spot.user_id === currentUser.id || currentUser.id === 'user-me'));
+        return (
+          <div className="px-3 py-1.5 bg-slate-950/90 border-b border-slate-800">
+            <div className={`grid ${isAuthor && onStartMicroAdjust ? 'grid-cols-5 gap-1 text-[10px]' : 'grid-cols-4 gap-1.5 text-[11px]'}`}>
+              <a
+                href={kakaoNaviUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 transition font-medium border border-yellow-500/30 shadow-sm"
+                title="카카오맵 길찾기"
+              >
+                <Navigation size={12} />
+                <span className="truncate">카카오길</span>
+              </a>
+              <a
+                href={`https://map.kakao.com/link/roadview/${spot.lat},${spot.lng}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition font-medium border border-amber-500/30 shadow-sm"
+                title="카카오 로드뷰로 현장 주차장 및 진입로 360도 확인"
+              >
+                <span className="truncate">🚗 로드뷰</span>
+              </a>
+              <a
+                href={windyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 transition font-semibold border border-cyan-500/30 shadow-sm"
+                title="Windy 정밀 해양기상 예보"
+              >
+                <span className="truncate">Windy</span>
+                <ExternalLink size={10} />
+              </a>
+              <button
+                onClick={() => setIsChecklistOpen(true)}
+                className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 transition font-medium border border-indigo-500/30 shadow-sm"
+                title="출조 필수품 및 안전 체크리스트 열기"
+              >
+                <span className="truncate">🎒 점검표</span>
+              </button>
+              {isAuthor && onStartMicroAdjust && (
+                <button
+                  onClick={() => onStartMicroAdjust(spot)}
+                  className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition font-bold border border-emerald-500/40 shadow-sm active:scale-95"
+                  title="지도 중앙 조준선으로 포인트 위치 1m 단위 정밀 미세 조정"
+                >
+                  <Crosshair size={12} className="text-emerald-400" />
+                  <span className="truncate">위치조정</span>
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 3. 아이콘 전용 탭 바 (텍스트 라벨 완전 제거로 높이 최소화) */}
       <div className="flex border-b border-slate-800 bg-slate-900/95 shrink-0 px-2 py-1 gap-1.5">
@@ -563,29 +579,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {activeTab === 'WEATHER_TIDE' && (
           <div className="space-y-4">
-            {/* 단위 빠른 전환 토글 바 */}
-            {(onToggleWindUnit || onToggleCurrentUnit) && (
-              <div className="flex items-center justify-end gap-2 text-[11px]">
-                <span className="text-slate-400">표시 단위:</span>
-                {onToggleWindUnit && (
-                  <button
-                    onClick={onToggleWindUnit}
-                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 font-mono border border-slate-700 transition"
-                  >
-                    바람: {windUnit}
-                  </button>
-                )}
-                {onToggleCurrentUnit && (
-                  <button
-                    onClick={onToggleCurrentUnit}
-                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 font-mono border border-slate-700 transition"
-                  >
-                    조류: {currentUnit}
-                  </button>
-                )}
-              </div>
-            )}
-
             {/* [제안 2] 국립해양조사원·해양경찰청 연안안전사고 위험예보제 위젯 */}
             {(() => {
               const isSpringTide = tide ? (tide.mulNumber >= 6 && tide.mulNumber <= 10) : false;

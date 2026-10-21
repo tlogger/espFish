@@ -154,12 +154,14 @@ export const INITIAL_CATCH_LOGS: CatchLog[] = [
   }
 ];
 
-const STORAGE_KEY_SPOTS = 'esperfish_spots_v1';
-const STORAGE_KEY_LOGS = 'esperfish_logs_v1';
+const STORAGE_KEY_SPOTS = 'exfish_spots_v1';
+const STORAGE_KEY_LOGS = 'exfish_logs_v1';
+const LEGACY_STORAGE_KEY_SPOTS = 'esperfish_spots_v1';
+const LEGACY_STORAGE_KEY_LOGS = 'esperfish_logs_v1';
 
 export function loadSpotsFromStorage(): FishingSpot[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_SPOTS);
+    const raw = localStorage.getItem(STORAGE_KEY_SPOTS) || localStorage.getItem(LEGACY_STORAGE_KEY_SPOTS);
     if (!raw) {
       saveSpotsToStorage(INITIAL_SPOTS);
       return INITIAL_SPOTS;
@@ -180,7 +182,7 @@ export function saveSpotsToStorage(spots: FishingSpot[]) {
 
 export function loadLogsFromStorage(): CatchLog[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_LOGS);
+    const raw = localStorage.getItem(STORAGE_KEY_LOGS) || localStorage.getItem(LEGACY_STORAGE_KEY_LOGS);
     if (!raw) {
       saveLogsToStorage(INITIAL_CATCH_LOGS);
       return INITIAL_CATCH_LOGS;

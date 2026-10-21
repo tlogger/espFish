@@ -49,7 +49,7 @@ export function App() {
     return false;
   });
 
-  // 로그인 상태 관리 (Email & ID 확인, PW 불필요)
+  // 로그인 상태 관리 (소셜 로그인 및 30일 세션 유지)
   const [currentUser, setCurrentUser] = React.useState<AuthUser | null>(() => getSavedAuthUser());
   const [isLoginModalOpen, setIsLoginModalOpen] = React.useState(false);
 
@@ -59,9 +59,15 @@ export function App() {
   const [tide, setTide] = React.useState<TideDayInfo | null>(null);
   const [biteScore, setBiteScore] = React.useState<BiteScoreBreakdown | null>(null);
 
-  // 단위 변환 설정 상태 (바람 및 조류 초기 단위는 m/s로 통일)
-  const [windUnit, setWindUnit] = React.useState<WindUnit>('ms');
-  const [currentUnit, setCurrentUnit] = React.useState<CurrentUnit>('ms');
+  // 단위 변환 설정 상태 (사용자 프로필 설정과 동기화)
+  const [windUnit, setWindUnit] = React.useState<WindUnit>(() => {
+    const user = getSavedAuthUser();
+    return user?.windUnit || 'ms';
+  });
+  const [currentUnit, setCurrentUnit] = React.useState<CurrentUnit>(() => {
+    const user = getSavedAuthUser();
+    return user?.currentUnit || 'knot';
+  });
 
   // 필터 및 검색 상태
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -82,6 +88,7 @@ export function App() {
   const [isChecklistModalOpen, setIsChecklistModalOpen] = React.useState(false);
   const [newSpotLat, setNewSpotLat] = React.useState<number | undefined>();
   const [newSpotLng, setNewSpotLng] = React.useState<number | undefined>();
+  const [microAdjustSpot, setMicroAdjustSpot] = React.useState<FishingSpot | null>(null);
 
   // 포인트별 실시간 환경 요약 캐시 (리스트 보기 전용)
   const [environmentMap, setEnvironmentMap] = React.useState<Record<string, SpotRealtimeSummary>>({});
@@ -356,6 +363,32 @@ export function App() {
     setIsSpotModalOpen(true);
   };
 
+  // 위치 미세 조정 모드 시작 (작성자 본인 포인트 전용)
+  const handleStartMicroAdjust = (spot: FishingSpot) => {
+    setMicroAdjustSpot(spot);
+    setIsMobileDrawerOpen(false); // 모바일 드로워를 닫아 지도 전면 확보
+  };
+
+  const handleCancelMicroAdjust = () => {
+    setMicroAdjustSpot(null);
+  };
+
+  const handleConfirmMicroAdjust = async (spotId: string, newLat: number, newLng: number) => {
+    try {
+      const target = spots.find((s) => s.id === spotId);
+      if (!target) return;
+      const updated: FishingSpot = { ...target, lat: newLat, lng: newLng };
+      await saveCloudSpot(updated);
+      const cSpots = await fetchCloudSpots();
+      setSpots(cSpots);
+      setSelectedSpot(updated);
+      setMicroAdjustSpot(null);
+      alert('✅ 포인트 위치가 성공적으로 미세 조정되었습니다.');
+    } catch (e: any) {
+      alert(`위치 저장 중 오류가 발생했습니다: ${e?.message || ''}`);
+    }
+  };
+
   // 조과 기록 생성 및 수정 핸들러 (오직 Supabase DB에 직접 저장)
   const handleSaveCatchLog = async (logData: Omit<CatchLog, 'id' | 'created_at'>) => {
     try {
@@ -433,12 +466,15 @@ export function App() {
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* 글로벌 상단 헤더 & 내비게이션 바 */}
       <header className="h-14 bg-slate-900 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 shadow-md gap-2">
-        {/* 로고 (PC 문구 제거, ExFish 브랜딩 적용) */}
+        {/* 로고 (ExFish 브랜딩 및 구호 적용) */}
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-2xl filter drop-shadow">🎣</span>
           <div className="flex flex-col">
-            <span className="text-base sm:text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500 bg-clip-text text-transparent">
+            <span className="text-base sm:text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500 bg-clip-text text-transparent leading-none">
               ExFish
+            </span>
+            <span className="hidden md:inline-block text-[10px] text-slate-400 font-medium tracking-tight mt-0.5">
+              ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며...
             </span>
           </div>
         </div>
@@ -681,8 +717,8 @@ export function App() {
 
       {/* 메인 2열 분할 레이아웃 (지도 캔버스 + 우측 상세 대시보드 패널) */}
       <main className="flex-1 relative flex flex-col md:flex-row overflow-hidden">
-        {/* 좌측(또는 전체 배경) OpenStreetMap 영역 */}
-        <div className="flex-1 h-full w-full relative">
+        {/* 좌측(또는 전체 배경) OpenStreetMap 영역 (모달 관통 방지를 위해 isolate 적용) */}
+        <div className="flex-1 h-full w-full relative isolate">
           <MapView
             spots={filteredSpots}
             selectedSpot={selectedSpot}
@@ -695,10 +731,13 @@ export function App() {
             currentUnit={currentUnit}
             recenterTarget={recenterTarget}
             isMobileDrawerOpen={Boolean(selectedSpot && isMobileDrawerOpen)}
+            microAdjustSpot={microAdjustSpot}
+            onCancelMicroAdjust={handleCancelMicroAdjust}
+            onConfirmMicroAdjust={handleConfirmMicroAdjust}
           />
         </div>
 
-        {/* PC 화면: 우측 사이드바 패널 (현 상태 유지) */}
+        {/* PC 화면: 우측 사이드바 패널 */}
         {selectedSpot && (
           <aside className="hidden md:block w-[440px] lg:w-[480px] h-full shrink-0 z-20 border-l border-slate-800 shadow-2xl">
             <SpotDetailPanel
@@ -711,8 +750,8 @@ export function App() {
               favoriteSpecies={currentUser?.favoriteSpecies}
               windUnit={windUnit}
               currentUnit={currentUnit}
-              onToggleWindUnit={() => setWindUnit((prev) => prev === 'ms' ? 'knot' : prev === 'knot' ? 'kmh' : 'ms')}
-              onToggleCurrentUnit={() => setCurrentUnit((prev) => prev === 'ms' ? 'knot' : prev === 'knot' ? 'cms' : 'ms')}
+              currentUser={currentUser}
+              onStartMicroAdjust={handleStartMicroAdjust}
               onOpenCatchLogModal={() => {
                 setEditingCatchLog(null);
                 setIsCatchLogModalOpen(true);
@@ -729,9 +768,9 @@ export function App() {
           </aside>
         )}
 
-        {/* 모바일 화면 1: 드로어가 열려 있을 때 화면 전체(100%)를 채워 밑부분이 잘리지 않게 함 (실시간 환경 숨김) */}
+        {/* 모바일 화면 1: 드로어가 열려 있을 때 화면 전체(100%)를 채움 (z-50으로 지도 컨트롤 완벽 차폐) */}
         {selectedSpot && isMobileDrawerOpen && (
-          <div className="md:hidden fixed inset-0 z-40 bg-slate-900 flex flex-col animate-fade-in">
+          <div className="md:hidden fixed inset-0 z-50 bg-slate-900 flex flex-col animate-fade-in">
             <SpotDetailPanel
               spot={selectedSpot}
               weather={weather}
@@ -742,8 +781,8 @@ export function App() {
               favoriteSpecies={currentUser?.favoriteSpecies}
               windUnit={windUnit}
               currentUnit={currentUnit}
-              onToggleWindUnit={() => setWindUnit((prev) => prev === 'ms' ? 'knot' : prev === 'knot' ? 'kmh' : 'ms')}
-              onToggleCurrentUnit={() => setCurrentUnit((prev) => prev === 'ms' ? 'knot' : prev === 'knot' ? 'cms' : 'ms')}
+              currentUser={currentUser}
+              onStartMicroAdjust={handleStartMicroAdjust}
               onOpenCatchLogModal={() => {
                 setEditingCatchLog(null);
                 setIsCatchLogModalOpen(true);
@@ -876,18 +915,26 @@ export function App() {
         />
       )}
 
-      {/* 간편 로그인 모달 (Email & ID 확인) */}
+      {/* 간편 로그인 및 계정/환경 설정 모달 */}
       <LoginModal
         isOpen={isLoginModalOpen}
         onClose={() => setIsLoginModalOpen(false)}
         currentUser={currentUser}
-        onLogin={(user) => setCurrentUser(user)}
+        onLogin={(user) => {
+          setCurrentUser(user);
+          if (user.windUnit) setWindUnit(user.windUnit);
+          if (user.currentUnit) setCurrentUnit(user.currentUnit);
+        }}
         onLogout={() => setCurrentUser(null)}
         onUpdateFavorites={(favorites) => {
           if (currentUser) {
             setCurrentUser({ ...currentUser, favoriteSpecies: favorites });
           }
         }}
+        windUnit={windUnit}
+        currentUnit={currentUnit}
+        onChangeWindUnit={setWindUnit}
+        onChangeCurrentUnit={setCurrentUnit}
       />
 
       {/* 입질 종합 지수 평가 기준 설명 헬프 모달 */}

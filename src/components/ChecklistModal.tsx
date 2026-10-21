@@ -190,7 +190,7 @@ ${uncompleted.length > 0 ? `\n⚠️ 아직 챙기지 않은 품목:\n${uncomple
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="relative w-full max-w-lg max-h-[90vh] bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
         {/* 헤더 */}
         <div className="p-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between">

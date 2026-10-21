@@ -6,7 +6,7 @@ import {
   Circle,
   useKakaoLoader,
 } from 'react-kakao-maps-sdk';
-import { AlertCircle, Star } from 'lucide-react';
+import { AlertCircle, Check, Crosshair, Star } from 'lucide-react';
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo } from '../types';
 import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
 
@@ -64,6 +64,9 @@ interface MapViewProps {
   currentUnit: CurrentUnit;
   recenterTarget?: { lat: number; lng: number; zoom?: number } | null;
   isMobileDrawerOpen?: boolean;
+  microAdjustSpot?: FishingSpot | null;
+  onCancelMicroAdjust?: () => void;
+  onConfirmMicroAdjust?: (spotId: string, newLat: number, newLng: number) => void;
 }
 
 export const MapView: React.FC<MapViewProps> = ({
@@ -77,6 +80,9 @@ export const MapView: React.FC<MapViewProps> = ({
   currentUnit,
   recenterTarget,
   isMobileDrawerOpen = false,
+  microAdjustSpot = null,
+  onCancelMicroAdjust,
+  onConfirmMicroAdjust,
 }) => {
   // 카카오 지도 SDK 동적 로더
   const [loading, error] = useKakaoLoader({
@@ -208,12 +214,28 @@ export const MapView: React.FC<MapViewProps> = ({
       isInitialMount.current = false;
       return;
     }
-    if (selectedSpot) {
+    if (selectedSpot && !microAdjustSpot) {
       setCenter({ lat: selectedSpot.lat, lng: selectedSpot.lng });
       setLevel(3);
       setPendingNewSpot(null);
     }
-  }, [selectedSpot?.id]);
+  }, [selectedSpot?.id, microAdjustSpot]);
+
+  // 위치 미세 조정 모드 활성화 시 최고 배율 줌(Level 1) 및 해당 포인트 중심으로 이동
+  React.useEffect(() => {
+    if (microAdjustSpot) {
+      setCenter({ lat: microAdjustSpot.lat, lng: microAdjustSpot.lng });
+      setLevel(1);
+      setPendingNewSpot(null);
+    }
+  }, [microAdjustSpot]);
+
+  const handleNudge = (deltaLat: number, deltaLng: number) => {
+    setCenter((prev) => ({
+      lat: Number((prev.lat + deltaLat).toFixed(7)),
+      lng: Number((prev.lng + deltaLng).toFixed(7)),
+    }));
+  };
 
   // 카카오맵 기준 고배율 줌 레벨 (level 1, 2, 3, 4 = 현장 20m~100m 상세도)에서만 캐스팅 화살표 표시
   const showCastingArrows = level <= 4;
@@ -799,10 +821,10 @@ export const MapView: React.FC<MapViewProps> = ({
         })}
       </Map>
 
-      {/* 지도 우상단 플로팅 컨트롤: 모드 3단 전환 & 찜한 포인트 필터 & GPS 내 위치 */}
+      {/* 지도 우상단 플로팅 컨트롤: 모드 3단 전환 & 찜한 포인트 필터 & GPS 내 위치 (모달 및 드로워 가림 방지를 위해 z-10 적용) */}
       <div
-        className={`absolute top-4 right-4 z-[400] flex flex-col items-end gap-2 ${
-          isMobileDrawerOpen ? 'hidden md:flex' : 'flex'
+        className={`absolute top-4 right-4 z-10 flex flex-col items-end gap-2 ${
+          isMobileDrawerOpen || microAdjustSpot ? 'hidden' : 'flex'
         }`}
       >
         {/* 일반 지도 / 스카이뷰(항공사진) / 야간 다크 모드 3단 선택 탭 */}
@@ -872,6 +894,109 @@ export const MapView: React.FC<MapViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* [요구사항 1] 위치 미세 조정 모드: 화면 중앙 조준선(십자선 타깃) */}
+      {microAdjustSpot && (
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-20">
+          <div className="relative flex items-center justify-center">
+            {/* 회전하는 동심원 조준 링 */}
+            <div className="w-16 h-16 rounded-full border-2 border-cyan-400 border-dashed animate-spin opacity-75" style={{ animationDuration: '8s' }} />
+            <div className="w-8 h-8 rounded-full border-2 border-emerald-400 bg-emerald-500/20" />
+            <div className="w-2.5 h-2.5 rounded-full bg-cyan-300 shadow-[0_0_12px_#06b6d4]" />
+            {/* 십자 조준선 */}
+            <div className="absolute w-24 h-0.5 bg-cyan-400/80" />
+            <div className="absolute h-24 w-0.5 bg-cyan-400/80" />
+            {/* 타깃 가이드 툴팁 배지 */}
+            <div className="absolute -top-10 px-3 py-1 rounded-full bg-slate-950/95 text-xs text-cyan-300 font-mono border border-cyan-500/70 font-bold whitespace-nowrap shadow-2xl backdrop-blur">
+              🎯 십자선 중앙에 정확한 낚시 발판/여밭을 맞추세요
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* [요구사항 1] 위치 미세 조정 플로팅 하단 컨트롤 패널 (좌표 표시 + 1m D-Pad 보조 + 확정/취소) */}
+      {microAdjustSpot && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[94%] max-w-md z-30 bg-slate-900/95 border border-emerald-500/60 rounded-2xl p-4 shadow-2xl backdrop-blur text-white flex flex-col gap-3 animate-fade-in">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <div className="flex items-center gap-1.5 font-bold text-emerald-300 text-sm">
+              <Crosshair size={16} className="text-emerald-400 animate-pulse" />
+              <span>[{microAdjustSpot.name}] 위치 미세 조정 중</span>
+            </div>
+            <button
+              onClick={onCancelMicroAdjust}
+              className="text-slate-400 hover:text-white text-xs px-2 py-0.5 rounded bg-slate-800"
+            >
+              닫기
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between text-xs bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
+            <span className="text-slate-400">현재 조준 좌표:</span>
+            <span className="font-mono text-cyan-300 font-bold">
+              위도 {center.lat.toFixed(6)}, 경도 {center.lng.toFixed(6)}
+            </span>
+          </div>
+
+          {/* D-Pad 1m 단위 미세 넛지 컨트롤 */}
+          <div className="flex items-center justify-between gap-2 bg-slate-950/60 p-2 rounded-xl border border-slate-800/80">
+            <span className="text-[11px] text-slate-400 font-medium pl-1">
+              1m 미세 보정:
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => handleNudge(0.000009, 0)}
+                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95"
+                title="북쪽 1m 이동"
+              >
+                ▲ 북
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNudge(-0.000009, 0)}
+                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95"
+                title="남쪽 1m 이동"
+              >
+                ▼ 남
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNudge(0, -0.000011)}
+                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95"
+                title="서쪽 1m 이동"
+              >
+                ◄ 서
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNudge(0, 0.000011)}
+                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95"
+                title="동쪽 1m 이동"
+              >
+                ► 동
+              </button>
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onCancelMicroAdjust}
+              className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition"
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              onClick={() => onConfirmMicroAdjust && onConfirmMicroAdjust(microAdjustSpot.id, center.lat, center.lng)}
+              className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition active:scale-95 flex items-center justify-center gap-1.5"
+            >
+              <Check size={14} />
+              <span>이 위치로 좌표 확정</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 지도 좌하단 안내 뱃지 */}
       <div className="absolute bottom-4 left-4 z-20 bg-slate-900/85 backdrop-blur-sm border border-slate-800 rounded-lg px-3 py-1.5 text-[11px] text-slate-300 hidden sm:flex items-center gap-2 shadow-lg">

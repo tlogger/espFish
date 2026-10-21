@@ -10,7 +10,7 @@ export const BiteScoreHelpModal: React.FC<BiteScoreHelpModalProps> = ({ isOpen, 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
       <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl text-white shadow-2xl p-5 sm:p-6 my-6 max-h-[92vh] overflow-y-auto space-y-4">
         {/* 모달 헤더 */}
         <div className="flex justify-between items-center pb-3 border-b border-slate-800">
