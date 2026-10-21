@@ -68,6 +68,8 @@ interface MapViewProps {
   microAdjustSpot?: FishingSpot | null;
   onCancelMicroAdjust?: () => void;
   onConfirmMicroAdjust?: (spotId: string, newLat: number, newLng: number) => void;
+  currentUser?: { id: string; name: string } | null;
+  onStartMicroAdjust?: (spot: FishingSpot) => void;
 }
 
 export const MapView: React.FC<MapViewProps> = ({
@@ -84,6 +86,8 @@ export const MapView: React.FC<MapViewProps> = ({
   microAdjustSpot = null,
   onCancelMicroAdjust,
   onConfirmMicroAdjust,
+  currentUser = null,
+  onStartMicroAdjust,
 }) => {
   // 카카오 지도 SDK 동적 로더
   const [loading, error] = useKakaoLoader({
@@ -787,6 +791,12 @@ export const MapView: React.FC<MapViewProps> = ({
 
           const isSelected = selectedSpot?.id === spot.id;
           const isFavorited = favoriteSpotIds.includes(spot.id);
+          const isAuthor = Boolean(
+            currentUser &&
+              (spot.user_id === currentUser.id ||
+                spot.user_id === 'user-me' ||
+                currentUser.id === 'user-me')
+          );
 
           const pinColor = spot.fishing_methods.includes('FLOAT')
             ? '#f43f5e'
@@ -840,6 +850,23 @@ export const MapView: React.FC<MapViewProps> = ({
                   <span className="mt-0.5 px-2 py-0.5 rounded-md bg-slate-950/90 border border-slate-700/80 text-[11px] text-white font-bold whitespace-nowrap shadow-md">
                     {spot.name}
                   </span>
+
+                  {/* PC 및 지도 화면 포인트 아이콘 하단 미세이동 아이콘 버튼 (포인트 작성자 전용) */}
+                  {isSelected && isAuthor && onStartMicroAdjust && !microAdjustSpot && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        isMarkerClickRef.current = true;
+                        onStartMicroAdjust(spot);
+                      }}
+                      className="mt-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-[11px] shadow-xl flex items-center gap-1 active:scale-95 transition pointer-events-auto border border-emerald-300 ring-2 ring-emerald-400/40"
+                      title="위성 스카이뷰에서 마커를 드래그하여 위치 미세이동"
+                    >
+                      <Crosshair size={12} className="shrink-0 text-slate-950 animate-pulse" />
+                      <span>미세이동</span>
+                    </button>
+                  )}
                 </div>
               </CustomOverlayMap>
             </React.Fragment>

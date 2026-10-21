@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronUp, Filter, HelpCircle, List, Loader2, LogIn, Navigation2, Plus, Search, User, X } from 'lucide-react';
+import { ChevronUp, Crosshair, Filter, HelpCircle, List, Loader2, LogIn, Navigation2, Plus, Search, User, X } from 'lucide-react';
 import { MapView } from './components/MapView';
 import { SpotDetailPanel } from './components/SpotDetailPanel';
 import { SpotFormModal } from './components/SpotFormModal';
@@ -734,6 +734,8 @@ export function App() {
             microAdjustSpot={microAdjustSpot}
             onCancelMicroAdjust={handleCancelMicroAdjust}
             onConfirmMicroAdjust={handleConfirmMicroAdjust}
+            currentUser={currentUser}
+            onStartMicroAdjust={handleStartMicroAdjust}
           />
         </div>
 
@@ -814,6 +816,22 @@ export function App() {
                 </span>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
+                {/* 미세이동 아이콘: 작성자 전용, 상세보기 아이콘 바로 옆에 배치 */}
+                {Boolean(
+                  currentUser &&
+                    (selectedSpot.user_id === currentUser.id ||
+                      selectedSpot.user_id === 'user-me' ||
+                      currentUser.id === 'user-me')
+                ) && (
+                  <button
+                    onClick={() => handleStartMicroAdjust(selectedSpot)}
+                    className="p-2 rounded-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow flex items-center justify-center transition border border-emerald-400/50"
+                    title="포인트 위치 미세이동 (스카이뷰 드래깅)"
+                    aria-label="포인트 위치 미세이동"
+                  >
+                    <Crosshair size={16} />
+                  </button>
+                )}
                 <button
                   onClick={() => setIsMobileDrawerOpen(true)}
                   className="p-2 rounded-full bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white shadow flex items-center justify-center transition"
