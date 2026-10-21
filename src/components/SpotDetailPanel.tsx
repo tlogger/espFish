@@ -38,6 +38,7 @@ import type {
   MarineData,
   SpotMemo,
   SpotMemoTag,
+  TideCurvePoint,
   TideDayInfo,
   WeatherData,
   WindUnit
@@ -463,16 +464,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
           >
             <Navigation size={11} />
             <span className="truncate">카카오길</span>
-          </a>
-          <a
-            href={naverNaviUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-0.5 py-1.5 px-1 rounded-lg bg-green-500/20 text-green-300 hover:bg-green-500/30 transition font-medium border border-green-500/30 shadow-sm"
-            title="네이버 지도 길찾기"
-          >
-            <Navigation size={11} />
-            <span className="truncate">네이버지도</span>
           </a>
           <a
             href={`https://map.kakao.com/link/roadview/${spot.lat},${spot.lng}`}
@@ -1045,118 +1036,136 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               );
             })()}
 
-            {/* 3. 72시간 연속 조석 곡선 & 가로 스크롤 차트 */}
+            {/* 3. [제안 6] 현재 시각 기준 연속 조위 변화 곡선 (-6h ~ +36h, 스크롤 없는 반응형 100% 뷰) */}
             {tide && (
-              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2.5">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="font-semibold text-slate-200">
-                    🌊 72시간 연속 조위 변화 (3일간 만·간조 흐름)
+                  <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                    🌊 조위 변화 곡선 (현재 -6h ~ 향후 +36h 실시간 예측)
                   </span>
-                  <span className="text-[10px] text-cyan-400 font-medium">
-                    ← 좌우 스크롤 탐색 →
+                  <span className="text-[10px] text-cyan-400 font-mono font-semibold">
+                    한 화면 맞춤 (무스크롤)
                   </span>
                 </div>
 
-                <div className="overflow-x-auto w-full pb-2 scrollbar-thin scrollbar-thumb-slate-700">
-                  <div className="h-52 w-[1300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart
-                        data={tide.hourly72Curve || tide.hourlyCurve}
-                        margin={{ top: 15, right: 20, left: -20, bottom: 0 }}
-                      >
-                        <defs>
-                          <linearGradient id="tideGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.6} />
-                            <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
-                          </linearGradient>
-                        </defs>
-                        <XAxis
-                          dataKey="timeStr"
-                          stroke="#64748b"
-                          fontSize={10}
-                          tickLine={false}
-                          interval={3}
-                        />
-                        <YAxis stroke="#64748b" fontSize={10} tickLine={false} unit="cm" />
-                        <Tooltip
-                          content={({ active, payload }) => {
-                            if (active && payload && payload.length) {
-                              const data = payload[0].payload;
-                              return (
-                                <div className="bg-slate-800 border border-slate-700 p-2.5 rounded-lg text-xs shadow-xl">
-                                  <div className="font-bold text-cyan-300">
+                {/* 그래프 본체: 스크롤 없이 가로 100% 반응형으로 채움 */}
+                <div className="w-full h-56 pt-1">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={tide.curve36 || tide.hourly72Curve || tide.hourlyCurve}
+                      margin={{ top: 18, right: 10, left: -22, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="tideGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.65} />
+                          <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis
+                        dataKey="displayTime"
+                        stroke="#64748b"
+                        fontSize={9}
+                        tickLine={false}
+                        interval={5}
+                      />
+                      <YAxis stroke="#64748b" fontSize={9} tickLine={false} unit="cm" domain={['auto', 'auto']} />
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload as TideCurvePoint;
+                            return (
+                              <div className="bg-slate-900/95 border border-slate-700 p-2.5 rounded-xl text-xs shadow-2xl space-y-1 backdrop-blur-md">
+                                <div className="flex items-center justify-between gap-3 border-b border-slate-800 pb-1 font-bold">
+                                  <span className="text-cyan-300">
                                     {data.dayLabel && <span className="mr-1 text-slate-400">[{data.dayLabel}]</span>}
                                     {data.timeStr}
-                                  </div>
-                                  <div className="text-slate-100 font-mono">
-                                    조위: <strong className="text-white">{data.height} cm</strong>
-                                  </div>
-                                  <div className="text-slate-400">{data.stateText}</div>
+                                  </span>
+                                  {data.isCurrent && (
+                                    <span className="px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 text-[9px] font-bold">
+                                      현재
+                                    </span>
+                                  )}
                                 </div>
-                              );
-                            }
-                            return null;
-                          }}
-                        />
-
-                        {/* 황금 피딩 타임(Golden Feeding Times) 시간대 밴드 시각화 */}
-                        {tide.feedingTimes?.map((f, fIdx) => {
-                          const curveData = tide.hourly72Curve || tide.hourlyCurve;
-                          const matchStart = curveData.find((c) => c.timeStr === f.startTimeStr) || curveData.find((c) => c.hour === f.startHour);
-                          const matchEnd = curveData.find((c) => c.timeStr === f.endTimeStr) || curveData.find((c) => c.hour === f.endHour);
-
-                          if (!matchStart || !matchEnd) return null;
-
-                          return (
-                            <ReferenceArea
-                              key={`feeding-${fIdx}`}
-                              x1={matchStart.timeStr}
-                              x2={matchEnd.timeStr}
-                              stroke="#f59e0b"
-                              strokeOpacity={0.6}
-                              strokeDasharray="2 2"
-                              fill="#f59e0b"
-                              fillOpacity={0.18}
-                              label={{
-                                value: f.label.split(' ')[0] + ' ' + f.label.split(' ')[1],
-                                position: 'insideTop',
-                                fill: '#fbbf24',
-                                fontSize: 9,
-                                fontWeight: 'bold',
-                              }}
-                            />
-                          );
-                        })}
-
-                        {/* 현재 시각 세로선 표시 */}
-                        <ReferenceLine
-                          x={
-                            tide.hourly72Curve
-                              ? tide.hourly72Curve.find((c) => c.hour === currentHour)?.timeStr
-                              : currentHourStr
+                                <div className="flex items-baseline justify-between gap-4 text-slate-200">
+                                  <span className="text-slate-400">실시간 조위:</span>
+                                  <span className="font-mono font-bold text-white text-sm">{data.height} cm</span>
+                                </div>
+                                {data.tideDiff && (
+                                  <div className="flex items-center justify-between text-[10px] text-slate-400">
+                                    <span>조차 (만·간조차):</span>
+                                    <span className="font-mono text-cyan-200 font-semibold">{data.tideDiff} cm</span>
+                                  </div>
+                                )}
+                                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                                  <span>조류 상태:</span>
+                                  <span className="text-slate-300 font-medium">{data.stateText}</span>
+                                </div>
+                                {data.eventLabel && (
+                                  <div className="text-[10px] text-amber-300 font-semibold pt-1 border-t border-slate-800">
+                                    📌 {data.eventLabel}
+                                  </div>
+                                )}
+                              </div>
+                            );
                           }
-                          stroke="#22d3ee"
-                          strokeWidth={2}
-                          strokeDasharray="3 3"
-                          label={{
-                            value: `현재 (${currentTidePoint?.height ?? ''}cm)`,
-                            position: 'top',
-                            fill: '#22d3ee',
-                            fontSize: 10,
-                            fontWeight: 'bold',
-                          }}
-                        />
+                          return null;
+                        }}
+                      />
 
-                        <Area
-                          type="monotone"
-                          dataKey="height"
-                          stroke="#22d3ee"
-                          strokeWidth={2.5}
-                          fillOpacity={1}
-                          fill="url(#tideGradient)"
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                      {/* 현재 시각 세로 점선 표시 (isCurrent === true) */}
+                      {(() => {
+                        const curPoint = (tide.curve36 || []).find((c) => c.isCurrent);
+                        if (!curPoint) return null;
+                        return (
+                          <ReferenceLine
+                            x={curPoint.displayTime}
+                            stroke="#22d3ee"
+                            strokeWidth={2}
+                            strokeDasharray="3 3"
+                            label={{
+                              value: `현재 (${curPoint.height}cm)`,
+                              position: 'top',
+                              fill: '#22d3ee',
+                              fontSize: 10,
+                              fontWeight: 'bold',
+                            }}
+                          />
+                        );
+                      })()}
+
+                      <Area
+                        type="monotone"
+                        dataKey="height"
+                        stroke="#22d3ee"
+                        strokeWidth={2.5}
+                        fillOpacity={1}
+                        fill="url(#tideGradient)"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* 일출, 일몰, 만조, 간조 조위 및 조차 정보 요약 바 */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px] pt-1 border-t border-slate-800">
+                  <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-center">
+                    <div className="text-[10px] text-slate-400">🌅 일출 (해창)</div>
+                    <div className="font-mono font-bold text-amber-300">{tide.sunrise}</div>
+                  </div>
+                  <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-center">
+                    <div className="text-[10px] text-slate-400">🌇 일몰 (피딩)</div>
+                    <div className="font-mono font-bold text-indigo-300">{tide.sunset}</div>
+                  </div>
+                  <div className="p-2 rounded-xl bg-rose-950/40 border border-rose-900/40 text-center">
+                    <div className="text-[10px] text-rose-400">🔴 오늘 만조 (조위)</div>
+                    <div className="font-mono font-bold text-rose-200 text-xs">
+                      {tide.highTides[0] ? `${tide.highTides[0].time} (${tide.highTides[0].height}cm)` : '--'}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded-xl bg-blue-950/40 border border-blue-900/40 text-center">
+                    <div className="text-[10px] text-blue-400">🔵 오늘 간조 (조위)</div>
+                    <div className="font-mono font-bold text-blue-200 text-xs">
+                      {tide.lowTides[0] ? `${tide.lowTides[0].time} (${tide.lowTides[0].height}cm)` : '--'}
+                    </div>
                   </div>
                 </div>
               </div>

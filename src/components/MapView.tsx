@@ -6,7 +6,7 @@ import {
   Circle,
   useKakaoLoader,
 } from 'react-kakao-maps-sdk';
-import { Crosshair, Play, Pause, AlertCircle, Star, Wind, Compass, MapPin } from 'lucide-react';
+import { AlertCircle, Star } from 'lucide-react';
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo } from '../types';
 import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
 
@@ -100,9 +100,6 @@ export const MapView: React.FC<MapViewProps> = ({
     return 'ROADMAP';
   });
 
-  // 활성 팝업 포인트 ID 관리
-  const [activePopupSpotId, setActivePopupSpotId] = React.useState<string | null>(null);
-
   // 내 현재 GPS 위치 및 추적 상태
   const [myLocation, setMyLocation] = React.useState<{ lat: number; lng: number } | null>(null);
   const [isLocating, setIsLocating] = React.useState(false);
@@ -124,7 +121,6 @@ export const MapView: React.FC<MapViewProps> = ({
     return [];
   });
   const [viewOnlyFavorites, setViewOnlyFavorites] = React.useState(false);
-  const [showUnderwaterReefs, setShowUnderwaterReefs] = React.useState(true);
 
   const toggleFavorite = (spotId: string) => {
     setFavoriteSpotIds((prev) => {
@@ -215,7 +211,6 @@ export const MapView: React.FC<MapViewProps> = ({
     if (selectedSpot) {
       setCenter({ lat: selectedSpot.lat, lng: selectedSpot.lng });
       setLevel(3);
-      setActivePopupSpotId(selectedSpot.id);
       setPendingNewSpot(null);
     }
   }, [selectedSpot?.id]);
@@ -305,7 +300,6 @@ export const MapView: React.FC<MapViewProps> = ({
           // 지도 빈 공간 클릭 시 바로 모달을 열지 않고 '미니 확인 팝업'을 띄워 실수 터치 방지
           const latLng = mouseEvent.latLng;
           setPendingNewSpot({ lat: latLng.getLat(), lng: latLng.getLng() });
-          setActivePopupSpotId(null);
         }}
         onZoomChanged={(target) => {
           setLevel(target.getLevel());
@@ -438,286 +432,234 @@ export const MapView: React.FC<MapViewProps> = ({
           );
         })()}
 
-        {/* 1. [제안 1] 바람·조류 상호작용 기반: 실질 캐스팅 유효 비거리 보정 링 & 채비 흘림 예상선 (Drift Path) */}
-        {showCastingArrows && selectedSpot && (
-          <React.Fragment key={`drift-physics-${selectedSpot.id}`}>
-            {(() => {
-              const castingDirs = selectedSpot.casting_directions || [];
-              const primaryDir = castingDirs.find((d) => d !== 'ALL') || 'E';
-              const bearing = CASTING_BEARINGS[primaryDir]?.deg ?? 90;
-
-              // (1) 실시간 바람 상호작용: 등바람(+) vs 맞바람(-) 실질 도달 비거리 보정 호
-              let windAdjustedRing = null;
-              if (weather) {
-                const windDiff = Math.abs(bearing - weather.windDirection) % 360;
-                const normAngle = windDiff > 180 ? 360 - windDiff : windDiff;
-                const windCos = Math.cos((normAngle * Math.PI) / 180);
-                // 기준 60m 비거리 기준 (풍속 1m/s당 약 2.5% 가감)
-                const ratio = Math.max(0.65, Math.min(1.35, 1 + windCos * (weather.windSpeed / 10) * 0.28));
-                const effDist = Math.round(60 * ratio);
-
-                // 부채꼴 호 생성
-                const arcPts: { lat: number; lng: number }[] = [];
-                for (let b = bearing - 22; b <= bearing + 22; b += 2) {
-                  const [pLat, pLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, b, effDist);
-                  arcPts.push({ lat: pLat, lng: pLng });
-                }
-                const [effLabelLat, effLabelLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, effDist);
-
-                windAdjustedRing = (
-                  <React.Fragment key={`eff-wind-${selectedSpot.id}`}>
-                    <Polyline
-                      path={arcPts}
-                      strokeWeight={2.5}
-                      strokeColor={ratio >= 1.0 ? '#34d399' : '#f43f5e'}
-                      strokeOpacity={0.9}
-                      strokeStyle="shortdash"
-                      zIndex={32}
-                    />
-                    <CustomOverlayMap
-                      position={{ lat: effLabelLat, lng: effLabelLng }}
-                      yAnchor={1.4}
-                      xAnchor={0.5}
-                      zIndex={36}
-                      clickable={false}
-                    >
-                      <div
-                        className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold font-mono shadow-lg border pointer-events-none kakao-invert-restore select-none whitespace-nowrap ${
-                          ratio >= 1.0
-                            ? 'bg-emerald-950/95 text-emerald-300 border-emerald-400/80'
-                            : 'bg-rose-950/95 text-rose-300 border-rose-400/80'
-                        }`}
-                      >
-                        🎯 실질 비거리 {effDist}m ({ratio >= 1.0 ? `등바람 +${Math.round((ratio - 1) * 60)}m` : `맞바람 -${Math.round((1 - ratio) * 60)}m`})
-                      </div>
-                    </CustomOverlayMap>
-                  </React.Fragment>
-                );
-              }
-
-              // (2) 실시간 조류 상호작용: 50m 착수 지점 기준 채비 흘림 예상선 (Drift Path)
-              let currentDriftLine = null;
-              if (marine && (marine.currentVelocity ?? 0) > 0.05) {
-                const landing = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, 50);
-                const driftDist = Math.max(18, Math.min(45, (marine.currentVelocity ?? 0.3) * 65));
-                const driftEnd = calculateDestinationPoint(landing[0], landing[1], marine.currentDirection, driftDist);
-                const driftMid = calculateDestinationPoint(landing[0], landing[1], marine.currentDirection, driftDist * 0.5);
-
-                currentDriftLine = (
-                  <React.Fragment key={`drift-path-${selectedSpot.id}`}>
-                    <Polyline
-                      path={[
-                        { lat: landing[0], lng: landing[1] },
-                        { lat: driftEnd[0], lng: driftEnd[1] },
-                      ]}
-                      endArrow={true}
-                      strokeWeight={3}
-                      strokeColor="#10b981"
-                      strokeOpacity={0.85}
-                      strokeStyle="dash"
-                      zIndex={34}
-                    />
-                    <CustomOverlayMap
-                      position={{ lat: driftMid[0], lng: driftMid[1] }}
-                      yAnchor={0.5}
-                      xAnchor={0.5}
-                      zIndex={37}
-                      clickable={false}
-                    >
-                      <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-emerald-300 border border-emerald-500/70 text-[9px] font-bold shadow-md pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                        🌊 채비 흘림 ({(marine.currentVelocity ?? 0.3).toFixed(1)}m/s)
-                      </div>
-                    </CustomOverlayMap>
-                  </React.Fragment>
-                );
-              }
-
-              return (
-                <>
-                  {windAdjustedRing}
-                  {currentDriftLine}
-                </>
-              );
-            })()}
-          </React.Fragment>
-        )}
-
-        {/* 2. [제안 4] 위성 스카이뷰 수중 지형(간출암/수중 여밭, 물골 수로) 심도 음영 오버레이 */}
-        {showUnderwaterReefs && showCastingArrows && selectedSpot && (() => {
+        {/* 선택된 포인트의 파란색 캐스팅 방향 화살표 + 실시간 바람·조류 상호작용 HUD (요구사항 3, 4, 5) */}
+        {showCastingArrows && selectedSpot && (() => {
           const castingDirs = selectedSpot.casting_directions || [];
           const primaryDir = castingDirs.find((d) => d !== 'ALL') || 'E';
-          const bearing = CASTING_BEARINGS[primaryDir]?.deg ?? 90;
+          const primaryInfo = CASTING_BEARINGS[primaryDir];
+          const bearing = primaryInfo?.deg ?? 90;
 
-          // (1) 수중 여밭 클러스터 (간조 시 노출되는 간출암 은신처, 약 38m 지점)
-          const reefCenter = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing - 8, 38);
-          // (2) 본류 물골 라인 (조류가 관통하는 심도 수로, 약 75m 지점)
-          const trenchP1 = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing - 32, 75);
-          const trenchP2 = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing + 32, 78);
-          const trenchMid = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, 76);
-
-          return (
-            <React.Fragment key={`underwater-topography-${selectedSpot.id}`}>
-              {/* 여밭 클러스터 반투명 황금빛 음영 */}
-              <Circle
-                center={{ lat: reefCenter[0], lng: reefCenter[1] }}
-                radius={16}
-                strokeWeight={1.5}
-                strokeColor="#f59e0b"
-                strokeOpacity={0.8}
-                strokeStyle="dash"
-                fillColor="#d97706"
-                fillOpacity={0.25}
-                zIndex={25}
-              />
-              <CustomOverlayMap
-                position={{ lat: reefCenter[0], lng: reefCenter[1] }}
-                yAnchor={0.5}
-                xAnchor={0.5}
-                zIndex={36}
-                clickable={false}
-              >
-                <div className="px-1.5 py-0.5 rounded-full bg-slate-950/90 text-amber-300 border border-amber-500/60 text-[9px] font-bold shadow pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                  🪨 수중 여밭 (락피시/감성돔 은신처)
-                </div>
-              </CustomOverlayMap>
-
-              {/* 본류 물골 (회유 수로) 에메랄드 굵은 선 */}
-              <Polyline
-                path={[
-                  { lat: trenchP1[0], lng: trenchP1[1] },
-                  { lat: trenchP2[0], lng: trenchP2[1] },
-                ]}
-                strokeWeight={5}
-                strokeColor="#06b6d4"
-                strokeOpacity={0.65}
-                zIndex={24}
-              />
-              <CustomOverlayMap
-                position={{ lat: trenchMid[0], lng: trenchMid[1] }}
-                yAnchor={-0.4}
-                xAnchor={0.5}
-                zIndex={36}
-                clickable={false}
-              >
-                <div className="px-1.5 py-0.5 rounded-full bg-slate-950/90 text-cyan-300 border border-cyan-500/60 text-[9px] font-bold shadow pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                  🌊 본류 물골 (회유로)
-                </div>
-              </CustomOverlayMap>
-            </React.Fragment>
-          );
-        })()}
-
-        {/* 선택된 포인트 위 실시간 풍향(바람) & 조류 벡터 화살표 오버레이 */}
-        {selectedSpot && weather && (
-          <Polyline
-            key={`wind-vector-${selectedSpot.id}`}
-            path={[
-              { lat: selectedSpot.lat, lng: selectedSpot.lng },
-              {
-                lat: calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, weather.windDirection, 42)[0],
-                lng: calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, weather.windDirection, 42)[1],
-              },
-            ]}
-            endArrow={true}
-            strokeWeight={4}
-            strokeColor="#38bdf8"
-            strokeOpacity={0.9}
-            zIndex={60}
-          />
-        )}
-        {selectedSpot && marine && (
-          <Polyline
-            key={`current-vector-${selectedSpot.id}`}
-            path={[
-              { lat: selectedSpot.lat, lng: selectedSpot.lng },
-              {
-                lat: calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, marine.currentDirection, 42)[0],
-                lng: calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, marine.currentDirection, 42)[1],
-              },
-            ]}
-            endArrow={true}
-            strokeWeight={4}
-            strokeColor="#34d399"
-            strokeOpacity={0.9}
-            zIndex={60}
-          />
-        )}
-
-        {/* 고배율 줌(Level <= 4) 시 포인트 캐스팅 공략 방향 화살표 렌더링 */}
-        {showCastingArrows &&
-          displayedSpots.map((spot) => {
-            const directions = spot.casting_directions;
-            if (!directions || directions.length === 0) return null;
-
-            const isSelected = selectedSpot?.id === spot.id;
-            const lineColor = isSelected ? '#22d3ee' : '#10b981';
-            const arrowWeight = isSelected ? 5 : 3.5;
-
-            // 'ALL' (전방위 캐스팅)인 경우 반경 45m 점선 레이더 원 및 4방위 화살표
-            if (directions.includes('ALL')) {
-              const cardinalBearings = [0, 90, 180, 270];
-              return (
-                <React.Fragment key={`casting-all-${spot.id}`}>
-                  <Circle
-                    center={{ lat: spot.lat, lng: spot.lng }}
-                    radius={45}
-                    strokeWeight={isSelected ? 2.5 : 1.5}
-                    strokeColor={lineColor}
-                    strokeOpacity={0.9}
-                    strokeStyle="dash"
-                    fillColor={lineColor}
-                    fillOpacity={isSelected ? 0.2 : 0.08}
-                    zIndex={40}
+          // 1. 파란색 캐스팅 방향 화살표 (요구사항 4: 파란색 화살표 적용)
+          const isAllDirections = castingDirs.includes('ALL');
+          const castingLines = isAllDirections ? (
+            <React.Fragment key={`selected-casting-all-${selectedSpot.id}`}>
+              {[0, 90, 180, 270].map((deg) => {
+                const tip = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, deg, 55);
+                return (
+                  <Polyline
+                    key={`all-arrow-${selectedSpot.id}-${deg}`}
+                    path={[
+                      { lat: selectedSpot.lat, lng: selectedSpot.lng },
+                      { lat: tip[0], lng: tip[1] },
+                    ]}
+                    endArrow={true}
+                    strokeWeight={4.5}
+                    strokeColor="#2563eb"
+                    strokeOpacity={0.95}
+                    zIndex={50}
                   />
-                  {cardinalBearings.map((deg) => {
-                    const tip = calculateDestinationPoint(spot.lat, spot.lng, deg, 45);
-                    return (
-                      <Polyline
-                        key={`all-arrow-${spot.id}-${deg}`}
-                        path={[
-                          { lat: spot.lat, lng: spot.lng },
-                          { lat: tip[0], lng: tip[1] },
-                        ]}
-                        endArrow={true}
-                        strokeWeight={isSelected ? 4 : 2.5}
-                        strokeColor={lineColor}
-                        strokeOpacity={0.85}
-                        zIndex={45}
-                      />
-                    );
-                  })}
-                </React.Fragment>
-              );
-            }
+                );
+              })}
+            </React.Fragment>
+          ) : (
+            <React.Fragment key={`selected-casting-${selectedSpot.id}`}>
+              {castingDirs.map((dir) => {
+                const info = CASTING_BEARINGS[dir];
+                if (!info) return null;
+                const tip = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, info.deg, 55);
+                const badgePos = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, info.deg, 58);
 
-            // 개별 지정 방향 화살표들
-            return (
-              <React.Fragment key={`casting-group-${spot.id}`}>
-                {directions.map((dir) => {
-                  const info = CASTING_BEARINGS[dir];
-                  if (!info) return null;
-                  const bearing = info.deg;
-                  const distanceMeters = 50; // 실제 캐스팅 비거리 약 50m
-                  const tip = calculateDestinationPoint(spot.lat, spot.lng, bearing, distanceMeters);
-
-                  return (
+                return (
+                  <React.Fragment key={`casting-arrow-${selectedSpot.id}-${dir}`}>
                     <Polyline
-                      key={`arrow-${spot.id}-${dir}`}
                       path={[
-                        { lat: spot.lat, lng: spot.lng },
+                        { lat: selectedSpot.lat, lng: selectedSpot.lng },
                         { lat: tip[0], lng: tip[1] },
                       ]}
                       endArrow={true}
-                      strokeWeight={arrowWeight}
-                      strokeColor={lineColor}
+                      strokeWeight={4.5}
+                      strokeColor="#2563eb"
                       strokeOpacity={0.95}
                       zIndex={50}
                     />
-                  );
-                })}
+                    <CustomOverlayMap
+                      position={{ lat: badgePos[0], lng: badgePos[1] }}
+                      yAnchor={0.5}
+                      xAnchor={0.5}
+                      zIndex={55}
+                      clickable={false}
+                    >
+                      <div className="px-1.5 py-0.5 rounded-full bg-blue-950/95 text-blue-300 border border-blue-400/80 text-[9px] font-bold shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
+                        🎯 캐스팅 {info.label} ({info.deg}°)
+                      </div>
+                    </CustomOverlayMap>
+                  </React.Fragment>
+                );
+              })}
+            </React.Fragment>
+          );
+
+          // 2. 실시간 풍향 및 풍속 상호작용 (요구사항 3 & 4)
+          // weather.windDirection: 바람이 불어오는 방위 (From)
+          // windVectorDeg: 바람이 불어가는 진행 방위 (To) = (windDirection + 180) % 360
+          let windElements = null;
+          if (weather) {
+            const windVectorDeg = (weather.windDirection + 180) % 360;
+            const diff = Math.abs(bearing - windVectorDeg) % 360;
+            const angleDiff = diff > 180 ? 360 - diff : diff;
+
+            // 등바람(Tailwind) <= 45도 / 맞바람(Headwind) >= 135도 / 옆바람(Crosswind)
+            const isTailwind = angleDiff <= 45;
+            const isHeadwind = angleDiff >= 135;
+
+            let windTypeLabel = '';
+            let windColor = '#f59e0b'; // 옆바람 (기본 호박색)
+            let ratio = 1.0;
+
+            if (isTailwind) {
+              windColor = '#10b981'; // 에메랄드 그린
+              const tailFactor = Math.cos((angleDiff * Math.PI) / 180);
+              ratio = Math.min(1.35, 1 + tailFactor * (weather.windSpeed / 10) * 0.28);
+              const plusMeters = Math.round((ratio - 1) * 60);
+              windTypeLabel = `등바람 (비거리 +${plusMeters}m)`;
+            } else if (isHeadwind) {
+              windColor = '#ef4444'; // 로즈 레드
+              const headFactor = Math.abs(Math.cos((angleDiff * Math.PI) / 180));
+              ratio = Math.max(0.65, 1 - headFactor * (weather.windSpeed / 10) * 0.28);
+              const minusMeters = Math.round((1 - ratio) * 60);
+              windTypeLabel = `맞바람 (비거리 -${minusMeters}m)`;
+            } else {
+              windColor = '#f59e0b'; // 황금/호박색
+              const crossFactor = Math.sin((angleDiff * Math.PI) / 180);
+              ratio = Math.max(0.85, 1 - crossFactor * (weather.windSpeed / 10) * 0.12);
+              windTypeLabel = '옆바람 (줄날림 주의)';
+            }
+
+            const effDist = Math.round(60 * ratio);
+
+            // 바람 진행 벡터 화살표 (바람이 불어가는 방향으로 45m 뻗어감)
+            const windTip = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, windVectorDeg, 45);
+            const windBadgePos = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, windVectorDeg, 48);
+
+            // 보정된 유효 비거리 부채꼴 호
+            const arcPts: { lat: number; lng: number }[] = [];
+            for (let b = bearing - 22; b <= bearing + 22; b += 2) {
+              const [pLat, pLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, b, effDist);
+              arcPts.push({ lat: pLat, lng: pLng });
+            }
+            const [effLabelLat, effLabelLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, effDist);
+
+            windElements = (
+              <React.Fragment key={`wind-physics-${selectedSpot.id}`}>
+                {/* 바람 진행 벡터 화살표 */}
+                <Polyline
+                  path={[
+                    { lat: selectedSpot.lat, lng: selectedSpot.lng },
+                    { lat: windTip[0], lng: windTip[1] },
+                  ]}
+                  endArrow={true}
+                  strokeWeight={4}
+                  strokeColor={windColor}
+                  strokeOpacity={0.9}
+                  zIndex={60}
+                />
+                <CustomOverlayMap
+                  position={{ lat: windBadgePos[0], lng: windBadgePos[1] }}
+                  yAnchor={0.5}
+                  xAnchor={0.5}
+                  zIndex={65}
+                  clickable={false}
+                >
+                  <div
+                    className="px-2 py-0.5 rounded-full text-[9px] font-bold font-mono shadow-xl border pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1"
+                    style={{
+                      backgroundColor: `${windColor}22`,
+                      color: windColor,
+                      borderColor: `${windColor}aa`,
+                    }}
+                  >
+                    <span>💨 {getCompassDirection(weather.windDirection)}풍 {formatWindSpeed(weather.windSpeed, windUnit)}</span>
+                    <span className="opacity-70">|</span>
+                    <span>{windTypeLabel}</span>
+                  </div>
+                </CustomOverlayMap>
+
+                {/* 실질 보정 비거리 호 & 배지 */}
+                <Polyline
+                  path={arcPts}
+                  strokeWeight={2.5}
+                  strokeColor={windColor}
+                  strokeOpacity={0.9}
+                  strokeStyle="shortdash"
+                  zIndex={32}
+                />
+                <CustomOverlayMap
+                  position={{ lat: effLabelLat, lng: effLabelLng }}
+                  yAnchor={1.4}
+                  xAnchor={0.5}
+                  zIndex={36}
+                  clickable={false}
+                >
+                  <div
+                    className="px-1.5 py-0.5 rounded-full text-[9px] font-bold font-mono shadow-lg border pointer-events-none kakao-invert-restore select-none whitespace-nowrap"
+                    style={{
+                      backgroundColor: `${windColor}22`,
+                      color: windColor,
+                      borderColor: `${windColor}aa`,
+                    }}
+                  >
+                    🎯 실질 비거리 {effDist}m ({isTailwind ? `등바람 +${Math.round((ratio - 1) * 60)}m` : isHeadwind ? `맞바람 -${Math.round((1 - ratio) * 60)}m` : '옆바람 감쇄'})
+                  </div>
+                </CustomOverlayMap>
               </React.Fragment>
             );
-          })}
+          }
+
+          // 3. 실시간 조류 흘림선 (Drift Path)
+          let currentElements = null;
+          if (marine && (marine.currentVelocity ?? 0) > 0.05) {
+            const landing = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, 50);
+            const driftDist = Math.max(18, Math.min(45, (marine.currentVelocity ?? 0.3) * 65));
+            const driftEnd = calculateDestinationPoint(landing[0], landing[1], marine.currentDirection, driftDist);
+            const driftMid = calculateDestinationPoint(landing[0], landing[1], marine.currentDirection, driftDist * 0.5);
+
+            currentElements = (
+              <React.Fragment key={`drift-path-${selectedSpot.id}`}>
+                <Polyline
+                  path={[
+                    { lat: landing[0], lng: landing[1] },
+                    { lat: driftEnd[0], lng: driftEnd[1] },
+                  ]}
+                  endArrow={true}
+                  strokeWeight={3}
+                  strokeColor="#06b6d4"
+                  strokeOpacity={0.85}
+                  strokeStyle="dash"
+                  zIndex={34}
+                />
+                <CustomOverlayMap
+                  position={{ lat: driftMid[0], lng: driftMid[1] }}
+                  yAnchor={0.5}
+                  xAnchor={0.5}
+                  zIndex={37}
+                  clickable={false}
+                >
+                  <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-cyan-300 border border-cyan-500/70 text-[9px] font-bold shadow-md pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
+                    🌊 조류 흘림 ({formatCurrentVelocity(marine.currentVelocity, currentUnit)}, {getCompassDirection(marine.currentDirection)})
+                  </div>
+                </CustomOverlayMap>
+              </React.Fragment>
+            );
+          }
+
+          return (
+            <React.Fragment key={`selected-hud-${selectedSpot.id}`}>
+              {castingLines}
+              {windElements}
+              {currentElements}
+            </React.Fragment>
+          );
+        })()}
 
         {/* 내 현재 GPS 위치 마커 */}
         {myLocation && (
@@ -805,10 +747,9 @@ export const MapView: React.FC<MapViewProps> = ({
           </React.Fragment>
         )}
 
-        {/* 등록된 포인트 커스텀 핀 오버레이 (clickable={true}로 이벤트 관통 완전 차단) */}
+        {/* 등록된 포인트 커스텀 핀 오버레이 (요구사항 9: 불필요한 마커 팝업 제거, 클릭 시 해당 포인트 선택 및 HUD 표시) */}
         {displayedSpots.map((spot) => {
           const isSelected = selectedSpot?.id === spot.id;
-          const isPopupOpen = activePopupSpotId === spot.id;
           const isFavorited = favoriteSpotIds.includes(spot.id);
 
           const pinColor = spot.fishing_methods.includes('FLOAT')
@@ -836,11 +777,10 @@ export const MapView: React.FC<MapViewProps> = ({
                     e.stopPropagation();
                     isMarkerClickRef.current = true;
                     onSelectSpot(spot);
-                    setActivePopupSpotId(isPopupOpen ? null : spot.id);
                     setPendingNewSpot(null);
                   }}
                   className="cursor-pointer group flex flex-col items-center kakao-invert-restore"
-                  title={`${spot.name} 클릭하여 상세 보기`}
+                  title={`${spot.name} (${spot.target_species.join(', ')}) 클릭하여 선택`}
                 >
                   <div className="relative">
                     <div
@@ -866,111 +806,6 @@ export const MapView: React.FC<MapViewProps> = ({
                   </span>
                 </div>
               </CustomOverlayMap>
-
-              {/* 포인트 클릭 시 팝업 창 (clickable={true}로 이벤트 관통 완전 차단) */}
-              {isPopupOpen && (
-                <CustomOverlayMap
-                  position={{ lat: spot.lat, lng: spot.lng }}
-                  yAnchor={1.25}
-                  zIndex={150}
-                  clickable={true}
-                >
-                  <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      isMarkerClickRef.current = true;
-                    }}
-                    className="p-3.5 bg-slate-900/95 backdrop-blur-md text-white rounded-xl border border-slate-700 shadow-2xl min-w-[220px] text-xs font-sans kakao-invert-restore space-y-2"
-                  >
-                    <div className="flex justify-between items-center pb-1 border-b border-slate-800">
-                      <div className="flex items-center gap-1.5 truncate max-w-[150px]">
-                        <span className="font-bold text-sm text-cyan-400 truncate">
-                          {spot.name}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            isMarkerClickRef.current = true;
-                            toggleFavorite(spot.id);
-                          }}
-                          className={`text-sm transition ${
-                            isFavorited ? 'text-amber-400 scale-110' : 'text-slate-500 hover:text-amber-300'
-                          }`}
-                          title={isFavorited ? '찜 해제' : '포인트 찜하기'}
-                        >
-                          {isFavorited ? '★' : '☆'}
-                        </button>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          isMarkerClickRef.current = true;
-                          setActivePopupSpotId(null);
-                        }}
-                        className="p-1 text-slate-400 hover:text-white rounded"
-                        title="닫기"
-                      >
-                        ✕
-                      </button>
-                    </div>
-
-                    <div className="text-slate-300 text-[11px] truncate">
-                      어종: {spot.target_species.join(', ')}
-                    </div>
-
-                    {spot.casting_directions && spot.casting_directions.length > 0 && (
-                      <div className="text-[11px] text-amber-300 font-semibold">
-                        🎯 투척:{' '}
-                        {spot.casting_directions.includes('ALL')
-                          ? '전방위 (360°)'
-                          : spot.casting_directions.join(', ')}
-                      </div>
-                    )}
-
-                    {/* 실시간 풍향 & 조류 인디케이터 (현재 포인트 정보) */}
-                    {weather && marine && (
-                      <div className="p-1.5 bg-slate-950/70 rounded-lg border border-slate-800/80 flex justify-between text-[10px] text-slate-300 font-mono">
-                        <span className="flex items-center gap-1 text-cyan-300">
-                          <Wind size={11} /> {formatWindSpeed(weather.windSpeed, windUnit)} ({getCompassDirection(weather.windDirection)})
-                        </span>
-                        <span className="flex items-center gap-1 text-emerald-300">
-                          <Compass size={11} /> {formatCurrentVelocity(marine.currentVelocity, currentUnit)}
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-1.5 pt-0.5">
-                      {/* 카카오 로드뷰 360도 현장 미리보기 */}
-                      <a
-                        href={`https://map.kakao.com/link/roadview/${spot.lat},${spot.lng}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          isMarkerClickRef.current = true;
-                        }}
-                        className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 font-medium text-[11px] transition shadow"
-                        title="현장 주차장 및 진입로 360도 로드뷰 열기"
-                      >
-                        <span>🚗 로드뷰</span>
-                      </a>
-
-                      {/* 상세 및 기상 보기 (클릭 누수 차단 및 상세 패널 즉시 오픈) */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          isMarkerClickRef.current = true;
-                          onSelectSpot(spot);
-                          setActivePopupSpotId(null);
-                        }}
-                        className="py-1.5 px-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-bold text-[11px] transition shadow"
-                      >
-                        상세 보기
-                      </button>
-                    </div>
-                  </div>
-                </CustomOverlayMap>
-              )}
             </React.Fragment>
           );
         })}
@@ -1019,21 +854,8 @@ export const MapView: React.FC<MapViewProps> = ({
           </button>
         </div>
 
-        {/* 보조 액션 버튼들 (수중지형 토글 & 찜한 포인트 필터 & GPS 내 위치) */}
+        {/* 보조 액션 버튼들 (찜한 포인트 필터 & GPS 내 위치) */}
         <div className="flex items-center gap-2">
-          {/* 수중 지형(간출암/물골) 토글 버튼 */}
-          <button
-            onClick={() => setShowUnderwaterReefs(!showUnderwaterReefs)}
-            className={`px-2.5 py-2 border rounded-xl shadow-xl backdrop-blur flex items-center gap-1 transition text-xs font-bold active:scale-95 ${
-              showUnderwaterReefs
-                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/60 shadow-cyan-500/20'
-                : 'bg-slate-900/95 hover:bg-slate-800 text-slate-400 border-slate-700/80'
-            }`}
-            title={showUnderwaterReefs ? '수중 여밭/물골 레이어 숨기기' : '수중 여밭/물골 레이어 보기'}
-          >
-            <span>🪨 여밭·물골</span>
-          </button>
-
           {/* 찜한 포인트만 보기 필터 */}
           <button
             onClick={() => setViewOnlyFavorites(!viewOnlyFavorites)}

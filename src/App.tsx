@@ -20,7 +20,7 @@ import type {
   WindUnit
 } from './types';
 import { calculateTideDay, getDistanceKm } from './utils/tideEngine';
-import { fetchMarineData, fetchWeatherData, getWeatherText } from './utils/weatherApi';
+import { fetchMarineData, fetchWeatherData, formatWindSpeed, getCompassDirection, getWeatherText } from './utils/weatherApi';
 import { calculateBiteScore } from './utils/biteScore';
 import { extractExifFromImage } from './utils/exifExtractor';
 import { searchPoi, type PoiSearchResult } from './utils/poiSearch';
@@ -221,33 +221,65 @@ export function App() {
   }, []);
 
   // 포인트 선택 시 날씨/해양/물때/입질지수 Fetch & 연산
-  const handleSelectSpot = async (spot: FishingSpot, shouldRecenter: boolean = true) => {
-    setSelectedSpot(spot);
-    setIsMobileDrawerOpen(true); // 모바일에서 선택 시 드로워 열기
-    if (shouldRecenter) {
-      setRecenterTarget({ lat: spot.lat, lng: spot.lng, zoom: 14 });
-    }
+  const handleSelectSpot = React.useCallback(
+    async (spot: FishingSpot, shouldRecenter: boolean = true, openMobileDrawer: boolean = false) => {
+      setSelectedSpot(spot);
+      if (openMobileDrawer) {
+        setIsMobileDrawerOpen(true);
+      }
+      if (shouldRecenter) {
+        setRecenterTarget({ lat: spot.lat, lng: spot.lng, zoom: 14 });
+      }
 
-    // 1. 한국형 물때 & 72시간 연속 조석 곡선 & 3일간 일출일몰 즉시 계산
-    const tideData = calculateTideDay(spot.lat, spot.lng, new Date());
-    setTide(tideData);
+      // 1. 한국형 물때 & 36시간 연속 조석 곡선 & 3일간 일출일몰 즉시 계산
+      const tideData = calculateTideDay(spot.lat, spot.lng, new Date());
+      setTide(tideData);
 
-    // 2. Open-Meteo Weather & Marine API 병렬 Fetch (48h+ 예보 지원)
-    try {
-      const [weatherData, marineData] = await Promise.all([
-        fetchWeatherData(spot.lat, spot.lng),
-        fetchMarineData(spot.lat, spot.lng),
-      ]);
-      setWeather(weatherData);
-      setMarine(marineData);
+      // 2. Open-Meteo Weather & Marine API 병렬 Fetch (48h+ 예보 지원)
+      try {
+        const [weatherData, marineData] = await Promise.all([
+          fetchWeatherData(spot.lat, spot.lng),
+          fetchMarineData(spot.lat, spot.lng),
+        ]);
+        setWeather(weatherData);
+        setMarine(marineData);
 
-      // 3. ExFish AI 입질 지수 도출 (로그인 유저의 관심 어종 가중치 자동 반영)
-      const score = calculateBiteScore(spot, weatherData, marineData, tideData, currentUser?.favoriteSpecies);
-      setBiteScore(score);
-    } catch (err) {
-      console.error('Error fetching marine/weather data:', err);
-    }
-  };
+        // 3. ExFish AI 입질 지수 도출 (로그인 유저의 관심 어종 가중치 자동 반영)
+        const score = calculateBiteScore(spot, weatherData, marineData, tideData, currentUser?.favoriteSpecies);
+        setBiteScore(score);
+      } catch (err) {
+        console.error('Error fetching marine/weather data:', err);
+      }
+    },
+    [currentUser?.favoriteSpecies]
+  );
+
+  // 선택된 포인트의 실시간 데이터 10초 주기 자동 갱신 (요구사항 8: 창을 닫지 않는 한 10초마다 업데이트)
+  React.useEffect(() => {
+    if (!selectedSpot) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const now = new Date();
+        const tideData = calculateTideDay(selectedSpot.lat, selectedSpot.lng, now);
+        setTide(tideData);
+
+        const [weatherData, marineData] = await Promise.all([
+          fetchWeatherData(selectedSpot.lat, selectedSpot.lng),
+          fetchMarineData(selectedSpot.lat, selectedSpot.lng),
+        ]);
+        setWeather(weatherData);
+        setMarine(marineData);
+
+        const score = calculateBiteScore(selectedSpot, weatherData, marineData, tideData, currentUser?.favoriteSpecies);
+        setBiteScore(score);
+      } catch (err) {
+        console.warn('10초 자동 갱신 일시 에러 (무시):', err);
+      }
+    }, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [selectedSpot?.id, selectedSpot?.lat, selectedSpot?.lng, currentUser?.favoriteSpecies]);
 
   // 로그인 유저의 관심 어종(favoriteSpecies) 변경 시, 현재 선택된 포인트의 입질 지수 실시간 재연산
   React.useEffect(() => {
@@ -654,7 +686,7 @@ export function App() {
           <MapView
             spots={filteredSpots}
             selectedSpot={selectedSpot}
-            onSelectSpot={handleSelectSpot}
+            onSelectSpot={(spot) => handleSelectSpot(spot, true, false)}
             onMapClickForNewSpot={handleMapClickForNewSpot}
             weather={weather}
             marine={marine}
@@ -732,19 +764,57 @@ export function App() {
           </div>
         )}
 
-        {/* 모바일 화면 2: 드로어를 숨겼을 때 하단 플로팅 바를 통해 원터치로 다시 열 수 있도록 지원 */}
+        {/* 모바일 화면 2: 포인트를 탭했을 때 하단 플로팅 바 (요구사항 9: 캐스팅/풍향 요약 + 상세보기를 누를 때만 상세 진입) */}
         {selectedSpot && !isMobileDrawerOpen && (
-          <div className="md:hidden fixed bottom-4 left-4 right-4 z-30 animate-fade-in flex flex-col gap-2">
-            <button
-              onClick={() => setIsMobileDrawerOpen(true)}
-              className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-cyan-600 via-teal-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold flex items-center justify-between shadow-2xl border border-cyan-400/40 transition active:scale-98"
-            >
-              <div className="flex items-center gap-2 truncate">
-                <span className="text-base">📍</span>
-                <span className="truncate">{selectedSpot.name} 포인트 상세정보 열기</span>
+          <div className="md:hidden fixed bottom-4 left-4 right-4 z-30 animate-in fade-in slide-in-from-bottom-3 duration-200">
+            <div className="bg-slate-900/95 backdrop-blur-md border border-cyan-500/50 rounded-2xl p-3 shadow-2xl text-white space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-lg">📍</span>
+                  <div className="min-w-0">
+                    <div className="font-bold text-sm text-cyan-300 truncate">
+                      {selectedSpot.name}
+                    </div>
+                    <div className="text-[11px] text-slate-300 truncate">
+                      {selectedSpot.target_species.slice(0, 3).join(', ')}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedSpot(null)}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800/80 shrink-0"
+                  title="선택 해제"
+                >
+                  <X size={14} />
+                </button>
               </div>
-              <ChevronUp size={18} className="shrink-0 text-cyan-200" />
-            </button>
+
+              {/* 캐스팅 방향 및 비거리/풍향 요약 */}
+              <div className="flex items-center justify-between gap-1.5 text-[10px] font-mono bg-slate-950/80 p-2 rounded-xl border border-slate-800">
+                <span className="text-blue-300 font-bold truncate">
+                  🎯 캐스팅: {selectedSpot.casting_directions?.includes('ALL') ? '전방위(360°)' : selectedSpot.casting_directions?.join(', ') || '자유'}
+                </span>
+                {weather && (
+                  <span className="text-cyan-300 truncate">
+                    💨 {getCompassDirection(weather.windDirection)} {formatWindSpeed(weather.windSpeed, windUnit)}
+                  </span>
+                )}
+                {biteScore && (
+                  <span className="text-amber-300 font-bold shrink-0">
+                    입질 {biteScore.totalScore}점
+                  </span>
+                )}
+              </div>
+
+              {/* 상세 및 기상 보기 버튼 */}
+              <button
+                onClick={() => setIsMobileDrawerOpen(true)}
+                className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-600 via-teal-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg active:scale-98 transition"
+              >
+                <span>상세 & 기상 보기</span>
+                <ChevronUp size={16} />
+              </button>
+            </div>
           </div>
         )}
 
@@ -832,7 +902,7 @@ export function App() {
         onClose={() => setIsSpotListModalOpen(false)}
         spots={spots}
         selectedSpot={selectedSpot}
-        onSelectSpot={handleSelectSpot}
+        onSelectSpot={(spot) => handleSelectSpot(spot, true, true)}
         environmentMap={environmentMap}
         windUnit={windUnit}
         currentUnit={currentUnit}

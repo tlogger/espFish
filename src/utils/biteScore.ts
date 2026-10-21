@@ -157,7 +157,7 @@ export function calculateBiteScore(
   const currentHour = now.getHours();
   const currentMonth = now.getMonth() + 1; // 1~12
 
-  // 1. 바람 및 너울 안전 판정 (전 어종 공통 안전 지표)
+  // 1. 바람 및 너울 안전 판정 (캐스팅 각도와 바람 진행 방향의 물리적 일치도 연산)
   const speed = weather.windSpeed;
   let windScore = 25;
   if (speed <= 4.0) windScore = 25;
@@ -166,27 +166,63 @@ export function calculateBiteScore(
   else windScore = 5;
 
   let windRelation: BiteScoreBreakdown['windRelation'] = '등바람 (최적)';
-  if (speed > 7.0 || marine.waveHeight > 1.5) {
-    windRelation = '맞바람/너울 (위험)';
-    windScore = Math.max(5, windScore - 6);
-  } else if (speed > 4.5) {
-    windRelation = '옆바람 (주의)';
+  const primaryCastingDir = spot.casting_directions?.find((d) => d !== 'ALL');
+  const CASTING_DEG: Record<string, number> = {
+    N: 0, NE: 45, E: 90, SE: 135, S: 180, SW: 225, W: 270, NW: 315
+  };
+
+  if (primaryCastingDir && CASTING_DEG[primaryCastingDir] !== undefined) {
+    const bearing = CASTING_DEG[primaryCastingDir];
+    // 바람이 불어가는 방향 (windDirection은 불어오는 방향이므로 180도 반대)
+    const windVectorDeg = (weather.windDirection + 180) % 360;
+    const diff = Math.abs(bearing - windVectorDeg) % 360;
+    const angleDiff = diff > 180 ? 360 - diff : diff;
+
+    if (angleDiff <= 45 && speed <= 7.0 && marine.waveHeight <= 1.5) {
+      windRelation = '등바람 (최적)';
+    } else if (angleDiff >= 135 || speed > 7.5 || marine.waveHeight > 1.5) {
+      windRelation = '맞바람/너울 (위험)';
+      windScore = Math.max(5, windScore - 6);
+    } else {
+      windRelation = '옆바람 (주의)';
+    }
   } else {
-    windRelation = '등바람 (최적)';
+    if (speed > 7.0 || marine.waveHeight > 1.5) {
+      windRelation = '맞바람/너울 (위험)';
+      windScore = Math.max(5, windScore - 6);
+    } else if (speed > 4.5) {
+      windRelation = '옆바람 (주의)';
+    } else {
+      windRelation = '등바람 (최적)';
+    }
   }
 
   // 2. 평가 대상 어종 목록 결정
-  // (사용자 관심 어종이 있으면 우선 적용, 없으면 포인트의 대표 대상어종 적용)
+  // (포인트에 실제 등록된 대상어종을 기준으로 하되, 사용자의 관심어종과 일치하는 어종만 선별 평가)
+  const spotActualSpecies = (spot.target_species && spot.target_species.length > 0)
+    ? spot.target_species
+    : ['우럭', '광어'];
+
   let targetNames: string[] = [];
   let isCustom = false;
 
   if (favoriteSpecies && favoriteSpecies.length > 0) {
-    targetNames = favoriteSpecies;
-    isCustom = true;
-  } else if (spot.target_species && spot.target_species.length > 0) {
-    targetNames = spot.target_species;
+    // 사용자의 관심 어종 중 "해당 포인트에 실제로 서식하는 어종"만 교집합 필터링!
+    const matchedFavorites = spotActualSpecies.filter((sp) =>
+      favoriteSpecies.some((fav) => fav.includes(sp) || sp.includes(fav))
+    );
+
+    if (matchedFavorites.length > 0) {
+      targetNames = matchedFavorites;
+      isCustom = true;
+    } else {
+      // 내 관심어종이 해당 포인트에 전혀 서식하지 않는 경우:
+      // 관심어종을 억지로 추천하지 않고, 포인트 고유 대상어종만 정상 평가!
+      targetNames = spotActualSpecies;
+      isCustom = false;
+    }
   } else {
-    targetNames = ['우럭', '광어'];
+    targetNames = spotActualSpecies;
   }
 
   // 어종별 개별 점수 산출

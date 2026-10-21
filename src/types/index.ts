@@ -113,12 +113,18 @@ export interface TidePoint {
 export interface TideCurvePoint {
   hour: number;
   timeStr: string; // HH:mm or MM/DD HH:mm
+  displayTime?: string; // HH:mm
   dateStr?: string; // MM/DD
-  dayLabel?: string; // 오늘, 내일, 모레
+  dayLabel?: string; // 오늘, 내일, 모레, 어제
   height: number;
   stateText: string;
   isSunrise?: boolean;
   isSunset?: boolean;
+  isHighTide?: boolean;
+  isLowTide?: boolean;
+  isCurrent?: boolean;
+  tideDiff?: number; // 조차 (cm)
+  eventLabel?: string; // e.g. "만조 720cm (+580)", "간조 140cm", "일출", "일몰"
 }
 
 export interface TideDaySummary {
@@ -139,6 +145,7 @@ export interface TideDayInfo {
   lowTides: { time: string; height: number }[];
   hourlyCurve: TideCurvePoint[];
   hourly72Curve: TideCurvePoint[]; // 오늘 0시 기준 72시간 연속 조위 곡선
+  curve36?: TideCurvePoint[]; // 현재 시각 -6시간 ~ 향후 +36시간 실시간 조위 곡선 (총 42시간)
   threeDays: TideDaySummary[]; // 오늘, 내일, 모레 3일간 요약
   sunrise: string; // HH:mm
   sunset: string; // HH:mm
