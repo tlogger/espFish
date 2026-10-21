@@ -730,7 +730,7 @@ export function App() {
             windUnit={windUnit}
             currentUnit={currentUnit}
             recenterTarget={recenterTarget}
-            isMobileDrawerOpen={Boolean(selectedSpot && isMobileDrawerOpen)}
+            isMobileDrawerOpen={Boolean(selectedSpot && isMobileDrawerOpen && (typeof window !== 'undefined' && window.innerWidth < 768))}
             microAdjustSpot={microAdjustSpot}
             onCancelMicroAdjust={handleCancelMicroAdjust}
             onConfirmMicroAdjust={handleConfirmMicroAdjust}
@@ -803,63 +803,48 @@ export function App() {
           </div>
         )}
 
-        {/* 모바일 화면 2: 포인트를 탭했을 때 하단 플로팅 바 (요구사항 9: 캐스팅/풍향 요약 + 상세보기를 누를 때만 상세 진입) */}
+        {/* 모바일 화면 2: 포인트를 탭했을 때 하단 슬림 바 (상세 정보 텍스트 완전 제거, 아이콘 기반 미니멀 캡슐) */}
         {selectedSpot && !isMobileDrawerOpen && (
-          <div className="md:hidden fixed bottom-4 left-4 right-4 z-30 animate-in fade-in slide-in-from-bottom-3 duration-200">
-            <div className="bg-slate-900/95 backdrop-blur-md border border-cyan-500/50 rounded-2xl p-3 shadow-2xl text-white space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-lg">📍</span>
-                  <div className="min-w-0">
-                    <div className="font-bold text-sm text-cyan-300 truncate">
-                      {selectedSpot.name}
-                    </div>
-                    <div className="text-[11px] text-slate-300 truncate">
-                      {selectedSpot.target_species.slice(0, 3).join(', ')}
-                    </div>
-                  </div>
-                </div>
+          <div className="md:hidden fixed bottom-4 left-4 right-4 z-30 animate-in fade-in slide-in-from-bottom-2 duration-150">
+            <div className="bg-slate-900/95 backdrop-blur-md border border-cyan-500/50 rounded-full px-4 py-2 shadow-2xl text-white flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-base shrink-0">📍</span>
+                <span className="font-bold text-sm text-cyan-300 truncate">
+                  {selectedSpot.name}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => setIsMobileDrawerOpen(true)}
+                  className="p-2 rounded-full bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white shadow flex items-center justify-center transition"
+                  title="포인트 상세 및 기상 보기"
+                  aria-label="포인트 상세 및 기상 보기"
+                >
+                  <ChevronUp size={16} />
+                </button>
                 <button
                   onClick={() => setSelectedSpot(null)}
-                  className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800/80 shrink-0"
+                  className="p-2 rounded-full bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white shadow flex items-center justify-center transition"
                   title="선택 해제"
+                  aria-label="선택 해제"
                 >
-                  <X size={14} />
+                  <X size={16} />
                 </button>
               </div>
-
-              {/* 캐스팅 방향 및 비거리/풍향 요약 */}
-              <div className="flex items-center justify-between gap-1.5 text-[10px] font-mono bg-slate-950/80 p-2 rounded-xl border border-slate-800">
-                <span className="text-blue-300 font-bold truncate">
-                  🎯 캐스팅: {selectedSpot.casting_directions?.includes('ALL') ? '전방위(360°)' : selectedSpot.casting_directions?.join(', ') || '자유'}
-                </span>
-                {weather && (
-                  <span className="text-cyan-300 truncate">
-                    💨 {getCompassDirection(weather.windDirection)} {formatWindSpeed(weather.windSpeed, windUnit)}
-                  </span>
-                )}
-                {biteScore && (
-                  <span className="text-amber-300 font-bold shrink-0">
-                    입질 {biteScore.totalScore}점
-                  </span>
-                )}
-              </div>
-
-              {/* 상세 및 기상 보기 버튼 */}
-              <button
-                onClick={() => setIsMobileDrawerOpen(true)}
-                className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-600 via-teal-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg active:scale-98 transition"
-              >
-                <span>상세 & 기상 보기</span>
-                <ChevronUp size={16} />
-              </button>
             </div>
           </div>
         )}
 
-        {/* 플로팅 포인트 등록 버튼 (PC/모바일 공통: 모바일 드로어가 열려있을 때만 숨김) */}
+        {/* 플로팅 포인트 등록 버튼:
+            - 모바일: 포인트 미선택 시에만 단순 원형(+) 아이콘으로 표시, 포인트 선택 시 가림 방지를 위해 자동 숨김
+            - PC: 상시 우하단에 텍스트 포함 버튼으로 표시
+        */}
         {!isMobileDrawerOpen && (
-          <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-30">
+          <div
+            className={`fixed bottom-4 md:bottom-6 right-4 md:right-6 z-30 ${
+              selectedSpot ? 'hidden md:block' : 'block'
+            }`}
+          >
             <button
               onClick={() => {
                 setEditingSpot(null);
@@ -867,11 +852,12 @@ export function App() {
                 setNewSpotLng(126.4982);
                 setIsSpotModalOpen(true);
               }}
-              className="px-4 py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold shadow-2xl flex items-center gap-1.5 border border-cyan-400/50 active:scale-95 transition"
+              className="w-11 h-11 md:w-auto md:h-auto p-0 md:px-4 md:py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold shadow-2xl flex items-center justify-center md:gap-1.5 border border-cyan-400/50 active:scale-95 transition"
               title="새 낚시 포인트 등록"
+              aria-label="새 낚시 포인트 등록"
             >
-              <Plus size={16} />
-              <span>포인트 등록</span>
+              <Plus size={20} className="shrink-0" />
+              <span className="hidden md:inline text-sm">포인트 등록</span>
             </button>
           </div>
         )}

@@ -443,7 +443,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
       {/* 2. 내비게이션 퀵 버튼 바 (경위도 및 목적지 텍스트 제거로 초슬림화, 작성자일 때만 위치조정 버튼 노출) */}
       {(() => {
-        const isAuthor = Boolean(currentUser && (spot.user_id === currentUser.id || currentUser.id === 'user-me'));
+        const isAuthor = Boolean(
+          currentUser &&
+            (spot.user_id === currentUser.id ||
+              spot.user_id === 'user-me' ||
+              currentUser.id === 'user-me')
+        );
         return (
           <div className="px-3 py-1.5 bg-slate-950/90 border-b border-slate-800">
             <div className={`grid ${isAuthor && onStartMicroAdjust ? 'grid-cols-5 gap-1 text-[10px]' : 'grid-cols-4 gap-1.5 text-[11px]'}`}>
@@ -487,7 +492,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 <button
                   onClick={() => onStartMicroAdjust(spot)}
                   className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition font-bold border border-emerald-500/40 shadow-sm active:scale-95"
-                  title="지도 중앙 조준선으로 포인트 위치 1m 단위 정밀 미세 조정"
+                  title="위성 스카이뷰에서 마커를 드래그하여 포인트 위치 2D 평면 미세 조정"
                 >
                   <Crosshair size={12} className="text-emerald-400" />
                   <span className="truncate">위치조정</span>

@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Map,
+  MapMarker,
   CustomOverlayMap,
   Polyline,
   Circle,
@@ -221,21 +222,43 @@ export const MapView: React.FC<MapViewProps> = ({
     }
   }, [selectedSpot?.id, microAdjustSpot]);
 
-  // 위치 미세 조정 모드 활성화 시 최고 배율 줌(Level 1) 및 해당 포인트 중심으로 이동
+  // 위치 미세 조정 좌표 상태 (2D 평면 드래깅 및 1m 넛지 연동)
+  const [adjustedPos, setAdjustedPos] = React.useState<{ lat: number; lng: number }>({ lat: 0, lng: 0 });
+
+  // 위치 미세 조정 모드 활성화 시 위성 스카이뷰(HYBRID) 전환, 최고 배율 줌(Level 1), 드래깅 마커 좌표 초기화
   React.useEffect(() => {
     if (microAdjustSpot) {
+      setMapMode('HYBRID');
+      try {
+        localStorage.setItem('exfish_map_mode', 'HYBRID');
+      } catch (e) {
+        // ignore
+      }
       setCenter({ lat: microAdjustSpot.lat, lng: microAdjustSpot.lng });
+      setAdjustedPos({ lat: microAdjustSpot.lat, lng: microAdjustSpot.lng });
       setLevel(1);
       setPendingNewSpot(null);
     }
   }, [microAdjustSpot]);
 
   const handleNudge = (deltaLat: number, deltaLng: number) => {
-    setCenter((prev) => ({
-      lat: Number((prev.lat + deltaLat).toFixed(7)),
-      lng: Number((prev.lng + deltaLng).toFixed(7)),
-    }));
+    setAdjustedPos((prev) => {
+      const next = {
+        lat: Number((prev.lat + deltaLat).toFixed(7)),
+        lng: Number((prev.lng + deltaLng).toFixed(7)),
+      };
+      setCenter(next);
+      return next;
+    });
   };
+
+  // 원본 위치 대비 이동 거리(미터) 계산
+  const distMeters = microAdjustSpot
+    ? Math.hypot(
+        (adjustedPos.lat - microAdjustSpot.lat) * 111000,
+        (adjustedPos.lng - microAdjustSpot.lng) * 88800
+      )
+    : 0;
 
   // 카카오맵 기준 고배율 줌 레벨 (level 1, 2, 3, 4 = 현장 20m~100m 상세도)에서만 캐스팅 화살표 표시
   const showCastingArrows = level <= 4;
@@ -759,6 +782,9 @@ export const MapView: React.FC<MapViewProps> = ({
 
         {/* 등록된 포인트 커스텀 핀 오버레이 (요구사항 9: 불필요한 마커 팝업 제거, 클릭 시 해당 포인트 선택 및 HUD 표시) */}
         {displayedSpots.map((spot) => {
+          // 미세 조정 대상 포인트는 드래깅 전용 MapMarker로 별도 렌더링
+          if (microAdjustSpot?.id === spot.id) return null;
+
           const isSelected = selectedSpot?.id === spot.id;
           const isFavorited = favoriteSpotIds.includes(spot.id);
 
@@ -819,12 +845,71 @@ export const MapView: React.FC<MapViewProps> = ({
             </React.Fragment>
           );
         })}
+
+        {/* [요구사항 2] 위성지도 기반 2D 평면 포인트 마커 드래깅 미세조정 */}
+        {microAdjustSpot && (
+          <React.Fragment key="micro-adjust-marker-group">
+            {/* 기존 등록 위치 옅은 고스트 마커 */}
+            <CustomOverlayMap
+              position={{ lat: microAdjustSpot.lat, lng: microAdjustSpot.lng }}
+              yAnchor={1}
+              zIndex={40}
+            >
+              <div className="flex flex-col items-center opacity-60 pointer-events-none">
+                <div className="w-7 h-7 rounded-full border-2 border-dashed border-rose-400 bg-rose-500/20 flex items-center justify-center text-[10px] text-rose-300 font-bold shadow">
+                  기존
+                </div>
+                <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[6px] border-t-rose-400" />
+                <span className="text-[10px] text-rose-300 font-mono bg-slate-900/90 px-1 rounded border border-rose-500/30">
+                  이전 위치
+                </span>
+              </div>
+            </CustomOverlayMap>
+
+            {/* 기존 위치에서 새 위치로의 이동 궤적 점선 */}
+            {distMeters > 0.1 && (
+              <Polyline
+                path={[
+                  { lat: microAdjustSpot.lat, lng: microAdjustSpot.lng },
+                  { lat: adjustedPos.lat, lng: adjustedPos.lng },
+                ]}
+                strokeWeight={3}
+                strokeColor="#10b981"
+                strokeOpacity={0.9}
+                strokeStyle="shortdash"
+                zIndex={45}
+              />
+            )}
+
+            {/* 2차원 평면 드래그 가능한 마커 (사용자가 위성지도에서 마우스/터치로 직접 발판으로 드래깅) */}
+            <MapMarker
+              position={adjustedPos}
+              draggable={true}
+              onDragEnd={(marker) => {
+                const pos = marker.getPosition();
+                setAdjustedPos({ lat: pos.getLat(), lng: pos.getLng() });
+              }}
+              zIndex={150}
+            />
+
+            {/* 마커 상단 드래그 가이드 툴팁 배지 */}
+            <CustomOverlayMap
+              position={adjustedPos}
+              yAnchor={2.3}
+              zIndex={160}
+            >
+              <div className="px-3 py-1 rounded-full bg-slate-950/95 border-2 border-emerald-400 text-emerald-300 font-bold text-xs shadow-2xl flex items-center gap-1.5 whitespace-nowrap animate-bounce pointer-events-none">
+                <span>👆 핀을 드래그하여 정확한 발판으로 옮기세요</span>
+              </div>
+            </CustomOverlayMap>
+          </React.Fragment>
+        )}
       </Map>
 
-      {/* 지도 우상단 플로팅 컨트롤: 모드 3단 전환 & 찜한 포인트 필터 & GPS 내 위치 (모달 및 드로워 가림 방지를 위해 z-10 적용) */}
+      {/* 지도 우상단 플로팅 컨트롤: 모드 3단 전환 & 찜한 포인트 필터 & GPS 내 위치 (모바일 드로어 열림 시에만 모바일에서 숨김, PC는 상시 flex 유지) */}
       <div
-        className={`absolute top-4 right-4 z-10 flex flex-col items-end gap-2 ${
-          isMobileDrawerOpen || microAdjustSpot ? 'hidden' : 'flex'
+        className={`absolute top-4 right-4 z-20 flex-col items-end gap-2 ${
+          isMobileDrawerOpen ? 'hidden md:flex' : 'flex'
         }`}
       >
         {/* 일반 지도 / 스카이뷰(항공사진) / 야간 다크 모드 3단 선택 탭 */}
@@ -895,46 +980,48 @@ export const MapView: React.FC<MapViewProps> = ({
         </div>
       </div>
 
-      {/* [요구사항 1] 위치 미세 조정 모드: 화면 중앙 조준선(십자선 타깃) */}
-      {microAdjustSpot && (
-        <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-20">
-          <div className="relative flex items-center justify-center">
-            {/* 회전하는 동심원 조준 링 */}
-            <div className="w-16 h-16 rounded-full border-2 border-cyan-400 border-dashed animate-spin opacity-75" style={{ animationDuration: '8s' }} />
-            <div className="w-8 h-8 rounded-full border-2 border-emerald-400 bg-emerald-500/20" />
-            <div className="w-2.5 h-2.5 rounded-full bg-cyan-300 shadow-[0_0_12px_#06b6d4]" />
-            {/* 십자 조준선 */}
-            <div className="absolute w-24 h-0.5 bg-cyan-400/80" />
-            <div className="absolute h-24 w-0.5 bg-cyan-400/80" />
-            {/* 타깃 가이드 툴팁 배지 */}
-            <div className="absolute -top-10 px-3 py-1 rounded-full bg-slate-950/95 text-xs text-cyan-300 font-mono border border-cyan-500/70 font-bold whitespace-nowrap shadow-2xl backdrop-blur">
-              🎯 십자선 중앙에 정확한 낚시 발판/여밭을 맞추세요
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* [요구사항 1] 위치 미세 조정 플로팅 하단 컨트롤 패널 (좌표 표시 + 1m D-Pad 보조 + 확정/취소) */}
+      {/* [요구사항 2] 위성지도 기반 2D 평면 포인트 마커 드래깅 미세 조정 HUD (좌표 표시 + 1m D-Pad 보조 + 확정/취소) */}
       {microAdjustSpot && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[94%] max-w-md z-30 bg-slate-900/95 border border-emerald-500/60 rounded-2xl p-4 shadow-2xl backdrop-blur text-white flex flex-col gap-3 animate-fade-in">
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <div className="flex items-center gap-1.5 font-bold text-emerald-300 text-sm">
               <Crosshair size={16} className="text-emerald-400 animate-pulse" />
-              <span>[{microAdjustSpot.name}] 위치 미세 조정 중</span>
+              <span>[{microAdjustSpot.name}] 위치 드래그 미세 조정</span>
             </div>
             <button
               onClick={onCancelMicroAdjust}
-              className="text-slate-400 hover:text-white text-xs px-2 py-0.5 rounded bg-slate-800"
+              className="text-slate-400 hover:text-white text-xs px-2 py-0.5 rounded bg-slate-800 transition"
             >
               닫기
             </button>
           </div>
 
-          <div className="flex items-center justify-between text-xs bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
-            <span className="text-slate-400">현재 조준 좌표:</span>
-            <span className="font-mono text-cyan-300 font-bold">
-              위도 {center.lat.toFixed(6)}, 경도 {center.lng.toFixed(6)}
-            </span>
+          <div className="text-xs text-slate-300 bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-2.5 flex items-start gap-2">
+            <span className="text-emerald-400 text-base shrink-0">🛰️</span>
+            <div className="space-y-0.5 min-w-0">
+              <p className="font-semibold text-emerald-200">위성 스카이뷰 마커 직접 드래깅</p>
+              <p className="text-[11px] text-slate-300 leading-snug">
+                위성 사진을 보면서 지도 위의 핀을 마우스/터치로 드래그하여 정확한 갯바위·석축 발판으로 옮기세요.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="bg-slate-950/80 p-2 rounded-xl border border-slate-800/80">
+              <div className="text-[10px] text-slate-400">기존 좌표</div>
+              <div className="font-mono text-slate-300 text-[11px] truncate">
+                {microAdjustSpot.lat.toFixed(6)}, {microAdjustSpot.lng.toFixed(6)}
+              </div>
+            </div>
+            <div className="bg-slate-950/80 p-2 rounded-xl border border-emerald-500/40">
+              <div className="text-[10px] text-emerald-400 font-bold flex items-center justify-between">
+                <span>새 좌표</span>
+                <span className="text-emerald-300">{distMeters.toFixed(1)}m 이동</span>
+              </div>
+              <div className="font-mono text-emerald-300 text-[11px] font-bold truncate">
+                {adjustedPos.lat.toFixed(6)}, {adjustedPos.lng.toFixed(6)}
+              </div>
+            </div>
           </div>
 
           {/* D-Pad 1m 단위 미세 넛지 컨트롤 */}
@@ -946,7 +1033,7 @@ export const MapView: React.FC<MapViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleNudge(0.000009, 0)}
-                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95"
+                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95 transition"
                 title="북쪽 1m 이동"
               >
                 ▲ 북
@@ -954,7 +1041,7 @@ export const MapView: React.FC<MapViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleNudge(-0.000009, 0)}
-                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95"
+                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95 transition"
                 title="남쪽 1m 이동"
               >
                 ▼ 남
@@ -962,7 +1049,7 @@ export const MapView: React.FC<MapViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleNudge(0, -0.000011)}
-                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95"
+                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95 transition"
                 title="서쪽 1m 이동"
               >
                 ◄ 서
@@ -970,7 +1057,7 @@ export const MapView: React.FC<MapViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleNudge(0, 0.000011)}
-                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95"
+                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-mono font-bold active:scale-95 transition"
                 title="동쪽 1m 이동"
               >
                 ► 동
@@ -988,11 +1075,11 @@ export const MapView: React.FC<MapViewProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => onConfirmMicroAdjust && onConfirmMicroAdjust(microAdjustSpot.id, center.lat, center.lng)}
+              onClick={() => onConfirmMicroAdjust && onConfirmMicroAdjust(microAdjustSpot.id, adjustedPos.lat, adjustedPos.lng)}
               className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition active:scale-95 flex items-center justify-center gap-1.5"
             >
               <Check size={14} />
-              <span>이 위치로 좌표 확정</span>
+              <span>새 위치로 확정 저장</span>
             </button>
           </div>
         </div>
