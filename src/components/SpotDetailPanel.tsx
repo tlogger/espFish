@@ -56,7 +56,14 @@ import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeather
 import { generatePostMortemReport } from '../utils/postMortemEngine';
 import { findNearestKhoaStation } from '../utils/khoaTideEngine';
 import { playEvacuationBeep } from '../utils/tideAlertSound';
-import { getSavedTackleConfig, saveTackleConfig, TackleRigConfig } from '../utils/tackleCalibration';
+import {
+  getSavedTackleConfig,
+  saveTackleConfig,
+  calculateSinkingPhysics,
+  ROD_POWER_SPECS,
+  RodPower,
+  TackleRigConfig,
+} from '../utils/tackleCalibration';
 
 interface SpotDetailPanelProps {
   spot: FishingSpot;
@@ -2008,20 +2015,90 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             )}
 
-            {/* [항목 3] 유저 맞춤형 공기역학 채비 항력 계수(Cd) 캘리브레이터 */}
+            {/* [항목 3] 유저 맞춤형 공기역학 채비 항력 계수(Cd) & 로드 탄성 캘리브레이터 */}
             <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
                   <Sliders size={14} className="text-cyan-400" />
-                  <span>공기역학 채비 캘리브레이터 (비거리/눈금링 연동)</span>
+                  <span>장비·채비 공기역학 캘리브레이터</span>
                 </span>
                 <span className="text-[10.5px] font-mono text-cyan-400 font-bold bg-cyan-950/80 px-2 py-0.5 rounded-full border border-cyan-800/60">
-                  기준 {tackleConfig.calibratedDistanceMeters}m
+                  기준 사거리 {tackleConfig.calibratedDistanceMeters}m
                 </span>
               </div>
 
               <div className="space-y-2.5 text-xs">
-                {/* 루어 / 싱커 무게 */}
+                {/* 1. 낚싯대 파워 (블랭크 탄성) */}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-slate-300">로드 파워 (탄성 스펙):</span>
+                    <span className="font-mono font-bold text-cyan-300">
+                      {tackleConfig.rodPower} (최적 {ROD_POWER_SPECS[tackleConfig.rodPower]?.optWeightG}g)
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-7 gap-1">
+                    {(['UL', 'L', 'ML', 'M', 'MH', 'H', 'XH'] as RodPower[]).map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => {
+                          const updated = saveTackleConfig(
+                            tackleConfig.weightGrams,
+                            tackleConfig.peLineSize,
+                            p,
+                            tackleConfig.rodLengthFt
+                          );
+                          setTackleConfig(updated);
+                        }}
+                        className={`py-1 rounded text-[10px] font-bold font-mono transition ${
+                          tackleConfig.rodPower === p
+                            ? 'bg-cyan-500 text-slate-950 shadow ring-1 ring-cyan-300'
+                            : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-[9.5px] text-slate-400">
+                    * {ROD_POWER_SPECS[tackleConfig.rodPower]?.description} (권장: {ROD_POWER_SPECS[tackleConfig.rodPower]?.minWeightG}~{ROD_POWER_SPECS[tackleConfig.rodPower]?.maxWeightG}g)
+                  </div>
+                </div>
+
+                {/* 2. 낚싯대 전장 (길이) */}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-slate-300">로드 전장 (지렛대 레버 암):</span>
+                    <span className="font-mono font-bold text-cyan-300">
+                      {tackleConfig.rodLengthFt.toFixed(1)} ft ({Math.round(tackleConfig.rodLengthFt * 0.3048 * 10) / 10}m)
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={6.0}
+                    max={12.0}
+                    step={0.2}
+                    value={tackleConfig.rodLengthFt}
+                    onChange={(e) => {
+                      const len = Number(e.target.value);
+                      const updated = saveTackleConfig(
+                        tackleConfig.weightGrams,
+                        tackleConfig.peLineSize,
+                        tackleConfig.rodPower,
+                        len
+                      );
+                      setTackleConfig(updated);
+                    }}
+                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                  />
+                  <div className="flex justify-between text-[9px] text-slate-500 font-mono">
+                    <span>6.6ft (선상)</span>
+                    <span>8.6ft (에깅/워킹)</span>
+                    <span>10.6ft (서프 원투)</span>
+                  </div>
+                </div>
+
+                {/* 3. 루어 / 싱커 무게 */}
                 <div className="space-y-1">
                   <div className="flex justify-between items-center text-[11px]">
                     <span className="text-slate-300">루어/봉돌 무게:</span>
@@ -2029,25 +2106,30 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   </div>
                   <input
                     type="range"
-                    min={5}
+                    min={3}
                     max={80}
                     step={1}
                     value={tackleConfig.weightGrams}
                     onChange={(e) => {
                       const w = Number(e.target.value);
-                      const updated = saveTackleConfig(w, tackleConfig.peLineSize);
+                      const updated = saveTackleConfig(
+                        w,
+                        tackleConfig.peLineSize,
+                        tackleConfig.rodPower,
+                        tackleConfig.rodLengthFt
+                      );
                       setTackleConfig(updated);
                     }}
                     className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                   />
                   <div className="flex justify-between text-[9px] text-slate-500 font-mono">
-                    <span>5g (지그헤드)</span>
-                    <span>25g (스푼/원투)</span>
+                    <span>3g (지그헤드)</span>
+                    <span>20g (에기/스푼)</span>
                     <span>80g (헤비 메탈)</span>
                   </div>
                 </div>
 
-                {/* 원줄 합사 PE 호수 */}
+                {/* 4. 원줄 합사 PE 호수 */}
                 <div className="space-y-1">
                   <div className="flex justify-between items-center text-[11px]">
                     <span className="text-slate-300">합사(PE) 라인 굵기:</span>
@@ -2061,7 +2143,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     value={tackleConfig.peLineSize}
                     onChange={(e) => {
                       const pe = Number(e.target.value);
-                      const updated = saveTackleConfig(tackleConfig.weightGrams, pe);
+                      const updated = saveTackleConfig(
+                        tackleConfig.weightGrams,
+                        pe,
+                        tackleConfig.rodPower,
+                        tackleConfig.rodLengthFt
+                      );
                       setTackleConfig(updated);
                     }}
                     className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
@@ -2073,19 +2160,54 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   </div>
                 </div>
 
-                <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1 text-[11px]">
+                {/* 사거리 및 물리 특성 요약 */}
+                <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5 text-[11px]">
                   <div className="flex justify-between text-slate-300">
                     <span>공기역학 산출 사거리:</span>
-                    <strong className="text-cyan-300 font-mono">{tackleConfig.calibratedDistanceMeters}m</strong>
+                    <strong className="text-cyan-300 font-mono text-xs">{tackleConfig.calibratedDistanceMeters}m</strong>
+                  </div>
+                  <div className="flex justify-between text-slate-400 text-[10.5px]">
+                    <span>탄성효율 / 길이계수:</span>
+                    <span className="text-amber-300 font-mono">
+                      η {Math.round(tackleConfig.rodElasticityEfficiency * 100)}% / ×{tackleConfig.rodLengthFactor}
+                    </span>
                   </div>
                   <div className="flex justify-between text-slate-400 text-[10.5px]">
                     <span>지도 동심원 눈금 링 반경:</span>
                     <span className="text-emerald-400 font-mono font-semibold">{tackleConfig.radii.join('m · ')}m</span>
                   </div>
-                  <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-800 leading-snug">
-                    * 지도 화면의 3단 동심원과 파란색 캐스팅 화살표 착수 지점, 착수 수심이 위 설정에 맞춰 실시간으로 동적 갱신됩니다.
-                  </p>
                 </div>
+
+                {/* 실시간 조류 연동 수심별 바닥 안착(폴링) 카운트다운 가이드 표 */}
+                {(() => {
+                  const curVel = marine?.currentVelocity ?? 0.3;
+                  const sampleDepths = [3, 5, 8, 12, 18];
+                  return (
+                    <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-800/50 space-y-1.5 text-[11px]">
+                      <div className="flex justify-between items-center font-bold text-cyan-300">
+                        <span>⏱️ 조류 연동 수심별 바닥 안착 카운트</span>
+                        <span className="font-mono text-[10px] text-slate-400 font-normal">
+                          (현재 조류 {curVel}m/s 반영)
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-5 gap-1 text-center pt-1 font-mono text-[10.5px]">
+                        {sampleDepths.map((d) => {
+                          const p = calculateSinkingPhysics(tackleConfig.weightGrams, d, curVel);
+                          return (
+                            <div key={d} className="p-1 rounded bg-slate-900/90 border border-slate-800 flex flex-col">
+                              <span className="text-slate-400 text-[9.5px]">수심 {d}m</span>
+                              <span className="font-bold text-amber-300">{p.fallTimeSec}초</span>
+                              <span className="text-[8.5px] text-slate-500">+{p.driftDistanceM}m</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[9.5px] text-slate-400 pt-0.5 leading-snug">
+                        💡 캐스팅 후 위 초만큼 카운트다운한 뒤 릴링/액션을 시작하면 밑걸림 없이 바닥권 입질을 유도할 수 있습니다.
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 

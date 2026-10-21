@@ -11,7 +11,14 @@ import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon } from
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo } from '../types';
 import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
 import { KOREA_DEPTH_CONTOURS, estimateDepthAtPoint } from '../data/depthContours';
-import { getSavedTackleConfig, saveTackleConfig, TackleRigConfig } from '../utils/tackleCalibration';
+import {
+  getSavedTackleConfig,
+  saveTackleConfig,
+  calculateSinkingPhysics,
+  ROD_POWER_SPECS,
+  RodPower,
+  TackleRigConfig,
+} from '../utils/tackleCalibration';
 
 // 카카오 디벨로퍼스 JavaScript 앱 키
 const KAKAO_APP_KEY = '61ebf0b7a0daf24cba357d92677c8d8a';
@@ -593,6 +600,10 @@ export const MapView: React.FC<MapViewProps> = ({
             selectedSpot.spot_type
           );
 
+          // 수중 침강 물리 및 조류 연동 바닥 안착 소요 시간/흘림 계산
+          const currentVel = marine?.currentVelocity ?? 0.3;
+          const sinkPhysics = calculateSinkingPhysics(tackleConfig.weightGrams, landingDepth, currentVel);
+
           const castingLines = (
             <React.Fragment key={`selected-casting-${selectedSpot.id}`}>
               <Polyline
@@ -615,12 +626,23 @@ export const MapView: React.FC<MapViewProps> = ({
               >
                 <div className="flex flex-col items-center gap-1 pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
                   <div className="px-2 py-0.5 rounded-full bg-blue-950/95 text-blue-300 border border-blue-400/80 text-[9px] font-bold shadow-lg">
-                    🎯 캐스팅 공략각 {startDeg}°~{endDeg}° ({getCompassDirection(bearing)})
+                    🎯 공략각 {startDeg}°~{endDeg}° ({getCompassDirection(bearing)}) | 기준 {tackleConfig.calibratedDistanceMeters}m
                   </div>
-                  <div className="px-2 py-0.5 rounded-full bg-slate-950/95 text-cyan-300 border border-cyan-500/80 text-[8.5px] font-mono font-bold shadow-lg flex items-center gap-1">
-                    <span>🌊 착수 예상수심: 약 -{landingDepth}m</span>
+                  <div className="px-2 py-0.5 rounded-full bg-slate-950/95 text-cyan-300 border border-cyan-500/80 text-[8.5px] font-mono font-bold shadow-lg flex items-center gap-1.5">
+                    <span>🌊 착수수심: -{landingDepth}m</span>
                     <span className="text-slate-500">|</span>
-                    <span className="text-slate-300">{tackleConfig.weightGrams}g ({tackleConfig.peLineSize}호)</span>
+                    <span className="text-amber-300">⏱️ 바닥 안착: 약 {sinkPhysics.fallTimeSec}초</span>
+                    {sinkPhysics.driftDistanceM > 0.3 && (
+                      <>
+                        <span className="text-slate-500">|</span>
+                        <span className="text-emerald-300">조류 흘림 +{sinkPhysics.driftDistanceM}m</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="px-2 py-0.5 rounded-full bg-slate-900/90 text-[8px] font-mono text-slate-300 border border-slate-700/80 flex items-center gap-1 shadow">
+                    <span>로드 {tackleConfig.rodLengthFt}ft {tackleConfig.rodPower} (탄성효율 {Math.round(tackleConfig.rodElasticityEfficiency * 100)}%)</span>
+                    <span className="text-slate-500">·</span>
+                    <span>{tackleConfig.weightGrams}g / PE {tackleConfig.peLineSize}호</span>
                   </div>
                 </div>
               </CustomOverlayMap>
@@ -1141,13 +1163,13 @@ export const MapView: React.FC<MapViewProps> = ({
           </button>
         </div>
 
-        {/* 채비 공기역학 캘리브레이션 플로팅 팝업 */}
+        {/* 채비 및 로드 탄성 공기역학 캘리브레이션 플로팅 팝업 */}
         {isTacklePopoverOpen && (
-          <div className="w-64 bg-slate-950/95 border border-cyan-500/60 rounded-2xl p-3.5 shadow-2xl backdrop-blur text-white flex flex-col gap-3 animate-fade-in text-xs pointer-events-auto">
+          <div className="w-72 bg-slate-950/95 border border-cyan-500/60 rounded-2xl p-3.5 shadow-2xl backdrop-blur text-white flex flex-col gap-2.5 animate-fade-in text-xs pointer-events-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
               <div className="flex items-center gap-1.5 font-bold text-cyan-300">
                 <Sliders size={14} className="text-cyan-400" />
-                <span>채비 공기역학 캘리브레이터</span>
+                <span>장비·채비 공기역학 캘리브레이터</span>
               </div>
               <button
                 onClick={() => setIsTacklePopoverOpen(false)}
@@ -1155,6 +1177,73 @@ export const MapView: React.FC<MapViewProps> = ({
               >
                 닫기
               </button>
+            </div>
+
+            {/* 낚싯대 파워(탄성) 선택 */}
+            <div className="space-y-1">
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-slate-300">로드 파워 (블랭크 탄성)</span>
+                <span className="font-mono font-bold text-cyan-300">
+                  {tackleConfig.rodPower} (스위트스팟 {ROD_POWER_SPECS[tackleConfig.rodPower]?.optWeightG}g)
+                </span>
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {(['UL', 'L', 'ML', 'M', 'MH', 'H', 'XH'] as RodPower[]).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => {
+                      const updated = saveTackleConfig(
+                        tackleConfig.weightGrams,
+                        tackleConfig.peLineSize,
+                        p,
+                        tackleConfig.rodLengthFt
+                      );
+                      setTackleConfig(updated);
+                    }}
+                    className={`py-1 rounded text-[10px] font-bold font-mono transition ${
+                      tackleConfig.rodPower === p
+                        ? 'bg-cyan-500 text-slate-950 shadow ring-1 ring-cyan-300'
+                        : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 낚싯대 전장(길이) 슬라이더 */}
+            <div className="space-y-1">
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-slate-300">로드 전장 (지렛대 레버 암)</span>
+                <span className="font-mono font-bold text-cyan-300">
+                  {tackleConfig.rodLengthFt.toFixed(1)} ft ({Math.round(tackleConfig.rodLengthFt * 0.3048 * 10) / 10}m)
+                </span>
+              </div>
+              <input
+                type="range"
+                min={6.0}
+                max={12.0}
+                step={0.2}
+                value={tackleConfig.rodLengthFt}
+                onChange={(e) => {
+                  const len = Number(e.target.value);
+                  const updated = saveTackleConfig(
+                    tackleConfig.weightGrams,
+                    tackleConfig.peLineSize,
+                    tackleConfig.rodPower,
+                    len
+                  );
+                  setTackleConfig(updated);
+                }}
+                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+              />
+              <div className="flex justify-between text-[9px] text-slate-500 font-mono">
+                <span>6.6ft (선상/내항)</span>
+                <span>8.6ft (표준)</span>
+                <span>10.6ft (서프/장타)</span>
+              </div>
             </div>
 
             {/* 루어/싱커 무게 슬라이더 */}
@@ -1165,21 +1254,26 @@ export const MapView: React.FC<MapViewProps> = ({
               </div>
               <input
                 type="range"
-                min={5}
+                min={3}
                 max={80}
                 step={1}
                 value={tackleConfig.weightGrams}
                 onChange={(e) => {
                   const w = Number(e.target.value);
-                  const updated = saveTackleConfig(w, tackleConfig.peLineSize);
+                  const updated = saveTackleConfig(
+                    w,
+                    tackleConfig.peLineSize,
+                    tackleConfig.rodPower,
+                    tackleConfig.rodLengthFt
+                  );
                   setTackleConfig(updated);
                 }}
                 className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
               />
               <div className="flex justify-between text-[9px] text-slate-500 font-mono">
-                <span>5g (웜/지그)</span>
-                <span>25g (스푼)</span>
-                <span>80g (메탈)</span>
+                <span>3g (지그헤드)</span>
+                <span>20g (에기/스푼)</span>
+                <span>80g (헤비메탈)</span>
               </div>
             </div>
 
@@ -1197,7 +1291,12 @@ export const MapView: React.FC<MapViewProps> = ({
                 value={tackleConfig.peLineSize}
                 onChange={(e) => {
                   const pe = Number(e.target.value);
-                  const updated = saveTackleConfig(tackleConfig.weightGrams, pe);
+                  const updated = saveTackleConfig(
+                    tackleConfig.weightGrams,
+                    pe,
+                    tackleConfig.rodPower,
+                    tackleConfig.rodLengthFt
+                  );
                   setTackleConfig(updated);
                 }}
                 className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
@@ -1209,17 +1308,38 @@ export const MapView: React.FC<MapViewProps> = ({
               </div>
             </div>
 
-            {/* 계산된 물리 기준 비거리 및 3단 동심원 반경 */}
-            <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1 text-[11px]">
-              <div className="flex justify-between text-slate-300">
-                <span>공기역학 기준 비거리:</span>
-                <span className="font-mono font-bold text-cyan-300">{tackleConfig.calibratedDistanceMeters}m</span>
-              </div>
-              <div className="flex justify-between text-slate-400 text-[10px]">
-                <span>동심원 반경 3단:</span>
-                <span className="font-mono text-emerald-400">{tackleConfig.radii.join('m / ')}m</span>
-              </div>
-            </div>
+            {/* 계산된 물리 기준 비거리 및 수중 침강 특성 */}
+            {(() => {
+              const demoDepth = 10;
+              const demoCur = marine?.currentVelocity ?? 0.3;
+              const sink = calculateSinkingPhysics(tackleConfig.weightGrams, demoDepth, demoCur);
+              return (
+                <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1 text-[11px]">
+                  <div className="flex justify-between text-slate-300">
+                    <span>공기역학 산출 사거리:</span>
+                    <strong className="font-mono text-cyan-300 text-xs">{tackleConfig.calibratedDistanceMeters}m</strong>
+                  </div>
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>탄성효율 / 길이계수:</span>
+                    <span className="font-mono text-amber-300">
+                      η {Math.round(tackleConfig.rodElasticityEfficiency * 100)}% / ×{tackleConfig.rodLengthFactor}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800/80">
+                    <span>수심 10m 바닥 안착:</span>
+                    <span className="font-mono text-emerald-300 font-semibold">
+                      약 {sink.fallTimeSec}초 (유속 {demoCur}m/s 시)
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[9.5px] text-slate-500">
+                    <span>침강속도 / 조류흘림:</span>
+                    <span className="font-mono">
+                      {sink.effSinkSpeedMps}m/s · 흘림 +{sink.driftDistanceM}m
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
