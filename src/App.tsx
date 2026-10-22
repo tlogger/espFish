@@ -5,6 +5,7 @@ import { SpotDetailPanel } from './components/SpotDetailPanel';
 import { SpotFormModal } from './components/SpotFormModal';
 import { CatchLogModal } from './components/CatchLogModal';
 import { type AuthUser, getSavedAuthUser, LoginModal } from './components/LoginModal';
+import { checkOAuthRedirectCallback } from './utils/oauthEngine';
 import { SpotListModal, type SpotRealtimeSummary } from './components/SpotListModal';
 import { BiteScoreHelpModal } from './components/BiteScoreHelpModal';
 import { ChecklistModal } from './components/ChecklistModal';
@@ -142,6 +143,15 @@ export function App() {
   React.useEffect(() => {
     reloadData();
   }, [reloadData]);
+
+  // OAuth 리다이렉트 콜백 토큰 및 세션 자동 감지
+  React.useEffect(() => {
+    checkOAuthRedirectCallback().then((redirectUser) => {
+      if (redirectUser) {
+        setCurrentUser(redirectUser);
+      }
+    });
+  }, []);
 
   // 사용자 GPS 현재 위치 백그라운드 확인 및 초기 지도 중심을 내 위치로 이동
   React.useEffect(() => {
