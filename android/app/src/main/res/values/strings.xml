@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ExFish</string>
+    <string name="title_activity_main">ExFish</string>
+    <string name="package_name">com.tlogger.exfish</string>
+    <string name="custom_url_scheme">com.tlogger.exfish</string>
+</resources>
