@@ -456,7 +456,7 @@ export function App() {
     }
   };
 
-  // POI 장소/항구 검색 트리거 (Photon + OSM 고속 검색)
+  // POI 장소/항구 검색 트리거 (카카오 로컬 키워드 및 주소 검색)
   const handleExecutePoiSearch = async () => {
     if (!searchQuery || searchQuery.trim().length < 2) return;
     setIsSearchingPoi(true);
@@ -570,7 +570,7 @@ export function App() {
             <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden text-xs max-h-72 overflow-y-auto">
               <div className="px-3 py-1.5 bg-slate-800 text-[11px] text-slate-300 font-semibold flex justify-between items-center border-b border-slate-700">
                 <span className="flex items-center gap-1">
-                  🌐 <strong>'{searchQuery}'</strong> 전국 지명·항구 검색 결과
+                  🌐 <strong>'{searchQuery}'</strong> 카카오 지명·항구 검색 결과
                 </span>
                 <button
                   onClick={() => setShowPoiDropdown(false)}
@@ -583,7 +583,7 @@ export function App() {
               {isSearchingPoi ? (
                 <div className="p-4 text-center text-slate-400 flex items-center justify-center gap-2">
                   <Loader2 size={14} className="animate-spin text-cyan-400" />
-                  <span>전국 해안/관공서/항구 검색 중...</span>
+                  <span>카카오 전국 해안/항구/주소 검색 중...</span>
                 </div>
               ) : poiResults.length === 0 ? (
                 <div className="p-4 text-center text-slate-400">
@@ -705,7 +705,7 @@ export function App() {
 
       {/* 메인 2열 분할 레이아웃 (지도 캔버스 + 우측 상세 대시보드 패널) */}
       <main className="flex-1 relative flex flex-col md:flex-row overflow-hidden">
-        {/* 좌측(또는 전체 배경) OpenStreetMap 영역 (모달 관통 방지를 위해 isolate 적용) */}
+        {/* 좌측(또는 전체 배경) 카카오 지도 영역 (모달 관통 방지를 위해 isolate 적용) */}
         <div className="flex-1 h-full w-full relative isolate">
           <MapView
             spots={filteredSpots}
