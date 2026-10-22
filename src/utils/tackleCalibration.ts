@@ -17,9 +17,9 @@ export interface RodPowerSpec {
 export const ROD_POWER_SPECS: Record<RodPower, RodPowerSpec> = {
   UL: { power: 'UL', label: 'UL (울트라라이트)', optWeightG: 3, minWeightG: 1, maxWeightG: 7, description: '아징/볼락 지그헤드' },
   L:  { power: 'L',  label: 'L (라이트)', optWeightG: 7, minWeightG: 3, maxWeightG: 12, description: '호래기/우럭 다운샷' },
-  ML: { power: 'ML', label: 'ML (미디엄라이트)', optWeightG: 14, minWeightG: 7, maxWeightG: 21, description: '주꾸미/갑오징어 에기' },
+  ML: { power: 'ML', label: 'ML (미디엄라이트)', optWeightG: 18, minWeightG: 7, maxWeightG: 30, description: '주꾸미/갑오징어 에기/라이트루어 (7~30g)' },
   M:  { power: 'M',  label: 'M (미디엄 표준)', optWeightG: 22, minWeightG: 10, maxWeightG: 35, description: '에깅 3.5호/광어 다운샷' },
-  MH: { power: 'MH', label: 'MH (미디엄헤비)', optWeightG: 35, minWeightG: 18, maxWeightG: 50, description: '농어 미노우/삼치 스푼' },
+  MH: { power: 'MH', label: 'MH (미디엄헤비)', optWeightG: 32, minWeightG: 14, maxWeightG: 50, description: '농어 미노우/삼치/쇼어 (~50g)' },
   H:  { power: 'H',  label: 'H (헤비)', optWeightG: 60, minWeightG: 30, maxWeightG: 90, description: '쇼어지깅 메탈/대물' },
   XH: { power: 'XH', label: 'XH (엑스트라헤비)', optWeightG: 100, minWeightG: 50, maxWeightG: 150, description: '원투 서프/헤비지깅' },
 };
@@ -54,7 +54,7 @@ export function calculateCalibratedDistance(
   elasticityEfficiency: number;
   lengthFactor: number;
 } {
-  const safeWeight = Math.max(2, Math.min(150, weightGrams));
+  const safeWeight = Math.max(1, Math.min(100, weightGrams));
   const safePE = Math.max(0.4, Math.min(3.0, peLineSize));
   const safeLength = Math.max(5.0, Math.min(16.0, rodLengthFt));
 
@@ -100,7 +100,7 @@ export function calculateSinkingPhysics(
   fallTimeSec: number;
   driftDistanceM: number;
 } {
-  const safeWeight = Math.max(2, Math.min(150, weightGrams));
+  const safeWeight = Math.max(1, Math.min(100, weightGrams));
   const safeDepth = Math.max(1.0, Math.min(60, depthMeters));
   const safeCurrent = Math.max(0.0, Math.min(3.0, currentVelocityMps));
 

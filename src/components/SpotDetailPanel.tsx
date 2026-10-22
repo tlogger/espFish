@@ -49,6 +49,7 @@ import type {
 } from '../types';
 import { calculateSingleSpeciesScore } from '../utils/biteScore';
 import { ChecklistModal } from './ChecklistModal';
+import { BiteScoreHelpModal } from './BiteScoreHelpModal';
 import { deleteCloudMemo, fetchCloudMemos, saveCloudMemo } from '../utils/cloudDb';
 import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 import { getSpeciesRigInfo } from '../utils/speciesRigs';
@@ -110,6 +111,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   const [activePhotoIndex, setActivePhotoIndex] = React.useState(0);
   const [isWindyOpen, setIsWindyOpen] = React.useState(false);
   const [isChecklistOpen, setIsChecklistOpen] = React.useState(false);
+  const [isBiteScoreHelpOpen, setIsBiteScoreHelpOpen] = React.useState(false);
   const [expandedSpecies, setExpandedSpecies] = React.useState<string | null>(null);
 
   // 채비 공기역학 캘리브레이션 동기화 상태
@@ -1926,6 +1928,34 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
         {activeTab === 'DIRECTIONS' && (
           <div className="space-y-3 text-sm">
+            {/* [요구사항 7] 입질 지수 기준 및 체크리스트 (정보 탭으로 이동) */}
+            <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+              <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                <span>🧭</span>
+                <span>출조 지원 & 평가 기준 안내</span>
+              </span>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsBiteScoreHelpOpen(true)}
+                  className="p-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm active:scale-98"
+                  title="입질 종합 지수(Bite Index) 평가 기준 설명 열람"
+                >
+                  <Info size={14} className="text-amber-400 shrink-0" />
+                  <span>입질지수 기준</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsChecklistOpen(true)}
+                  className="p-2.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/40 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm active:scale-98"
+                  title="출조 필수품 및 안전 점검 체크리스트 열기"
+                >
+                  <span className="shrink-0">🎒</span>
+                  <span>체크리스트</span>
+                </button>
+              </div>
+            </div>
+
             {/* 네비게이션 및 주차 정보 */}
             <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
               <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
@@ -2098,7 +2128,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   </div>
                 </div>
 
-                {/* 3. 루어 / 싱커 무게 */}
+                {/* 3. 루어 / 싱커 무게 (1~100g) */}
                 <div className="space-y-1">
                   <div className="flex justify-between items-center text-[11px]">
                     <span className="text-slate-300">루어/봉돌 무게:</span>
@@ -2106,8 +2136,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   </div>
                   <input
                     type="range"
-                    min={3}
-                    max={80}
+                    min={1}
+                    max={100}
                     step={1}
                     value={tackleConfig.weightGrams}
                     onChange={(e) => {
@@ -2123,13 +2153,13 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                   />
                   <div className="flex justify-between text-[9px] text-slate-500 font-mono">
-                    <span>3g (지그헤드)</span>
-                    <span>20g (에기/스푼)</span>
-                    <span>80g (헤비 메탈)</span>
+                    <span>1g (극소 지그)</span>
+                    <span>30g (에기/스푼)</span>
+                    <span>100g (헤비 메탈/원투)</span>
                   </div>
                 </div>
 
-                {/* 4. 원줄 합사 PE 호수 */}
+                {/* 4. 원줄 합사 PE 호수 (0.4~3.0호) */}
                 <div className="space-y-1">
                   <div className="flex justify-between items-center text-[11px]">
                     <span className="text-slate-300">합사(PE) 라인 굵기:</span>
@@ -2138,7 +2168,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   <input
                     type="range"
                     min={0.4}
-                    max={2.5}
+                    max={3.0}
                     step={0.1}
                     value={tackleConfig.peLineSize}
                     onChange={(e) => {
@@ -2154,9 +2184,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                   />
                   <div className="flex justify-between text-[9px] text-slate-500 font-mono">
-                    <span>0.4호 (극세 라인)</span>
-                    <span>1.0호 (표준)</span>
-                    <span>2.5호 (태클 헤비)</span>
+                    <span>0.4호 (아징)</span>
+                    <span>1.0호 (에깅/농어)</span>
+                    <span>3.0호 (헤비/원투)</span>
                   </div>
                 </div>
 
@@ -2466,6 +2496,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
         onClose={() => setIsChecklistOpen(false)}
         spotName={spot.name}
         mulText={tide?.mulText}
+      />
+
+      {/* 입질 종합 지수 평가 기준 설명 모달 */}
+      <BiteScoreHelpModal
+        isOpen={isBiteScoreHelpOpen}
+        onClose={() => setIsBiteScoreHelpOpen(false)}
       />
     </div>
   );

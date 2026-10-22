@@ -7,7 +7,7 @@ import {
   Circle,
   useKakaoLoader,
 } from 'react-kakao-maps-sdk';
-import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon } from 'lucide-react';
+import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon, Map as MapIcon, Satellite, Moon, Sun } from 'lucide-react';
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo } from '../types';
 import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
 import { KOREA_DEPTH_CONTOURS, estimateDepthAtPoint } from '../data/depthContours';
@@ -80,6 +80,7 @@ interface MapViewProps {
   currentUser?: { id: string; name: string } | null;
   onStartMicroAdjust?: (spot: FishingSpot) => void;
   isSunMode?: boolean;
+  onToggleSunMode?: () => void;
 }
 
 export const MapView: React.FC<MapViewProps> = ({
@@ -99,6 +100,7 @@ export const MapView: React.FC<MapViewProps> = ({
   currentUser = null,
   onStartMicroAdjust,
   isSunMode = false,
+  onToggleSunMode,
 }) => {
   // 카카오 지도 SDK 동적 로더
   const [loading, error] = useKakaoLoader({
@@ -482,17 +484,6 @@ export const MapView: React.FC<MapViewProps> = ({
                 strokeStyle="dash"
                 zIndex={28}
               />
-              <CustomOverlayMap
-                position={{ lat: leftEdge[0], lng: leftEdge[1] }}
-                yAnchor={0.5}
-                xAnchor={0.5}
-                zIndex={36}
-                clickable={false}
-              >
-                <div className="px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-500/60 text-[9px] font-bold font-mono shadow pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                  시작 {startDeg}°
-                </div>
-              </CustomOverlayMap>
 
               {/* 종료각 경계선 */}
               <Polyline
@@ -506,17 +497,6 @@ export const MapView: React.FC<MapViewProps> = ({
                 strokeStyle="dash"
                 zIndex={28}
               />
-              <CustomOverlayMap
-                position={{ lat: rightEdge[0], lng: rightEdge[1] }}
-                yAnchor={0.5}
-                xAnchor={0.5}
-                zIndex={36}
-                clickable={false}
-              >
-                <div className="px-1.5 py-0.5 rounded bg-cyan-950/90 text-cyan-300 border border-cyan-500/60 text-[9px] font-bold font-mono shadow pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                  종료 {endDeg}°
-                </div>
-              </CustomOverlayMap>
 
               {/* 거리(30m / 60m / 100m)별 부채꼴 호 및 거리 라벨 오버레이 */}
               {radii.map((r, rIdx) => {
@@ -625,9 +605,6 @@ export const MapView: React.FC<MapViewProps> = ({
                 clickable={false}
               >
                 <div className="flex flex-col items-center gap-1 pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                  <div className="px-2 py-0.5 rounded-full bg-blue-950/95 text-blue-300 border border-blue-400/80 text-[9px] font-bold shadow-lg">
-                    🎯 공략각 {startDeg}°~{endDeg}° ({getCompassDirection(bearing)}) | 기준 {tackleConfig.calibratedDistanceMeters}m
-                  </div>
                   <div className="px-2 py-0.5 rounded-full bg-slate-950/95 text-cyan-300 border border-cyan-500/80 text-[8.5px] font-mono font-bold shadow-lg flex items-center gap-1.5">
                     <span>🌊 착수수심: -{landingDepth}m</span>
                     <span className="text-slate-500">|</span>
@@ -639,65 +616,62 @@ export const MapView: React.FC<MapViewProps> = ({
                       </>
                     )}
                   </div>
-                  <div className="px-2 py-0.5 rounded-full bg-slate-900/90 text-[8px] font-mono text-slate-300 border border-slate-700/80 flex items-center gap-1 shadow">
-                    <span>로드 {tackleConfig.rodLengthFt}ft {tackleConfig.rodPower} (탄성효율 {Math.round(tackleConfig.rodElasticityEfficiency * 100)}%)</span>
-                    <span className="text-slate-500">·</span>
-                    <span>{tackleConfig.weightGrams}g / PE {tackleConfig.peLineSize}호</span>
-                  </div>
                 </div>
               </CustomOverlayMap>
             </React.Fragment>
           );
 
-          // 2. 실시간 풍향 및 풍속 상호작용 (요구사항 3 & 4)
+          // 2. 실시간 풍향 및 풍속 상호작용 & 공략각(시점~종점) 바람 영향 예상 비거리 오렌지색 arc
           // weather.windDirection: 바람이 불어오는 방위 (From)
           // windVectorDeg: 바람이 불어가는 진행 방위 (To) = (windDirection + 180) % 360
           let windElements = null;
           if (weather) {
             const windVectorDeg = (weather.windDirection + 180) % 360;
-            const diff = Math.abs(bearing - windVectorDeg) % 360;
-            const angleDiff = diff > 180 ? 360 - diff : diff;
 
-            // 등바람(Tailwind) <= 45도 / 맞바람(Headwind) >= 135도 / 옆바람(Crosswind)
-            const isTailwind = angleDiff <= 45;
-            const isHeadwind = angleDiff >= 135;
+            // 방위각 b에 따른 풍향·풍속 보정 비거리 산출 함수
+            const calculateWindAdjustedDist = (b: number): number => {
+              const diff = Math.abs(b - windVectorDeg) % 360;
+              const angleDiff = diff > 180 ? 360 - diff : diff;
+              let ratio = 1.0;
+              if (angleDiff <= 45) {
+                const tailFactor = Math.cos((angleDiff * Math.PI) / 180);
+                ratio = Math.min(1.35, 1 + tailFactor * (weather.windSpeed / 10) * 0.28);
+              } else if (angleDiff >= 135) {
+                const headFactor = Math.abs(Math.cos((angleDiff * Math.PI) / 180));
+                ratio = Math.max(0.65, 1 - headFactor * (weather.windSpeed / 10) * 0.28);
+              } else {
+                const crossFactor = Math.sin((angleDiff * Math.PI) / 180);
+                ratio = Math.max(0.85, 1 - crossFactor * (weather.windSpeed / 10) * 0.12);
+              }
+              return Math.round(baseDist * ratio);
+            };
 
-            let windTypeLabel = '';
-            let windColor = '#f59e0b'; // 옆바람 (기본 호박색)
-            let ratio = 1.0;
+            // 공략각 시점, 중간, 종점 3개 포인트 선정
+            const midDeg = (startDeg + span / 2) % 360;
+            const distStart = calculateWindAdjustedDist(startDeg);
+            const distMid = calculateWindAdjustedDist(midDeg);
+            const distEnd = calculateWindAdjustedDist(endDeg);
 
-            if (isTailwind) {
-              windColor = '#10b981'; // 에메랄드 그린
-              const tailFactor = Math.cos((angleDiff * Math.PI) / 180);
-              ratio = Math.min(1.35, 1 + tailFactor * (weather.windSpeed / 10) * 0.28);
-              const plusMeters = Math.round((ratio - 1) * baseDist);
-              windTypeLabel = `등바람 (비거리 +${plusMeters}m)`;
-            } else if (isHeadwind) {
-              windColor = '#ef4444'; // 로즈 레드
-              const headFactor = Math.abs(Math.cos((angleDiff * Math.PI) / 180));
-              ratio = Math.max(0.65, 1 - headFactor * (weather.windSpeed / 10) * 0.28);
-              const minusMeters = Math.round((1 - ratio) * baseDist);
-              windTypeLabel = `맞바람 (비거리 -${minusMeters}m)`;
-            } else {
-              windColor = '#f59e0b'; // 황금/호박색
-              const crossFactor = Math.sin((angleDiff * Math.PI) / 180);
-              ratio = Math.max(0.85, 1 - crossFactor * (weather.windSpeed / 10) * 0.12);
-              windTypeLabel = '옆바람 (줄날림 주의)';
+            // 공략각 시점~종점 오렌지색 arc 폴리라인 포인트 생성
+            const orangeArcPts: { lat: number; lng: number }[] = [];
+            const arcStep = Math.max(1, Math.min(3, Math.round(span / 30)));
+            for (let offset = 0; offset <= span; offset += arcStep) {
+              const b = (startDeg + offset) % 360;
+              const d = calculateWindAdjustedDist(b);
+              const [pLat, pLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, b, d);
+              orangeArcPts.push({ lat: pLat, lng: pLng });
             }
+            const [pEndLat, pEndLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, endDeg, distEnd);
+            orangeArcPts.push({ lat: pEndLat, lng: pEndLng });
 
-            const effDist = Math.round(baseDist * ratio);
+            // 3개 포인트 지점 좌표 계산
+            const ptStart = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, startDeg, distStart);
+            const ptMid = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, midDeg, distMid);
+            const ptEnd = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, endDeg, distEnd);
 
             // 바람 진행 벡터 화살표 (바람이 불어가는 방향으로 45m 뻗어감)
             const windTip = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, windVectorDeg, 45);
             const windBadgePos = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, windVectorDeg, 48);
-
-            // 보정된 유효 비거리 부채꼴 호
-            const arcPts: { lat: number; lng: number }[] = [];
-            for (let b = bearing - 22; b <= bearing + 22; b += 2) {
-              const [pLat, pLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, b, effDist);
-              arcPts.push({ lat: pLat, lng: pLng });
-            }
-            const [effLabelLat, effLabelLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, effDist);
 
             windElements = (
               <React.Fragment key={`wind-physics-${selectedSpot.id}`}>
@@ -708,57 +682,68 @@ export const MapView: React.FC<MapViewProps> = ({
                     { lat: windTip[0], lng: windTip[1] },
                   ]}
                   endArrow={true}
-                  strokeWeight={4}
-                  strokeColor={windColor}
-                  strokeOpacity={0.9}
-                  zIndex={60}
+                  strokeWeight={3.5}
+                  strokeColor="#38bdf8"
+                  strokeOpacity={0.85}
+                  zIndex={45}
                 />
                 <CustomOverlayMap
                   position={{ lat: windBadgePos[0], lng: windBadgePos[1] }}
                   yAnchor={0.5}
                   xAnchor={0.5}
-                  zIndex={65}
+                  zIndex={55}
                   clickable={false}
                 >
-                  <div
-                    className="px-2 py-0.5 rounded-full text-[9px] font-bold font-mono shadow-xl border pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1"
-                    style={{
-                      backgroundColor: `${windColor}22`,
-                      color: windColor,
-                      borderColor: `${windColor}aa`,
-                    }}
-                  >
+                  <div className="px-2 py-0.5 rounded-full text-[9px] font-bold font-mono shadow-xl border pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1 bg-slate-950/95 text-cyan-300 border-cyan-400/80">
                     <span>💨 {getCompassDirection(weather.windDirection)}풍 {formatWindSpeed(weather.windSpeed, windUnit)}</span>
-                    <span className="opacity-70">|</span>
-                    <span>{windTypeLabel}</span>
                   </div>
                 </CustomOverlayMap>
 
-                {/* 실질 보정 비거리 호 & 배지 */}
+                {/* 공략각 시점~종점 풍향·풍속 영향 예상 비거리 오렌지색 arc */}
                 <Polyline
-                  path={arcPts}
-                  strokeWeight={2.5}
-                  strokeColor={windColor}
-                  strokeOpacity={0.9}
-                  strokeStyle="shortdash"
-                  zIndex={32}
+                  path={orangeArcPts}
+                  strokeWeight={3.5}
+                  strokeColor="#f97316"
+                  strokeOpacity={0.95}
+                  zIndex={42}
                 />
+
+                {/* 1. 시점 예상 비거리 표기 배지 */}
                 <CustomOverlayMap
-                  position={{ lat: effLabelLat, lng: effLabelLng }}
-                  yAnchor={1.4}
+                  position={{ lat: ptStart[0], lng: ptStart[1] }}
+                  yAnchor={0.5}
                   xAnchor={0.5}
-                  zIndex={36}
+                  zIndex={48}
                   clickable={false}
                 >
-                  <div
-                    className="px-1.5 py-0.5 rounded-full text-[9px] font-bold font-mono shadow-lg border pointer-events-none kakao-invert-restore select-none whitespace-nowrap"
-                    style={{
-                      backgroundColor: `${windColor}22`,
-                      color: windColor,
-                      borderColor: `${windColor}aa`,
-                    }}
-                  >
-                    🎯 실질 비거리 {effDist}m ({isTailwind ? `등바람 +${Math.round((ratio - 1) * baseDist)}m` : isHeadwind ? `맞바람 -${Math.round((1 - ratio) * baseDist)}m` : '옆바람 감쇄'})
+                  <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[9px] shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
+                    {distStart}m
+                  </div>
+                </CustomOverlayMap>
+
+                {/* 2. 중간 예상 비거리 표기 배지 */}
+                <CustomOverlayMap
+                  position={{ lat: ptMid[0], lng: ptMid[1] }}
+                  yAnchor={0.5}
+                  xAnchor={0.5}
+                  zIndex={48}
+                  clickable={false}
+                >
+                  <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[9px] shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
+                    {distMid}m
+                  </div>
+                </CustomOverlayMap>
+
+                {/* 3. 종점 예상 비거리 표기 배지 */}
+                <CustomOverlayMap
+                  position={{ lat: ptEnd[0], lng: ptEnd[1] }}
+                  yAnchor={0.5}
+                  xAnchor={0.5}
+                  zIndex={48}
+                  clickable={false}
+                >
+                  <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[9px] shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
+                    {distEnd}m
                   </div>
                 </CustomOverlayMap>
               </React.Fragment>
@@ -1070,41 +1055,58 @@ export const MapView: React.FC<MapViewProps> = ({
           isMobileDrawerOpen ? 'hidden md:flex' : 'flex'
         }`}
       >
-        {/* 일반 지도 / 스카이뷰(항공사진) / 야간 다크 모드 3단 선택 탭 */}
-        <div className="flex bg-slate-900/95 border border-slate-700/80 rounded-xl p-1 shadow-2xl backdrop-blur">
+        {/* 일반 지도 / 스카이뷰(항공사진) / 야간 다크 모드 / 고대비 모드 아이콘 전용 탭 */}
+        <div className="flex items-center bg-slate-900/95 border border-slate-700/80 rounded-xl p-1 shadow-2xl backdrop-blur gap-0.5">
           <button
             onClick={() => handleModeChange('ROADMAP')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+            className={`p-2 rounded-lg transition flex items-center justify-center ${
               mapMode === 'ROADMAP'
                 ? 'bg-cyan-600 text-white shadow'
-                : 'text-slate-400 hover:text-white'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
             }`}
             title="일반 도로 지도"
+            aria-label="일반 지도"
           >
-            <span>🗺️ 일반</span>
+            <MapIcon size={16} />
           </button>
           <button
             onClick={() => handleModeChange('HYBRID')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+            className={`p-2 rounded-lg transition flex items-center justify-center ${
               mapMode === 'HYBRID'
                 ? 'bg-cyan-600 text-white shadow'
-                : 'text-slate-400 hover:text-white'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
             }`}
             title="갯바위·방파제 고해상도 실사 항공 스카이뷰"
+            aria-label="스카이뷰"
           >
-            <span>🛰️ 스카이뷰</span>
+            <Satellite size={16} />
           </button>
           <button
             onClick={() => handleModeChange('DARK')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+            className={`p-2 rounded-lg transition flex items-center justify-center ${
               mapMode === 'DARK'
                 ? 'bg-amber-600 text-white shadow'
-                : 'text-slate-400 hover:text-white'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
             }`}
             title="야간 낚시 다크 모드 (눈부심 방지)"
+            aria-label="야간 다크"
           >
-            <span>🌙 야간 다크</span>
+            <Moon size={16} />
           </button>
+          {onToggleSunMode && (
+            <button
+              onClick={onToggleSunMode}
+              className={`p-2 rounded-lg transition flex items-center justify-center border-l border-slate-800 ml-0.5 pl-1.5 ${
+                isSunMode
+                  ? 'bg-yellow-400 text-black font-bold shadow-yellow-500/30'
+                  : 'text-yellow-400/90 hover:text-yellow-300 hover:bg-slate-800'
+              }`}
+              title={isSunMode ? '아웃도어 초고대비 모드 끄기' : '아웃도어 초고대비 모드 켜기 (한낮 직사광선용)'}
+              aria-label="고대비 모드"
+            >
+              <Sun size={16} className={isSunMode ? 'text-black' : 'text-yellow-400'} />
+            </button>
+          )}
         </div>
 
         {/* 보조 액션 버튼들 (수심선 토글 & 채비 캘리브레이션 & 찜한 포인트 필터 & GPS 내 위치) */}
@@ -1246,7 +1248,7 @@ export const MapView: React.FC<MapViewProps> = ({
               </div>
             </div>
 
-            {/* 루어/싱커 무게 슬라이더 */}
+            {/* 루어/싱커 무게 슬라이더 (1~100g) */}
             <div className="space-y-1">
               <div className="flex justify-between items-center text-[11px]">
                 <span className="text-slate-300">루어/싱커 무게</span>
@@ -1254,8 +1256,8 @@ export const MapView: React.FC<MapViewProps> = ({
               </div>
               <input
                 type="range"
-                min={3}
-                max={80}
+                min={1}
+                max={100}
                 step={1}
                 value={tackleConfig.weightGrams}
                 onChange={(e) => {
@@ -1271,13 +1273,13 @@ export const MapView: React.FC<MapViewProps> = ({
                 className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
               />
               <div className="flex justify-between text-[9px] text-slate-500 font-mono">
-                <span>3g (지그헤드)</span>
-                <span>20g (에기/스푼)</span>
-                <span>80g (헤비메탈)</span>
+                <span>1g (극소 지그)</span>
+                <span>30g (에기/스푼)</span>
+                <span>100g (헤비메탈)</span>
               </div>
             </div>
 
-            {/* 합사 라인 호수 슬라이더 */}
+            {/* 합사 라인 호수 슬라이더 (0.4~3.0호) */}
             <div className="space-y-1">
               <div className="flex justify-between items-center text-[11px]">
                 <span className="text-slate-300">원줄 합사(PE)</span>
@@ -1286,7 +1288,7 @@ export const MapView: React.FC<MapViewProps> = ({
               <input
                 type="range"
                 min={0.4}
-                max={2.5}
+                max={3.0}
                 step={0.1}
                 value={tackleConfig.peLineSize}
                 onChange={(e) => {
@@ -1304,7 +1306,7 @@ export const MapView: React.FC<MapViewProps> = ({
               <div className="flex justify-between text-[9px] text-slate-500 font-mono">
                 <span>0.4호 (아징)</span>
                 <span>1.0호 (에깅/농어)</span>
-                <span>2.5호 (쇼어지깅)</span>
+                <span>3.0호 (헤비/원투)</span>
               </div>
             </div>
 
@@ -1344,106 +1346,75 @@ export const MapView: React.FC<MapViewProps> = ({
         )}
       </div>
 
-      {/* [요구사항 2] 위성지도 기반 2D 평면 포인트 마커 드래깅 미세 조정 HUD (좌표 표시 + 1m D-Pad 보조 + 확정/취소) */}
+      {/* [요구사항 3] 미니멀 위치 조정 컴팩트 패널 */}
       {microAdjustSpot && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[94%] max-w-md z-30 bg-slate-900/95 border border-emerald-500/60 rounded-2xl p-4 shadow-2xl backdrop-blur text-white flex flex-col gap-3 animate-fade-in">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-            <div className="flex items-center gap-1.5 font-bold text-emerald-300 text-sm">
-              <Crosshair size={16} className="text-emerald-400 animate-pulse" />
-              <span>[{microAdjustSpot.name}] 위치 드래그 미세 조정</span>
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-auto max-w-[92vw] z-30 bg-slate-900/95 border border-emerald-500/60 rounded-xl p-2.5 shadow-2xl backdrop-blur text-white flex flex-col items-center gap-2 animate-fade-in text-xs">
+          <div className="flex items-center justify-between w-full border-b border-slate-800 pb-1.5 px-1">
+            <div className="flex items-center gap-1.5 font-bold text-emerald-300 text-xs">
+              <Crosshair size={14} className="text-emerald-400 animate-pulse" />
+              <span>위치 조정</span>
             </div>
-            <button
-              onClick={onCancelMicroAdjust}
-              className="text-slate-400 hover:text-white text-xs px-2 py-0.5 rounded bg-slate-800 transition"
-            >
-              닫기
-            </button>
+            {distMeters > 0.05 && (
+              <span className="text-[10px] text-emerald-400 font-mono font-semibold">+{distMeters.toFixed(1)}m</span>
+            )}
           </div>
 
-          <div className="text-xs text-slate-300 bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-2.5 flex items-start gap-2">
-            <span className="text-emerald-400 text-base shrink-0">🛰️</span>
-            <div className="space-y-0.5 min-w-0">
-              <p className="font-semibold text-emerald-200">위성 스카이뷰 마커 직접 드래깅</p>
-              <p className="text-[11px] text-slate-300 leading-snug">
-                위성 사진을 보면서 지도 위의 핀을 마우스/터치로 드래그하여 정확한 갯바위·석축 발판으로 옮기세요.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="bg-slate-950/80 p-2 rounded-xl border border-slate-800/80">
-              <div className="text-[10px] text-slate-400">기존 좌표</div>
-              <div className="font-mono text-slate-300 text-[11px] truncate">
-                {microAdjustSpot.lat.toFixed(6)}, {microAdjustSpot.lng.toFixed(6)}
-              </div>
-            </div>
-            <div className="bg-slate-950/80 p-2 rounded-xl border border-emerald-500/40">
-              <div className="text-[10px] text-emerald-400 font-bold flex items-center justify-between">
-                <span>새 좌표</span>
-                <span className="text-emerald-300">{distMeters.toFixed(1)}m 이동</span>
-              </div>
-              <div className="font-mono text-emerald-300 text-[11px] font-bold truncate">
-                {adjustedPos.lat.toFixed(6)}, {adjustedPos.lng.toFixed(6)}
-              </div>
-            </div>
-          </div>
-
-          {/* D-Pad 1m 단위 미세 넛지 컨트롤 (48px 터치 타깃 규격) */}
-          <div className="flex items-center justify-between gap-2 bg-slate-950/60 p-2 rounded-xl border border-slate-800/80">
-            <span className="text-[11px] text-slate-400 font-medium pl-1">
-              1m 미세 보정:
-            </span>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => handleNudge(0.000009, 0)}
-                className="min-w-[44px] min-h-[44px] px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-xl text-xs font-mono font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
-                title="북쪽 1m 이동"
-              >
-                ▲ 북
-              </button>
-              <button
-                type="button"
-                onClick={() => handleNudge(-0.000009, 0)}
-                className="min-w-[44px] min-h-[44px] px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-xl text-xs font-mono font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
-                title="남쪽 1m 이동"
-              >
-                ▼ 남
-              </button>
-              <button
-                type="button"
-                onClick={() => handleNudge(0, -0.000011)}
-                className="min-w-[44px] min-h-[44px] px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-xl text-xs font-mono font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
-                title="서쪽 1m 이동"
-              >
-                ◄ 서
-              </button>
-              <button
-                type="button"
-                onClick={() => handleNudge(0, 0.000011)}
-                className="min-w-[44px] min-h-[44px] px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-xl text-xs font-mono font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
-                title="동쪽 1m 이동"
-              >
-                ► 동
-              </button>
-            </div>
-          </div>
-
-          <div className="flex gap-2 pt-1">
+          {/* D-Pad 1m 단위 미세 넛지 컨트롤 (라벨 텍스트 완전 제거) */}
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
-              onClick={onCancelMicroAdjust}
-              className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition"
+              onClick={() => handleNudge(0.000009, 0)}
+              className="w-10 h-10 bg-slate-800 hover:bg-slate-700 active:bg-emerald-600 text-slate-100 rounded-lg text-xs font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
+              title="북쪽 1m 이동"
+              aria-label="북쪽 1m"
             >
-              취소
+              ▲
             </button>
+            <button
+              type="button"
+              onClick={() => handleNudge(-0.000009, 0)}
+              className="w-10 h-10 bg-slate-800 hover:bg-slate-700 active:bg-emerald-600 text-slate-100 rounded-lg text-xs font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
+              title="남쪽 1m 이동"
+              aria-label="남쪽 1m"
+            >
+              ▼
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNudge(0, -0.000011)}
+              className="w-10 h-10 bg-slate-800 hover:bg-slate-700 active:bg-emerald-600 text-slate-100 rounded-lg text-xs font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
+              title="서쪽 1m 이동"
+              aria-label="서쪽 1m"
+            >
+              ◄
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNudge(0, 0.000011)}
+              className="w-10 h-10 bg-slate-800 hover:bg-slate-700 active:bg-emerald-600 text-slate-100 rounded-lg text-xs font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
+              title="동쪽 1m 이동"
+              aria-label="동쪽 1m"
+            >
+              ►
+            </button>
+          </div>
+
+          {/* 저장 버튼(왼쪽), 취소 버튼(오른쪽) */}
+          <div className="flex gap-2 w-full pt-0.5">
             <button
               type="button"
               onClick={() => onConfirmMicroAdjust && onConfirmMicroAdjust(microAdjustSpot.id, adjustedPos.lat, adjustedPos.lng)}
-              className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition active:scale-95 flex items-center justify-center gap-1.5"
+              className="flex-1 py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition active:scale-95 flex items-center justify-center gap-1"
             >
-              <Check size={14} />
-              <span>새 위치로 확정 저장</span>
+              <Check size={13} />
+              <span>저장</span>
+            </button>
+            <button
+              type="button"
+              onClick={onCancelMicroAdjust}
+              className="flex-1 py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition flex items-center justify-center"
+            >
+              취소
             </button>
           </div>
         </div>
@@ -1455,11 +1426,6 @@ export const MapView: React.FC<MapViewProps> = ({
         {showCastingArrows && (
           <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
             🎯 채비 기준비거리 {tackleConfig.calibratedDistanceMeters}m ({tackleConfig.radii.join('/')}m 링)
-          </span>
-        )}
-        {showDepthContours && (
-          <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 font-bold">
-            🌊 KHOA 수심 등심선(5/10/20/50m) 표시 중
           </span>
         )}
       </div>

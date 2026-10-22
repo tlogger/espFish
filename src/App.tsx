@@ -413,7 +413,6 @@ export function App() {
       setSpots(cSpots);
       setSelectedSpot(updated);
       setMicroAdjustSpot(null);
-      alert('✅ 포인트 위치가 성공적으로 미세 조정되었습니다.');
     } catch (e: any) {
       alert(`위치 저장 중 오류가 발생했습니다: ${e?.message || ''}`);
     }
@@ -496,8 +495,14 @@ export function App() {
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* 글로벌 상단 헤더 & 내비게이션 바 */}
       <header className="h-14 bg-slate-900 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 shadow-md gap-2">
-        {/* 로고 (ExFish 브랜딩 및 구호 적용) */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* 로고 (ExFish 브랜딩 및 구호 적용, 클릭 시 페이지 새로고침) */}
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="flex items-center gap-2 shrink-0 text-left hover:opacity-90 active:scale-95 transition cursor-pointer"
+          title="ExFish 새로고침"
+          aria-label="ExFish 메인 새로고침"
+        >
           <span className="text-2xl filter drop-shadow">🎣</span>
           <div className="flex flex-col">
             <span className="text-base sm:text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500 bg-clip-text text-transparent leading-none">
@@ -507,7 +512,7 @@ export function App() {
               ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며...
             </span>
           </div>
-        </div>
+        </button>
 
         {/* 검색 및 POI 검색 바 (중앙) */}
         <div className="relative flex items-center gap-1.5 flex-1 max-w-sm sm:max-w-md mx-1 sm:mx-4">
@@ -611,96 +616,20 @@ export function App() {
           )}
         </div>
 
-        {/* 툴바: 헬프 버튼, 로그인 버튼 (PC 웹용), 단위 변환 토글 */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 text-xs">
-          {/* 아웃도어 초고대비 모드 (한낮 갯바위 직사광선 글레어 극복) */}
-          <button
-            onClick={() => {
-              const next = !isSunMode;
-              setIsSunMode(next);
-              localStorage.setItem('exfish_sun_mode', String(next));
-              if (typeof document !== 'undefined') {
-                document.body.classList.toggle('sun-mode-active', next);
-              }
-            }}
-            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border font-semibold text-xs transition shadow-sm ${
-              isSunMode
-                ? 'bg-yellow-400 text-black border-yellow-300 font-bold shadow-yellow-500/30'
-                : 'bg-slate-800/90 hover:bg-slate-700 text-yellow-300 border-slate-700'
-            }`}
-            title="한낮 갯바위 직사광선 대비 초고대비 모드 (Sun Mode: WCAG AAA 7:1)"
-          >
-            <span>☀️</span>
-            <span className="hidden sm:inline">{isSunMode ? '고대비ON' : '고대비'}</span>
-          </button>
-
-          {/* 입질 종합 지수 평가 기준 헬프 버튼 */}
-          <button
-            onClick={() => setIsHelpModalOpen(true)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-amber-300 border border-slate-700 font-semibold text-xs transition shadow-sm"
-            title="입질 종합 지수(Bite Index) 평가 기준 설명"
-          >
-            <HelpCircle size={14} className="text-amber-400" />
-            <span className="hidden sm:inline">입질지수 기준</span>
-          </button>
-
-          {/* 출조 필수품 & 안전 점검 체크리스트 버튼 */}
-          <button
-            onClick={() => setIsChecklistModalOpen(true)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-950/70 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/60 font-semibold text-xs transition shadow-sm"
-            title="출조 필수품 & 안전 점검 체크리스트"
-          >
-            <span>🎒</span>
-            <span className="hidden sm:inline">체크리스트</span>
-          </button>
-
-          {/* PC 웹 로그인 / 회원 정보 버튼 (모바일에서는 아래 서브바로 이동) */}
+        {/* 툴바: PC 웹 로그인 / 회원 정보 버튼 (아이콘 전용) */}
+        <div className="flex items-center gap-1.5 shrink-0 text-xs">
           <button
             onClick={() => setIsLoginModalOpen(true)}
-            className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition ${
+            className={`hidden md:flex items-center justify-center p-2 rounded-lg border text-xs font-semibold transition ${
               currentUser
                 ? 'bg-slate-800/90 border-slate-700 text-cyan-300 hover:bg-slate-700 hover:text-white'
                 : 'bg-gradient-to-r from-cyan-600/30 to-blue-600/30 border-cyan-500/50 text-cyan-300 hover:bg-cyan-600/40 hover:text-white shadow-sm'
             }`}
-            title={currentUser ? `로그인됨: ${currentUser.id}` : '로그인하기 (Email & ID)'}
+            title={currentUser ? `계정 정보: ${currentUser.id}` : '로그인하기 (Email & ID)'}
+            aria-label={currentUser ? `계정 정보: ${currentUser.id}` : '로그인하기'}
           >
-            {currentUser ? <User size={14} className="text-cyan-400" /> : <LogIn size={14} className="text-cyan-400" />}
-            <span>
-              {currentUser ? currentUser.id : '로그인'}
-            </span>
+            {currentUser ? <User size={16} className="text-cyan-400" /> : <LogIn size={16} className="text-cyan-400" />}
           </button>
-
-          {/* 풍속 단위 변환 토글 */}
-          <div className="hidden lg:flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-[11px]">
-            <span className="px-1.5 text-slate-400">바람:</span>
-            {(['ms', 'knot', 'kmh'] as WindUnit[]).map((u) => (
-              <button
-                key={u}
-                onClick={() => setWindUnit(u)}
-                className={`px-2 py-0.5 rounded font-medium transition ${
-                  windUnit === u ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {u === 'ms' ? 'm/s' : u === 'knot' ? 'knot' : 'km/h'}
-              </button>
-            ))}
-          </div>
-
-          {/* 조류 단위 변환 토글 */}
-          <div className="hidden xl:flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-[11px]">
-            <span className="px-1.5 text-slate-400">조류:</span>
-            {(['knot', 'ms', 'cms'] as CurrentUnit[]).map((u) => (
-              <button
-                key={u}
-                onClick={() => setCurrentUnit(u)}
-                className={`px-2 py-0.5 rounded font-medium transition ${
-                  currentUnit === u ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {u === 'knot' ? 'knot' : u === 'ms' ? 'm/s' : 'cm/s'}
-              </button>
-            ))}
-          </div>
         </div>
       </header>
 
@@ -746,17 +675,18 @@ export function App() {
               <span>내 포인트만 보기</span>
             </button>
 
-            {/* 모바일 화면 전용 로그인 버튼 (내 포인트만 보기 바로 옆에 배치) */}
+            {/* 모바일 화면 전용 로그인 버튼 (아이콘 전용) */}
             <button
               onClick={() => setIsLoginModalOpen(true)}
-              className={`md:hidden flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-semibold transition ${
+              className={`md:hidden flex items-center justify-center p-2 rounded-lg border text-xs font-semibold transition ${
                 currentUser
                   ? 'bg-slate-800/90 border-slate-700 text-cyan-300'
                   : 'bg-cyan-600/30 border-cyan-500/50 text-cyan-300'
               }`}
+              title={currentUser ? `계정 정보: ${currentUser.id}` : '로그인'}
+              aria-label={currentUser ? `계정 정보: ${currentUser.id}` : '로그인'}
             >
-              {currentUser ? <User size={12} className="text-cyan-400" /> : <LogIn size={12} className="text-cyan-400" />}
-              <span>{currentUser ? currentUser.id : '로그인'}</span>
+              {currentUser ? <User size={14} className="text-cyan-400" /> : <LogIn size={14} className="text-cyan-400" />}
             </button>
           </div>
 
@@ -795,6 +725,14 @@ export function App() {
             currentUser={currentUser}
             onStartMicroAdjust={handleStartMicroAdjust}
             isSunMode={isSunMode}
+            onToggleSunMode={() => {
+              const next = !isSunMode;
+              setIsSunMode(next);
+              localStorage.setItem('exfish_sun_mode', String(next));
+              if (typeof document !== 'undefined') {
+                document.body.classList.toggle('sun-mode-active', next);
+              }
+            }}
           />
         </div>
 
