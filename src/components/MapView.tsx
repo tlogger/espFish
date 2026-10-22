@@ -11,6 +11,7 @@ import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon, Map a
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo } from '../types';
 import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
 import { KOREA_DEPTH_CONTOURS, estimateDepthAtPoint } from '../data/depthContours';
+import { generateDynamicBathymetryContours } from '../utils/dynamicBathymetryEngine';
 import {
   getSavedTackleConfig,
   saveTackleConfig,
@@ -90,6 +91,7 @@ export const MapView: React.FC<MapViewProps> = ({
   onMapClickForNewSpot,
   weather,
   marine,
+  tide,
   windUnit,
   currentUnit,
   recenterTarget,
@@ -174,6 +176,23 @@ export const MapView: React.FC<MapViewProps> = ({
       return next;
     });
   };
+
+  // 150m 격자수심 + 국립해양조사원(KHOA) 실시간 조위 합성 동적 등심선 (5~30m)
+  const currentHour = new Date().getHours();
+  const currentTideHeightCm = tide?.hourlyCurve?.find((c) => c.isCurrent || c.hour === currentHour)?.height;
+
+  const dynamicBathymetry = React.useMemo(() => {
+    if (!showDepthContours) return null;
+    const targetLat = selectedSpot ? selectedSpot.lat : center.lat;
+    const targetLng = selectedSpot ? selectedSpot.lng : center.lng;
+    return generateDynamicBathymetryContours(
+      targetLat,
+      targetLng,
+      currentTideHeightCm,
+      18, // 반경 18km
+      [5, 10, 15, 20, 25, 30] // 5m ~ 30m 등심선
+    );
+  }, [showDepthContours, selectedSpot?.lat, selectedSpot?.lng, center.lat, center.lng, currentTideHeightCm]);
 
   // 공기역학 채비 캘리브레이션 (루어 무게 g & PE 라인 호수)
   const [tackleConfig, setTackleConfig] = React.useState<TackleRigConfig>(() => getSavedTackleConfig());
@@ -404,39 +423,77 @@ export const MapView: React.FC<MapViewProps> = ({
           setCenter({ lat: latLng.getLat(), lng: latLng.getLng() });
         }}
       >
-        {/* KHOA 국가해양격자 벡터 수심 등심선 오버레이 (5m, 10m, 20m, 50m) */}
+        {/* KHOA 150m 격자수심 + 실시간 관측 조위 합성 동적 등심선 오버레이 (5m, 10m, 15m, 20m, 25m, 30m) */}
         {showDepthContours && (
           <React.Fragment key="khoa-depth-contours-layer">
-            {KOREA_DEPTH_CONTOURS.map((contour) => (
-              <React.Fragment key={`contour-${contour.id}`}>
-                <Polyline
-                  path={contour.path}
-                  strokeWeight={contour.depthMeters <= 5 ? 2.2 : contour.depthMeters <= 10 ? 2 : 1.5}
-                  strokeColor={contour.color}
-                  strokeOpacity={0.85}
-                  strokeStyle={contour.depthMeters === 5 ? 'shortdash' : contour.depthMeters === 10 ? 'solid' : 'dash'}
-                  zIndex={15}
-                />
-                <CustomOverlayMap
-                  position={contour.labelPos}
-                  yAnchor={0.5}
-                  xAnchor={0.5}
-                  zIndex={16}
-                  clickable={false}
-                >
-                  <div
-                    className="px-1.5 py-0.5 rounded text-[8.5px] font-bold font-mono shadow-md pointer-events-none kakao-invert-restore select-none whitespace-nowrap border"
-                    style={{
-                      backgroundColor: '#020617f0',
-                      color: contour.color,
-                      borderColor: `${contour.color}77`,
-                    }}
+            {dynamicBathymetry && dynamicBathymetry.contours.length > 0 ? (
+              dynamicBathymetry.contours.map((contour) => (
+                <React.Fragment key={`dyn-contour-${contour.id}-${contour.depthMeters}`}>
+                  {contour.paths.map((path, pIdx) => (
+                    <Polyline
+                      key={`dyn-path-${contour.id}-${pIdx}`}
+                      path={path}
+                      strokeWeight={contour.strokeWeight}
+                      strokeColor={contour.color}
+                      strokeOpacity={0.88}
+                      strokeStyle={contour.depthMeters <= 5 ? 'shortdash' : contour.depthMeters === 10 ? 'solid' : 'dash'}
+                      zIndex={15}
+                    />
+                  ))}
+                  {contour.labelPos && (
+                    <CustomOverlayMap
+                      position={contour.labelPos}
+                      yAnchor={0.5}
+                      xAnchor={0.5}
+                      zIndex={16}
+                      clickable={false}
+                    >
+                      <div
+                        className="px-1.5 py-0.5 rounded text-[8.5px] font-bold font-mono shadow-md pointer-events-none kakao-invert-restore select-none whitespace-nowrap border"
+                        style={{
+                          backgroundColor: '#020617f0',
+                          color: contour.color,
+                          borderColor: `${contour.color}77`,
+                        }}
+                      >
+                        -{contour.depthMeters}m ({contour.name})
+                      </div>
+                    </CustomOverlayMap>
+                  )}
+                </React.Fragment>
+              ))
+            ) : (
+              KOREA_DEPTH_CONTOURS.map((contour) => (
+                <React.Fragment key={`contour-${contour.id}`}>
+                  <Polyline
+                    path={contour.path}
+                    strokeWeight={contour.depthMeters <= 5 ? 2.2 : contour.depthMeters <= 10 ? 2 : 1.5}
+                    strokeColor={contour.color}
+                    strokeOpacity={0.85}
+                    strokeStyle={contour.depthMeters === 5 ? 'shortdash' : contour.depthMeters === 10 ? 'solid' : 'dash'}
+                    zIndex={15}
+                  />
+                  <CustomOverlayMap
+                    position={contour.labelPos}
+                    yAnchor={0.5}
+                    xAnchor={0.5}
+                    zIndex={16}
+                    clickable={false}
                   >
-                    -{contour.depthMeters}m ({contour.name})
-                  </div>
-                </CustomOverlayMap>
-              </React.Fragment>
-            ))}
+                    <div
+                      className="px-1.5 py-0.5 rounded text-[8.5px] font-bold font-mono shadow-md pointer-events-none kakao-invert-restore select-none whitespace-nowrap border"
+                      style={{
+                        backgroundColor: '#020617f0',
+                        color: contour.color,
+                        borderColor: `${contour.color}77`,
+                      }}
+                    >
+                      -{contour.depthMeters}m ({contour.name})
+                    </div>
+                  </CustomOverlayMap>
+                </React.Fragment>
+              ))
+            )}
           </React.Fragment>
         )}
 
@@ -1111,7 +1168,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
         {/* 보조 액션 버튼들 (수심선 토글 & 채비 캘리브레이션 & 찜한 포인트 필터 & GPS 내 위치) */}
         <div className="flex items-center gap-2">
-          {/* KHOA 수심 등심선(5m/10m/20m/50m) 토글 버튼 */}
+          {/* 150m 격자수심 + 실시간 조위 합성 동적 등심선(5~30m) 토글 버튼 */}
           <button
             onClick={toggleDepthContours}
             className={`p-2.5 border rounded-xl shadow-xl backdrop-blur flex items-center justify-center transition active:scale-95 ${
@@ -1119,7 +1176,11 @@ export const MapView: React.FC<MapViewProps> = ({
                 ? 'bg-blue-600 text-white border-blue-400 shadow-blue-500/30 ring-1 ring-blue-400'
                 : 'bg-slate-900/95 hover:bg-slate-800 text-slate-400 border-slate-700/80'
             }`}
-            title={showDepthContours ? 'KHOA 수심 등심선(5m/10m/20m/50m) 숨기기' : 'KHOA 수심 등심선(5m/10m/20m/50m) 켜기'}
+            title={
+              showDepthContours
+                ? '150m 격자 + 실시간 조위 합성 등심선(5~30m) 끄기'
+                : '150m 격자 + 실시간 조위 합성 등심선(5~30m) 켜기'
+            }
           >
             <WavesIcon size={16} className={showDepthContours ? 'text-white' : 'text-slate-400'} />
           </button>
