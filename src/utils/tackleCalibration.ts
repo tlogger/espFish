@@ -84,6 +84,112 @@ export function calculateCalibratedDistance(
   };
 }
 
+export interface CastingDriftResult {
+  targetDistanceM: number;
+  targetBearingDeg: number;
+  actualDistanceM: number;
+  actualBearingDeg: number;
+  driftDistanceM: number;
+  driftAngleDeg: number;
+  flightTimeSec: number;
+  headwindMps: number;
+  crosswindMps: number;
+}
+
+/**
+ * 지그헤드 + 2인치 쉐드 웜 채비 면적 및 합사(PE 라인) 길이/두께를 반영한
+ * 실시간 풍향·풍속 비거리 변화 및 측면 편류(줄날림/밀림) 정밀 물리 산식
+ */
+export function calculateAerodynamicCastingDrift(
+  targetBearingDeg: number,
+  baseDistanceM: number,
+  windSpeedMps: number,
+  windDirectionDeg: number,
+  weightGrams: number = 25,
+  peLineSize: number = 1.0,
+  wormLengthInches: number = 2.0
+): CastingDriftResult {
+  const safeWeight = Math.max(1, Math.min(100, weightGrams));
+  const safePE = Math.max(0.4, Math.min(3.0, peLineSize));
+  const safeWindSpeed = Math.max(0, windSpeedMps);
+
+  // 1. 바람 진행 방위 (To) = (From + 180) % 360
+  const windVectorDeg = (windDirectionDeg + 180) % 360;
+
+  // 2. 사잇각 계산 (캐스팅 방향 기준 바람 진행 방향 사잇각)
+  let angleDiff = (windVectorDeg - targetBearingDeg) % 360;
+  if (angleDiff > 180) angleDiff -= 360;
+  if (angleDiff < -180) angleDiff += 360;
+  const alphaRad = (angleDiff * Math.PI) / 180;
+
+  // 3. 종방향(순풍/역풍) 및 횡방향(측풍) 성분 분해
+  const headwindMps = safeWindSpeed * Math.cos(alphaRad);
+  const crosswindMps = safeWindSpeed * Math.sin(alphaRad);
+
+  // 4. 종방향 바람에 의한 비거리 증감 (가벼운 채비 + 굵은 합사일수록 맞바람 손실 극대화)
+  const weightPenalty = Math.pow(18 / (safeWeight + 5), 0.4);
+  const peWindResistance = Math.pow(safePE, 0.2);
+  let distRatio = 1.0;
+  if (headwindMps >= 0) {
+    distRatio += Math.min(0.35, (headwindMps / 10) * 0.25 / weightPenalty);
+  } else {
+    distRatio -= Math.min(0.40, (Math.abs(headwindMps) / 10) * 0.28 * weightPenalty * peWindResistance);
+  }
+  const effectiveDist = Math.max(8, Math.round(baseDistanceM * distRatio));
+
+  // 5. 체공 시간 계산 (약 0.38 * sqrt(D))
+  const flightTimeSec = Math.round(0.38 * Math.sqrt(effectiveDist) * 10) / 10;
+
+  // 6. 채비(지그헤드 + 2인치 쉐드 웜) 및 합사 측면 공기역학 풍압력 산출
+  // 2인치 쉐드 웜 투영 측면적: 5.08cm * 0.8cm + 지그헤드 ~ 0.00055 m^2
+  const rigSideArea = (wormLengthInches * 0.0254 * 0.008) + 0.00015;
+  // 합사: 직경 0.165mm * sqrt(PE), 방출 길이 effectiveDist * 1.08
+  const lineDiam = 0.000165 * Math.sqrt(safePE);
+  const lineArea = (effectiveDist * 1.08) * lineDiam;
+
+  const absCross = Math.abs(crosswindMps);
+  const dynamicPressure = 0.5 * 1.225 * absCross * absCross;
+  // 라인 장력(로드팁-루어 앵커)을 고려한 유효 수풍력
+  const fCross = dynamicPressure * (0.65 * rigSideArea + 0.35 * 1.1 * lineArea);
+  const mKg = safeWeight / 1000;
+  const aCross = fCross / mKg;
+
+  // 텐션 억제 감쇠 계수 및 라인 공기 연행력
+  const tensionDamping = 0.38;
+  let driftM = 0.5 * aCross * flightTimeSec * flightTimeSec * tensionDamping + absCross * flightTimeSec * 0.06 * Math.sqrt(safePE);
+  driftM = Math.min(effectiveDist * 0.35, driftM);
+  const signedDrift = crosswindMps >= 0 ? driftM : -driftM;
+
+  // 7. 목표 지점 벡터에 횡방향 오프셋 벡터 합성
+  const radTarget = (targetBearingDeg * Math.PI) / 180;
+  const xTarget = effectiveDist * Math.sin(radTarget);
+  const yTarget = effectiveDist * Math.cos(radTarget);
+
+  const radNormal = ((targetBearingDeg + 90) * Math.PI) / 180;
+  const xActual = xTarget + signedDrift * Math.sin(radNormal);
+  const yActual = yTarget + signedDrift * Math.cos(radNormal);
+
+  const actualDistanceM = Math.round(Math.sqrt(xActual * xActual + yActual * yActual));
+  let actualBearingRad = Math.atan2(xActual, yActual);
+  let actualBearingDeg = Math.round(((actualBearingRad * 180) / Math.PI + 360) % 360);
+
+  let driftAngleDeg = (actualBearingDeg - targetBearingDeg) % 360;
+  if (driftAngleDeg > 180) driftAngleDeg -= 360;
+  if (driftAngleDeg < -180) driftAngleDeg += 360;
+
+  return {
+    targetDistanceM: effectiveDist,
+    targetBearingDeg,
+    actualDistanceM,
+    actualBearingDeg,
+    driftDistanceM: Math.round(driftM * 10) / 10,
+    driftAngleDeg,
+    flightTimeSec,
+    headwindMps: Math.round(headwindMps * 10) / 10,
+    crosswindMps: Math.round(crosswindMps * 10) / 10,
+  };
+}
+
 /**
  * 수중 침강 물리 및 조류 연동 폴링(바닥 안착) 시간 & 조류 흘림 거리 산출
  * @param weightGrams 루어/싱커 무게 (g)

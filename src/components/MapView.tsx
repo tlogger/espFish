@@ -16,6 +16,7 @@ import {
   getSavedTackleConfig,
   saveTackleConfig,
   calculateSinkingPhysics,
+  calculateAerodynamicCastingDrift,
   ROD_POWER_SPECS,
   RodPower,
   TackleRigConfig,
@@ -678,53 +679,50 @@ export const MapView: React.FC<MapViewProps> = ({
             </React.Fragment>
           );
 
-          // 2. 실시간 풍향 및 풍속 상호작용 & 공략각(시점~종점) 바람 영향 예상 비거리 오렌지색 arc
+          // 2. 실시간 풍향·풍속 및 합사줄(PE) 길이/두께 + 지그헤드/2인치 쉐드 웜 채비 공기역학 편류(밀림) 오렌지 라인
           // weather.windDirection: 바람이 불어오는 방위 (From)
           // windVectorDeg: 바람이 불어가는 진행 방위 (To) = (windDirection + 180) % 360
           let windElements = null;
           if (weather) {
             const windVectorDeg = (weather.windDirection + 180) % 360;
+            const rigWeight = tackleConfig.weightGrams;
+            const peLine = tackleConfig.peLineSize;
 
-            // 방위각 b에 따른 풍향·풍속 보정 비거리 산출 함수
-            const calculateWindAdjustedDist = (b: number): number => {
-              const diff = Math.abs(b - windVectorDeg) % 360;
-              const angleDiff = diff > 180 ? 360 - diff : diff;
-              let ratio = 1.0;
-              if (angleDiff <= 45) {
-                const tailFactor = Math.cos((angleDiff * Math.PI) / 180);
-                ratio = Math.min(1.35, 1 + tailFactor * (weather.windSpeed / 10) * 0.28);
-              } else if (angleDiff >= 135) {
-                const headFactor = Math.abs(Math.cos((angleDiff * Math.PI) / 180));
-                ratio = Math.max(0.65, 1 - headFactor * (weather.windSpeed / 10) * 0.28);
-              } else {
-                const crossFactor = Math.sin((angleDiff * Math.PI) / 180);
-                ratio = Math.max(0.85, 1 - crossFactor * (weather.windSpeed / 10) * 0.12);
-              }
-              return Math.round(baseDist * ratio);
-            };
-
-            // 공략각 시점, 중간, 종점 3개 포인트 선정
+            // 공략각 시점, 중간, 종점 3개 포인트에 대한 정밀 편류(Drift) 물리 계산
             const midDeg = (startDeg + span / 2) % 360;
-            const distStart = calculateWindAdjustedDist(startDeg);
-            const distMid = calculateWindAdjustedDist(midDeg);
-            const distEnd = calculateWindAdjustedDist(endDeg);
+            const driftStart = calculateAerodynamicCastingDrift(startDeg, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, 2.0);
+            const driftMid = calculateAerodynamicCastingDrift(midDeg, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, 2.0);
+            const driftEnd = calculateAerodynamicCastingDrift(endDeg, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, 2.0);
 
-            // 공략각 시점~종점 오렌지색 arc 폴리라인 포인트 생성
+            // 공략각 시점~종점 전체 구간에서 바람/합사줄에 의해 밀린 실제 착수 지점들을 이은 오렌지색 arc 폴리라인 생성
             const orangeArcPts: { lat: number; lng: number }[] = [];
+            const targetArcPts: { lat: number; lng: number }[] = [];
             const arcStep = Math.max(1, Math.min(3, Math.round(span / 30)));
             for (let offset = 0; offset <= span; offset += arcStep) {
               const b = (startDeg + offset) % 360;
-              const d = calculateWindAdjustedDist(b);
-              const [pLat, pLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, b, d);
-              orangeArcPts.push({ lat: pLat, lng: pLng });
+              const dRes = calculateAerodynamicCastingDrift(b, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, 2.0);
+              // 실제 밀린 착수 좌표
+              const [pActualLat, pActualLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, dRes.actualBearingDeg, dRes.actualDistanceM);
+              orangeArcPts.push({ lat: pActualLat, lng: pActualLng });
+              // 원래 목표했던 착수 좌표 (보조 기준선)
+              const [pTargetLat, pTargetLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, b, dRes.targetDistanceM);
+              targetArcPts.push({ lat: pTargetLat, lng: pTargetLng });
             }
-            const [pEndLat, pEndLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, endDeg, distEnd);
-            orangeArcPts.push({ lat: pEndLat, lng: pEndLng });
+            // 종점 마무리 포인트
+            const [pEndActualLat, pEndActualLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, driftEnd.actualBearingDeg, driftEnd.actualDistanceM);
+            orangeArcPts.push({ lat: pEndActualLat, lng: pEndActualLng });
+            const [pEndTargetLat, pEndTargetLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, endDeg, driftEnd.targetDistanceM);
+            targetArcPts.push({ lat: pEndTargetLat, lng: pEndTargetLng });
 
-            // 3개 포인트 지점 좌표 계산
-            const ptStart = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, startDeg, distStart);
-            const ptMid = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, midDeg, distMid);
-            const ptEnd = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, endDeg, distEnd);
+            // 3개 포인트의 실제 밀린 착수 좌표 (오렌지 라인 위에 위치)
+            const ptStartActual = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, driftStart.actualBearingDeg, driftStart.actualDistanceM);
+            const ptMidActual = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, driftMid.actualBearingDeg, driftMid.actualDistanceM);
+            const ptEndActual = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, driftEnd.actualBearingDeg, driftEnd.actualDistanceM);
+
+            // 3개 포인트의 원래 목표 좌표
+            const ptStartTarget = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, startDeg, driftStart.targetDistanceM);
+            const ptMidTarget = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, midDeg, driftMid.targetDistanceM);
+            const ptEndTarget = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, endDeg, driftEnd.targetDistanceM);
 
             // 바람 진행 벡터 화살표 (바람이 불어가는 방향으로 45m 뻗어감)
             const windTip = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, windVectorDeg, 45);
@@ -732,7 +730,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
             windElements = (
               <React.Fragment key={`wind-physics-${selectedSpot.id}`}>
-                {/* 바람 진행 벡터 화살표 */}
+                {/* 1. 바람 진행 벡터 화살표 */}
                 <Polyline
                   path={[
                     { lat: selectedSpot.lat, lng: selectedSpot.lng },
@@ -756,7 +754,39 @@ export const MapView: React.FC<MapViewProps> = ({
                   </div>
                 </CustomOverlayMap>
 
-                {/* 공략각 시점~종점 풍향·풍속 영향 예상 비거리 오렌지색 arc */}
+                {/* 2. 바람 없을 때의 원래 목표 호선 (은은한 점선 기준선) */}
+                <Polyline
+                  path={targetArcPts}
+                  strokeWeight={1.5}
+                  strokeColor="#94a3b8"
+                  strokeOpacity={0.35}
+                  strokeStyle="dashed"
+                  zIndex={41}
+                />
+
+                {/* 3. 목표 지점 -> 실제 착수 지점 사이의 밀림 편류 가이드 선 (밀림 1m 이상 시 표시) */}
+                {[
+                  { target: ptStartTarget, actual: ptStartActual, drift: driftStart },
+                  { target: ptMidTarget, actual: ptMidActual, drift: driftMid },
+                  { target: ptEndTarget, actual: ptEndActual, drift: driftEnd },
+                ].map((item, idx) =>
+                  item.drift.driftDistanceM >= 1.0 ? (
+                    <Polyline
+                      key={`drift-offset-${idx}`}
+                      path={[
+                        { lat: item.target[0], lng: item.target[1] },
+                        { lat: item.actual[0], lng: item.actual[1] },
+                      ]}
+                      strokeWeight={1.5}
+                      strokeColor="#fbbf24"
+                      strokeOpacity={0.7}
+                      strokeStyle="dashed"
+                      zIndex={43}
+                    />
+                  ) : null
+                )}
+
+                {/* 4. 풍향·풍속 및 합사/채비 공기역학으로 밀린 실제 착수 오렌지색 arc */}
                 <Polyline
                   path={orangeArcPts}
                   strokeWeight={3.5}
@@ -765,42 +795,57 @@ export const MapView: React.FC<MapViewProps> = ({
                   zIndex={42}
                 />
 
-                {/* 1. 시점 예상 비거리 표기 배지 */}
+                {/* 5. 시점 착수점 배지 (오렌지 라인 위에 정확히 표시) */}
                 <CustomOverlayMap
-                  position={{ lat: ptStart[0], lng: ptStart[1] }}
+                  position={{ lat: ptStartActual[0], lng: ptStartActual[1] }}
                   yAnchor={0.5}
                   xAnchor={0.5}
                   zIndex={48}
                   clickable={false}
                 >
-                  <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[9px] shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                    {distStart}m
+                  <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[9px] shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1">
+                    <span>{driftStart.actualDistanceM}m</span>
+                    {driftStart.driftDistanceM >= 1.0 && (
+                      <span className="text-[8px] text-amber-300 font-normal">
+                        ({driftStart.driftAngleDeg > 0 ? '우' : '좌'} {driftStart.driftDistanceM}m)
+                      </span>
+                    )}
                   </div>
                 </CustomOverlayMap>
 
-                {/* 2. 중간 예상 비거리 표기 배지 */}
+                {/* 6. 중간 착수점 배지 */}
                 <CustomOverlayMap
-                  position={{ lat: ptMid[0], lng: ptMid[1] }}
+                  position={{ lat: ptMidActual[0], lng: ptMidActual[1] }}
                   yAnchor={0.5}
                   xAnchor={0.5}
                   zIndex={48}
                   clickable={false}
                 >
-                  <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[9px] shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                    {distMid}m
+                  <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[9px] shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1">
+                    <span>{driftMid.actualDistanceM}m</span>
+                    {driftMid.driftDistanceM >= 1.0 && (
+                      <span className="text-[8px] text-amber-300 font-normal">
+                        ({driftMid.driftAngleDeg > 0 ? '우' : '좌'} {driftMid.driftDistanceM}m)
+                      </span>
+                    )}
                   </div>
                 </CustomOverlayMap>
 
-                {/* 3. 종점 예상 비거리 표기 배지 */}
+                {/* 7. 종점 착수점 배지 */}
                 <CustomOverlayMap
-                  position={{ lat: ptEnd[0], lng: ptEnd[1] }}
+                  position={{ lat: ptEndActual[0], lng: ptEndActual[1] }}
                   yAnchor={0.5}
                   xAnchor={0.5}
                   zIndex={48}
                   clickable={false}
                 >
-                  <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[9px] shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                    {distEnd}m
+                  <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[9px] shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1">
+                    <span>{driftEnd.actualDistanceM}m</span>
+                    {driftEnd.driftDistanceM >= 1.0 && (
+                      <span className="text-[8px] text-amber-300 font-normal">
+                        ({driftEnd.driftAngleDeg > 0 ? '우' : '좌'} {driftEnd.driftDistanceM}m)
+                      </span>
+                    )}
                   </div>
                 </CustomOverlayMap>
               </React.Fragment>
@@ -1399,6 +1444,9 @@ export const MapView: React.FC<MapViewProps> = ({
                     <span className="font-mono">
                       {sink.effSinkSpeedMps}m/s · 흘림 +{sink.driftDistanceM}m
                     </span>
+                  </div>
+                  <div className="text-[9px] text-amber-300/90 pt-1 border-t border-slate-800/60 leading-tight">
+                    💡 지그헤드+2인치 쉐드 웜 및 합사 방출 길이/호수 연동 바람 편류(오렌지 라인) 시뮬레이션 적용됨
                   </div>
                 </div>
               );
