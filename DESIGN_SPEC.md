@@ -1,10 +1,10 @@
-# 🎣 ExFish 웹 플랫폼 세부 설계 사양서 (v4.1 최종 확정판)
+# 🎣 ExFish 웹 플랫폼 세부 설계 사양서 (v4.2 프로덕션 확정판)
 > **슬로건**: *"ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며..."*  
-> **버전**: Version 4.1 (Industrial-Grade Architecture & Engineering Specification)  
-> **최종 개정일**: 2026년 10월 21일  
+> **버전**: Version 4.2 (Production Live Mirror Edition)  
+> **최종 개정일**: 2026년 10월 22일  
 > **공개 저장소**: [https://github.com/tlogger/espFish](https://github.com/tlogger/espFish)  
 > **라이브 서비스**: [https://tlogger.github.io/espFish/](https://tlogger.github.io/espFish/)  
-> **문서 상태**: 프로덕션 배포용 엔지니어링 표준 사양 (Approved by @reviewer)
+> **문서 상태**: 프로덕션 배포용 엔지니어링 표준 사양 (Audited & Approved by @reviewer)
 
 ---
 
@@ -77,7 +77,7 @@ flowchart LR
   - 국립해양조사원(KHOA) 바다누리 53개 조위관측소 실시간 API 및 4대 조화분조
   - Open-Meteo Marine & Weather API (표층수온, 유의파고, 파주기, 풍향/풍속, 기압)
   - KHOA 국가해양격자 4대 권역 벡터 수심 등심선(5m/10m/20m/50m) GeoJSON
-- **스토리지 및 인증**: Supabase (PostgreSQL 15 + PostGIS + RLS) + IndexedDB (초경량 JSON 오프라인 캐시) + OAuth 2.0 (구글, 애플, 네이버, 카카오)
+- **스토리지 및 인증**: Supabase (PostgreSQL 15 + PostGIS + RLS) + IndexedDB (초경량 JSON 오프라인 캐시) + Email & 닉네임 기반 무암호 간편 인증 (`localStorage` 30일 세션 관리)
 
 ---
 
@@ -105,27 +105,34 @@ graph TD
 - **타깃팅 벡터 지향선 (Targeting Line)**:
   - 앵글러의 현재 실측 위치(GPS 수신 좌표)와 원격 가상 조준경 핀(Virtual Crosshair Target) 사이에 **황금색 점선 지향선(Golden Dash Vector Line, strokeWeight: 2, strokeColor: `#F59E0B`, strokeStyle: `shortdash`)**을 실시간 연결.
   - 선 중앙에 **`내 위치로부터 거리: XX.X m | 방위각: XXX°`** 플로팅 거리 뱃지(`CustomOverlay`)를 투영하여, 앵글러가 서 있는 발판과 공략하려는 수중여 사이의 실측 이격 거리를 직관적으로 인지.
-- **마커 2D 드래깅 및 1m 넛지**:
-  - 작성자 본인 포인트일 때만 **`[🎯 위치 미세조정]`** 컨트롤 활성화.
-  - 최고 배율(Level 1) 위성 스카이뷰로 자동 전환되며, 지도 위 핀을 드래그하거나 동서남북 1m D-Pad($\Delta\text{lat} \approx 0.000009^\circ$, $\Delta\text{lng} \approx 0.000011^\circ$)로 픽셀 단위 넛지 이동 후 저장.
+- **마커 2D 드래깅 및 1m 넛지 (모바일 최적화 컴팩트 패널)**:
+  - 작성자 본인 포인트일 때만 **`[🎯 위치 조정]`** 컨트롤 활성화.
+  - 모바일 웹 뷰포트에서 화면을 가리던 과도한 설명 문구('위성 스카이뷰 마커 직접 드래깅', '기존 좌표, 새 좌표' 등)를 전면 제거하고 직관적인 **'위치 조정'** 헤더로 단축.
+  - 가로/세로 40×40px(`w-10 h-10`) D-Pad 버튼으로 엄지 조작성 확보.
+  - 오터치 방지를 위해 **'저장' 버튼(에메랄드)을 왼쪽, '취소' 버튼을 오른쪽**에 배치하고, 저장 후 불필요한 알림 팝업 없이 즉시 지도에 확정 반영.
 
 ### 2.3 원형 레이더뷰 유효 캐스팅 부채꼴 섹터
 - **시작각 및 종료각 지정**: 방위 문자열(N, NE 등) 대신 각도기 다이얼/슬라이더를 통해 유효 공략 각도(예: $45^\circ \sim 135^\circ$)를 지정.
 - **레이더 가이드 라인**: 시작각(녹색 점선)과 종료각(시안색 점선)이 최대 사거리까지 뻗어나가며, 호 중심에는 거리 눈금 뱃지 표출.
 - **전방위(ALL) 폐지**: 실제 갯바위/방파제는 배후 육지가 존재하므로 전방위 지정을 제거하고 부채꼴 각도로 표준화.
 
-### 2.4 실시간 바람·조류 상호작용 물리 HUD
+### 2.4 실시간 바람·조류 상호작용 물리 HUD & 오렌지색 편류(Drift) 라인
 - **바람 벡터 ($W_{\text{to}} = (W_{\text{from}} + 180^\circ) \bmod 360^\circ$)와 캐스팅 각도($\theta_{\text{cast}}$)의 각도차($\Delta\theta$) 판정**:
-  - **등바람 (Tailwind, $\Delta\theta \le 45^\circ$)**: 에메랄드 그린 화살표, **비거리 최대 $+35\%$ 증가** 시각화.
-  - **맞바람 (Headwind, $\Delta\theta \ge 135^\circ$)**: 로즈 레드 화살표, **비거리 최대 $-35\%$ 감소** 시각화.
-  - **옆바람 (Crosswind)**: 앰버 골드 화살표, **'옆바람 줄날림 주의'** 경고 및 탄착 유효호 수축.
-- **실시간 조류 흘림선 (Drift Path)**: 착수 지점으로부터 실시간 유속($V_{\text{current}}$)과 유향에 따른 채비 흘림 궤적을 점선 화살표로 투영.
+  - **바람 진행 벡터 화살표**: 포인트 중심에서 바람이 불어가는 방향($W_{\text{to}}$)으로 45m 뻗어나가는 시안색 화살표 및 풍향·풍속 배지(예: `💨 북동풍 4.5m/s`) 표출.
+  - **불필요한 안내 문구 제거**: 기존의 '옆바람 (줄날림 주의)' 등 사족 텍스트를 전면 삭제하고 정확한 풍향/풍속 단위만 깔끔하게 표기.
+- **지그헤드 + 2인치 쉐드 웜 & 합사 방출 길이/호수 연동 오렌지 편류 라인 (`orangeArcPts`)**:
+  - 원래 캐스팅 목표 방향 직선상이 아닌, **바람(풍향·풍속)에 의해 채비(지그헤드+2인치 웜)와 공중에 방출된 합사 줄(PE 라인)이 풍하측(바람 불어가는 쪽)으로 밀려난 실제 착수 지점**을 연결하여 오렌지색 실선 폴리라인(stroke 3.5px, #f97316)으로 실시간 렌더링.
+  - **공략각 3대 기준 포인트 (시점, 중간, 종점)**:
+    - 바람에 밀려 떨어진 실제 착수 위치에 각각 오렌지색 뱃지 표출: `{실제비거리}m ({우/좌} {밀림거리}m)` (예: `65m (우 4.2m)`).
+    - 밀림 거리($S_{\text{drift}}$)가 1.0m 이상일 경우, 원래 목표 착수점과 실제 착수점 사이에 앰버 점선 가이드 라인을 표출하여 밀림 궤적을 직관적으로 시각화.
+  - **무풍 기준 목표 호선**: 바람에 의해 밀리기 전 원래 목표 호선을 은은한 그레이 점선(dash 3, 3)으로 대조 표출하여 바람에 의한 라인 휨(Line Belly)과 편류량을 한눈에 비교 가능.
+- **실시간 조류 흘림선 (Drift Path)**: 착수 지점으로부터 실시간 유속($V_{\text{current}}$)과 유향에 따른 수중 채비 흘림 궤적을 점선 화살표로 투영.
 
 ---
 
-## 3. 공기역학 채비 및 로드 탄성 비거리 계산 엔진
+## 3. 공기역학 채비 및 로드 탄성 비거리 & 바람 편류(Drift) 물리 엔진
 
-ExFish는 단순 추정이 아닌, 낚싯대의 블랭크 탄성 에너지 축적과 공기역학 항력 역학에 기반한 통합 비거리 공식을 적용합니다.
+ExFish는 단순 추정이 아닌, 낚싯대의 블랭크 탄성 에너지 축적과 공기역학 항력 역학에 기반한 통합 비거리 공식과 횡방향 수풍 편류 모델을 적용합니다.
 
 ### 3.1 통합 캐스팅 비거리 공식
 $$D_{\text{cast}} = 55\text{ m} \times K_{\text{length}} \times \eta_{\text{power}}(W) \times K_{\text{line}}(\text{PE}) \times K_{\text{wind}}$$
@@ -138,8 +145,29 @@ $$D_{\text{cast}} = 55\text{ m} \times K_{\text{length}} \times \eta_{\text{powe
                     ×
   원줄 합사 공기항력:   K_line = (1.0 / PE)^0.22
                     ×
-  풍향/풍속 벡터 보정:   K_wind (등바람 +35% ~ 맞바람 -35%)
+  풍향/풍속 벡터 보정:   K_wind (가벼운 채비 + 굵은 합사 맞바람 패널티 가중)
 ```
+
+### 3.2 지그헤드 + 2인치 쉐드 웜 및 합사 방출 길이/두께 연동 바람 편류(Crosswind Drift) 산식
+$$S_{\text{drift}} = \frac{1}{2} a_{\perp} (t_{\text{flight}})^2 \times \text{damp} + |V_{\perp}| \cdot t_{\text{flight}} \cdot 0.06\sqrt{\text{PE}}$$
+
+1. **채비 및 합사 유효 투영 측면적**:
+   - $A_{\text{rig}} = (L_{\text{worm}} \times H_{\text{worm}}) + A_{\text{jighead}} \approx (2.0 \times 0.0254 \times 0.008) + 0.00015 \approx 0.00055\text{ m}^2$ ($C_{d,\text{rig}} \approx 0.70$)
+   - $A_{\text{line}} = L_{\text{line}} \times d_{\text{line}} = (D_{\text{eff}} \times 1.08) \times (0.000165\text{m} \times \sqrt{\text{PE}})$ ($C_{d,\text{line}} \approx 1.15$)
+   > **핵심 물리 사실**: 60m 캐스팅 시 1.0호 합사의 공중 수풍 면적($\approx 107\text{ cm}^2$)은 2인치 웜 채비 자체 투영면적($\approx 5.5\text{ cm}^2$)의 **약 20배**에 달하며, 캐스팅 편류의 주원인은 공중에 방출된 합사 라인의 풍압력(Line Belly)에 기인함.
+2. **횡방향 풍압력 및 가속도**:
+   $$F_{\perp} = \frac{1}{2} \rho_{\text{air}} |V_{\perp}|^2 \left( 0.65 C_{d,\text{rig}} A_{\text{rig}} + 0.35 C_{d,\text{line}} A_{\text{line}} \right)$$
+   $$a_{\perp} = \frac{F_{\perp}}{M_{\text{rig}}} \quad \left(M_{\text{rig}} = \frac{W}{1000}\text{ kg}\right)$$
+3. **체공 시간 및 라인 텐션 감쇄**:
+   - $t_{\text{flight}} \approx 0.38 \sqrt{D_{\text{eff}}}$ (초)
+   - 스풀 방출 텐션 및 로드 팁 앵커링 감쇄 계수: $\text{damp} = 0.38$
+4. **실제 착수 벡터 합성 ($P_{\text{actual}}$)**:
+   - 목표 지점 $(x_{\text{target}}, y_{\text{target}}) = (D_{\text{eff}} \sin\theta_{\text{cast}}, D_{\text{eff}} \cos\theta_{\text{cast}})$
+   - 횡방향 오프셋 벡터: $\theta_{\text{norm}} = \theta_{\text{cast}} + 90^\circ$, 변위 $S_{\text{signed}} = \text{sign}(V_{\perp}) \cdot S_{\text{drift}}$
+   - $(x_{\text{actual}}, y_{\text{actual}}) = (x_{\text{target}} + S_{\text{signed}} \sin\theta_{\text{norm}}, y_{\text{target}} + S_{\text{signed}} \cos\theta_{\text{norm}})$
+   - $D_{\text{actual}} = \sqrt{x_{\text{actual}}^2 + y_{\text{actual}}^2}, \quad \theta_{\text{actual}} = \text{atan2}(x_{\text{actual}}, y_{\text{actual}})$
+5. **강풍 시 엣지 케이스 안전 가이드라인**:
+   - 풍속 $12\text{m/s}$ 이상의 강풍/돌풍 감지 시 최대 편류량은 $D_{\text{eff}} \times 0.35$로 물리적 상한 클램핑되며, 캘리브레이터에 경고 표출.
 
 ### 3.2 로드 파워별 최적 스위트스팟 ($W_{\text{opt}}$) 규격표
 | 로드 파워 (Power) | 최적 무게 ($W_{\text{opt}}$) | 권장 허용 무게 | 주요 대상 장르 |
@@ -338,10 +366,13 @@ $$\text{Contribution}_j (\%) = \begin{cases}
 
 ## 8. 계정, 데이터베이스 및 현장 UX 최적화
 
-### 8.1 4대 소셜 로그인 (Single OAuth) 및 세션 쿠키
-- 이메일/패스워드 수동 입력창을 완전 폐지하고 **구글, 애플, 네이버, 카카오** 4대 간편 소셜 로그인 도입.
-- 별도의 암호 관리가 불필요하며, 유저 ID/이름/프로필 정보만 안전하게 동기화.
-- **30일 유효 세션 쿠키**: 한 번 로그인하면 30일간 로그인 상태가 유지되며 이후 자동 재인증.
+### 8.1 Email & 닉네임 기반 무암호 간편 인증 및 30일 세션 관리
+- 복잡한 패스워드나 외부 서드파티(카카오/네이버 등) OAuth 연동 이슈를 배제하고, 필드 앵글러가 가장 신속하게 접근할 수 있도록 **Email과 닉네임(ID)**만으로 즉시 인증하는 무암호 단일 인증(Passwordless Single Auth) 체계 도입.
+- **30일 유효 세션 관리 (`localStorage`)**: 브라우저 로컬 스토리지(`exfish_auth_user_v2`)에 타임스탬프와 함께 보관되며, 30일간 재로그인 없이 포인트 생성 및 조과 등록 시 본인 계정(`user_id`, `author_name`)으로 영속 연동.
+- **프로필 모달 내 환경 단위 및 관심 어종 영속화**:
+  - 풍속 단위: `m/s`, `knot`, `km/h`
+  - 조류 단위: `knot`, `m/s`, `cm/s`
+  - 관심 대상어종(우럭, 광어, 감성돔, 농어 등) 다중 선택 상태를 유저 프로필과 결합하여 실시간 입질 지수 계산에 1순위 반영.
 
 ### 8.2 아웃도어 초고대비 썬 모드 & 48px 터치 타깃
 - **아웃도어 썬 모드 (High-Contrast Sun Mode)**: 강한 햇빛 반사광(Glare) 아래에서 WCAG AAA 규격(대비율 7:1 이상)을 충족하는 블랙 배경(`#000000`) & 세이프티 옐로우(`#FFE600`) 테마 토글 제공.
