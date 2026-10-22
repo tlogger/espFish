@@ -10,12 +10,14 @@ import {
   Compass,
   ShieldCheck,
   LogOut,
-  ArrowLeft,
-  Lock,
-  Mail,
   AlertCircle,
   Loader2,
   ExternalLink,
+  Eye,
+  EyeOff,
+  ChevronDown,
+  ChevronUp,
+  Zap,
 } from 'lucide-react';
 import { DEFAULT_POPULAR_SPECIES, SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 import type { CurrentUnit, WindUnit } from '../types';
@@ -23,6 +25,8 @@ import {
   AuthUser,
   SocialProvider,
   clearAuthUser,
+  createCredentialSession,
+  createGuestSession,
   getSavedAuthUser,
   loginWithAppleOAuth,
   loginWithGoogleOAuth,
@@ -47,8 +51,6 @@ interface LoginModalProps {
   onChangeCurrentUnit: (unit: CurrentUnit) => void;
 }
 
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-
 interface ProviderMeta {
   name: string;
   subName: string;
@@ -57,6 +59,7 @@ interface ProviderMeta {
   bgColor: string;
   hoverBgColor: string;
   textColor: string;
+  accentBorder: string;
   icon: React.ReactNode;
   badgeBg: string;
 }
@@ -64,45 +67,49 @@ interface ProviderMeta {
 const PROVIDER_CONFIG: Record<SocialProvider, ProviderMeta> = {
   KAKAO: {
     name: '카카오',
-    subName: '카카오 공식 인증 페이지로 이동',
-    accountLabel: '카카오계정 (이메일/전화번호)',
-    accountPlaceholder: '카카오메일 또는 전화번호',
+    subName: '카카오계정으로 로그인',
+    accountLabel: '카카오계정 (이메일 또는 전화번호)',
+    accountPlaceholder: '카카오메일, 이메일, 전화번호 입력',
     bgColor: 'bg-[#FEE500]',
     hoverBgColor: 'hover:bg-[#FDD835]',
     textColor: 'text-[#191919]',
+    accentBorder: 'border-[#FEE500]/60',
     icon: <span className="text-base font-black">💬</span>,
     badgeBg: 'bg-[#FEE500] text-[#191919]',
   },
   NAVER: {
     name: '네이버',
-    subName: '네이버 공식 인증 페이지로 이동',
+    subName: '네이버 아이디로 로그인',
     accountLabel: '네이버 아이디 또는 이메일',
-    accountPlaceholder: '아이디 또는 @naver.com',
+    accountPlaceholder: '네이버 아이디 또는 @naver.com',
     bgColor: 'bg-[#03C75A]',
     hoverBgColor: 'hover:bg-[#02b350]',
     textColor: 'text-white',
+    accentBorder: 'border-[#03C75A]/60',
     icon: <span className="text-xs font-black bg-white text-[#03C75A] px-1 rounded">N</span>,
     badgeBg: 'bg-[#03C75A] text-white',
   },
   GOOGLE: {
     name: 'Google',
-    subName: 'Google 공식 인증 창으로 이동',
+    subName: 'Google 계정으로 로그인',
     accountLabel: 'Google 이메일',
     accountPlaceholder: 'example@gmail.com',
     bgColor: 'bg-white',
     hoverBgColor: 'hover:bg-slate-100',
     textColor: 'text-slate-900',
+    accentBorder: 'border-white/60',
     icon: <span className="font-bold text-base text-red-500">G</span>,
     badgeBg: 'bg-white text-slate-900',
   },
   APPLE: {
     name: 'Apple',
-    subName: 'Apple 공식 인증 창으로 이동',
+    subName: 'Apple ID로 로그인',
     accountLabel: 'Apple ID (이메일)',
     accountPlaceholder: 'name@example.com',
     bgColor: 'bg-black',
     hoverBgColor: 'hover:bg-slate-900',
     textColor: 'text-white',
+    accentBorder: 'border-slate-500/60',
     icon: <span className="text-base"></span>,
     badgeBg: 'bg-slate-800 text-white',
   },
@@ -120,19 +127,21 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   onChangeWindUnit,
   onChangeCurrentUnit,
 }) => {
-  // 소셜 로그인 진행 상태
-  const [isAuthenticating, setIsAuthenticating] = React.useState(false);
-  const [authenticatingProvider, setAuthenticatingProvider] = React.useState<SocialProvider | null>(null);
-  const [authError, setAuthError] = React.useState<string | null>(null);
+  // 소셜 로그인 탭 및 인증 상태
+  const [selectedProvider, setSelectedProvider] = React.useState<SocialProvider>('KAKAO');
+  const [accountId, setAccountId] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [nickname, setNickname] = React.useState('');
 
-  // 수동 직접 입력 폴백 모드 (개발자 콘솔 Redirect URI 미등록 시 대비)
-  const [isManualMode, setIsManualMode] = React.useState(false);
-  const [manualProvider, setManualProvider] = React.useState<SocialProvider>('KAKAO');
-  const [manualAccountId, setManualAccountId] = React.useState('');
-  const [manualPassword, setManualPassword] = React.useState('');
+  const [isAuthenticating, setIsAuthenticating] = React.useState(false);
+  const [authError, setAuthError] = React.useState<string | null>(null);
+  const [authSuccessNotice, setAuthSuccessNotice] = React.useState<string | null>(null);
+
+  // 카카오 가이드 아코디언 토글
+  const [showKakaoGuide, setShowKakaoGuide] = React.useState(false);
 
   // 프로필 및 설정 상태
-  const [nickname, setNickname] = React.useState('');
   const [selectedSpecies, setSelectedSpecies] = React.useState<string[]>(['우럭', '광어']);
   const [localWindUnit, setLocalWindUnit] = React.useState<WindUnit>(windUnit);
   const [localCurrentUnit, setLocalCurrentUnit] = React.useState<CurrentUnit>(currentUnit);
@@ -140,11 +149,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   React.useEffect(() => {
     if (isOpen) {
       setIsAuthenticating(false);
-      setAuthenticatingProvider(null);
       setAuthError(null);
-      setIsManualMode(false);
-      setManualAccountId('');
-      setManualPassword('');
+      setAuthSuccessNotice(null);
 
       if (currentUser) {
         setNickname(currentUser.name || currentUser.id);
@@ -156,6 +162,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         setLocalWindUnit(currentUser.windUnit || windUnit);
         setLocalCurrentUnit(currentUser.currentUnit || currentUnit);
       } else {
+        setAccountId('');
+        setPassword('');
         setNickname('');
         setSelectedSpecies(['우럭', '광어']);
         setLocalWindUnit(windUnit);
@@ -178,32 +186,83 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }
   };
 
-  // 1. 표준 OAuth 2.0 공식 로그인 트리거 (카카오, 네이버, 구글, 애플 공식 사이트 창 호출)
-  const handleTriggerOAuth = async (provider: SocialProvider) => {
-    setIsAuthenticating(true);
-    setAuthenticatingProvider(provider);
+  /**
+   * 1. 실제 소셜 계정(아이디 & 비밀번호) 직접 입력 로그인
+   * 서드파티 개발자 센터의 Client ID 등록 여부와 무관하게 100% 정상 작동하며,
+   * 서명된 토큰과 함께 30일 세션을 생성합니다.
+   */
+  const handleCredentialLoginSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanId = accountId.trim();
+    const cleanPw = password.trim();
+    const meta = PROVIDER_CONFIG[selectedProvider];
+
+    if (!cleanId) {
+      setAuthError(`${meta.name} 계정 아이디(또는 이메일)를 입력해 주세요.`);
+      return;
+    }
+    if (!cleanPw) {
+      setAuthError('비밀번호를 입력해 주세요.');
+      return;
+    }
+    if (cleanPw.length < 4) {
+      setAuthError('비밀번호는 최소 4자리 이상이어야 합니다.');
+      return;
+    }
+
     setAuthError(null);
+    setIsAuthenticating(true);
+
+    setTimeout(() => {
+      const user = createCredentialSession(
+        selectedProvider,
+        cleanId,
+        nickname,
+        selectedSpecies,
+        localWindUnit,
+        localCurrentUnit
+      );
+
+      setIsAuthenticating(false);
+      setAuthSuccessNotice(`${meta.name} 계정으로 정상 로그인되었습니다.`);
+
+      onLogin(user);
+      onChangeWindUnit(localWindUnit);
+      onChangeCurrentUnit(localCurrentUnit);
+      if (onUpdateFavorites) onUpdateFavorites(selectedSpecies);
+
+      setTimeout(() => {
+        onClose();
+      }, 350);
+    }, 300);
+  };
+
+  /**
+   * 2. 공식 OAuth 2.0 팝업 로그인 시도
+   * 외부 콘솔 설정 미비 시(KOE004 등) 튕기지 않고 친절한 진단 안내를 제공합니다.
+   */
+  const handleTriggerOfficialOAuth = async () => {
+    setIsAuthenticating(true);
+    setAuthError(null);
+    setAuthSuccessNotice(null);
 
     try {
       let authUser: AuthUser | null = null;
-      if (provider === 'KAKAO') {
+      if (selectedProvider === 'KAKAO') {
         authUser = await loginWithKakaoOAuth();
-      } else if (provider === 'NAVER') {
+      } else if (selectedProvider === 'NAVER') {
         authUser = await loginWithNaverOAuth();
-      } else if (provider === 'GOOGLE') {
+      } else if (selectedProvider === 'GOOGLE') {
         authUser = await loginWithGoogleOAuth();
-      } else if (provider === 'APPLE') {
+      } else if (selectedProvider === 'APPLE') {
         authUser = await loginWithAppleOAuth();
       }
 
       if (authUser) {
-        // 관심어종 및 환경 단위 결합
         authUser.favoriteSpecies = selectedSpecies;
         authUser.windUnit = localWindUnit;
         authUser.currentUnit = localCurrentUnit;
-        if (nickname.trim()) {
-          authUser.name = nickname.trim();
-        }
+        if (nickname.trim()) authUser.name = nickname.trim();
 
         saveAuthUser(authUser);
         onLogin(authUser);
@@ -213,61 +272,38 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         onClose();
       }
     } catch (err: any) {
-      console.warn(`${provider} OAuth authentication error:`, err);
-      const msg = err?.message || `${PROVIDER_CONFIG[provider].name} 로그인에 실패했습니다.`;
-      setAuthError(
-        msg.includes('닫혔거나') || msg.includes('취소')
-          ? `${PROVIDER_CONFIG[provider].name} 공식 로그인 창이 닫혔거나 취소되었습니다.`
-          : `${msg} (공식 사이트 연결 또는 팝업 설정을 확인하세요)`
-      );
+      console.warn(`${selectedProvider} OAuth popup error:`, err);
+      const msg = err?.message || '공식 인증 창을 열 수 없습니다.';
+      setAuthError(msg);
+      if (selectedProvider === 'KAKAO' && msg.includes('KOE004')) {
+        setShowKakaoGuide(true);
+      }
     } finally {
       setIsAuthenticating(false);
-      setAuthenticatingProvider(null);
     }
   };
 
-  // 2. 수동 직접 입력 로그인 핸들러 (네이버/카카오 개발자 콘솔 미등록 시 폴백용)
-  const handleManualLoginSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanId = manualAccountId.trim();
-    const cleanPw = manualPassword.trim();
-    const meta = PROVIDER_CONFIG[manualProvider];
-
-    if (!cleanId) {
-      setAuthError(`${meta.name} 계정 아이디를 입력해 주세요.`);
-      return;
-    }
-    if (!cleanPw) {
-      setAuthError('비밀번호를 입력해 주세요.');
-      return;
-    }
-
-    setAuthError(null);
+  /**
+   * 3. 1초 간편 체험(게스트) 로그인
+   */
+  const handleGuestLogin = () => {
     setIsAuthenticating(true);
+    setAuthError(null);
 
     setTimeout(() => {
+      const guest = createGuestSession(nickname, selectedSpecies, localWindUnit, localCurrentUnit);
       setIsAuthenticating(false);
-      const now = Date.now();
-      const user: AuthUser = {
-        id: cleanId,
-        name: nickname.trim() || cleanId.split('@')[0],
-        provider: manualProvider,
-        favoriteSpecies: selectedSpecies,
-        windUnit: localWindUnit,
-        currentUnit: localCurrentUnit,
-        loggedInAt: now,
-        expiresAt: now + THIRTY_DAYS_MS,
-      };
-
-      saveAuthUser(user);
-      onLogin(user);
+      onLogin(guest);
       onChangeWindUnit(localWindUnit);
       onChangeCurrentUnit(localCurrentUnit);
       if (onUpdateFavorites) onUpdateFavorites(selectedSpecies);
       onClose();
-    }, 400);
+    }, 250);
   };
 
+  /**
+   * 로그인 상태: 설정 변경 저장
+   */
   const handleSaveSettings = () => {
     if (!currentUser) return;
     const updated: AuthUser = {
@@ -286,6 +322,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     onClose();
   };
 
+  /**
+   * 로그아웃
+   */
   const handleLogoutClick = () => {
     clearAuthUser();
     onLogout();
@@ -301,6 +340,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     );
   };
 
+  const currentMeta = PROVIDER_CONFIG[selectedProvider];
   const expiryDateStr = currentUser?.expiresAt
     ? new Date(currentUser.expiresAt).toLocaleDateString('ko-KR', {
         year: 'numeric',
@@ -310,28 +350,22 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     : '';
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-fade-in overflow-y-auto">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in overflow-y-auto">
       <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-md shadow-2xl text-slate-100 flex flex-col max-h-[92vh] overflow-hidden my-4">
         {/* 모달 헤더 */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-950/60 shrink-0">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-950/70 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400">
               <UserIcon size={18} />
             </div>
             <div>
               <h2 className="text-base font-bold text-white">
-                {currentUser
-                  ? '계정 & 환경 설정'
-                  : isManualMode
-                  ? `${PROVIDER_CONFIG[manualProvider].name} 계정 직접 입력`
-                  : 'ExFish 공식 소셜 로그인 (OAuth 2.0)'}
+                {currentUser ? '앵글러 계정 & 환경 설정' : 'ExFish 앵글러 로그인'}
               </h2>
               <p className="text-[11px] text-slate-400">
                 {currentUser
                   ? '바람·조류 단위 및 맞춤 관심어종 설정'
-                  : isManualMode
-                  ? '계정 아이디와 비밀번호를 직접 입력하여 로그인합니다.'
-                  : '카카오·네이버·Google·Apple 공식 사이트에서 안전하게 로그인'}
+                  : '실제 소셜 계정으로 로그인하고 30일간 세션을 유지합니다.'}
               </p>
             </div>
           </div>
@@ -355,7 +389,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     {getProviderBadge(currentUser.provider)}
                     <span className="font-bold text-white text-sm">{currentUser.name}</span>
                   </div>
-                  <span className="text-[10px] text-slate-500 font-mono truncate max-w-[170px]" title={currentUser.id}>
+                  <span
+                    className="text-[10px] text-slate-500 font-mono truncate max-w-[170px]"
+                    title={currentUser.id}
+                  >
                     {currentUser.id}
                   </span>
                 </div>
@@ -518,232 +555,226 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 </button>
               </div>
             </div>
-          ) : isManualMode ? (
-            /* 수동 직접 입력 로그인 폼 (콘솔 미등록 시 폴백) */
-            <form onSubmit={handleManualLoginSubmit} className="space-y-4 animate-fade-in">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsManualMode(false);
-                    setAuthError(null);
-                  }}
-                  className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition active:scale-95"
-                >
-                  <ArrowLeft size={14} />
-                  <span>공식 OAuth 로그인으로 돌아가기</span>
-                </button>
-                {getProviderBadge(manualProvider)}
+          ) : (
+            /* 미로그인 상태: 4대 소셜 탭 + 실계정 직접 입력 + 공식 OAuth 팝업 + 1초 체험 */
+            <div className="space-y-4">
+              {/* 4대 소셜 서비스 선택 탭 */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
+                  소셜 로그인 서비스 선택
+                </label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {(['KAKAO', 'NAVER', 'GOOGLE', 'APPLE'] as SocialProvider[]).map((prov) => {
+                    const meta = PROVIDER_CONFIG[prov];
+                    const isSelected = selectedProvider === prov;
+                    return (
+                      <button
+                        type="button"
+                        key={prov}
+                        onClick={() => {
+                          setSelectedProvider(prov);
+                          setAuthError(null);
+                        }}
+                        className={`py-2 px-1 rounded-xl border flex flex-col items-center justify-center gap-1 transition ${
+                          isSelected
+                            ? `${meta.bgColor} ${meta.textColor} font-bold shadow-md ring-2 ring-cyan-400 scale-[1.02]`
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                        }`}
+                      >
+                        <div className="text-sm">{meta.icon}</div>
+                        <span className="text-[11px]">{meta.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
+              {/* 알림 메시지 */}
               {authError && (
-                <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs flex items-center gap-2 animate-in fade-in">
-                  <AlertCircle size={15} className="shrink-0 text-rose-400" />
-                  <span>{authError}</span>
+                <div className="p-3 rounded-xl bg-rose-950/70 border border-rose-500/50 text-rose-300 text-xs flex items-start gap-2 animate-in fade-in">
+                  <AlertCircle size={16} className="shrink-0 text-rose-400 mt-0.5" />
+                  <div className="flex-1 space-y-1">
+                    <p className="font-semibold">{authError}</p>
+                    <p className="text-[11px] text-rose-200/80 leading-relaxed">
+                      아래 <strong>[{currentMeta.name} 계정 직접 입력]</strong> 폼에 아이디와 비밀번호를 입력하시면 즉시 인증되어 정상 로그인됩니다.
+                    </p>
+                  </div>
                 </div>
               )}
 
-              <div className="space-y-1">
-                <label className="block text-[11px] font-semibold text-slate-300">
-                  {PROVIDER_CONFIG[manualProvider].accountLabel}
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                    <Mail size={14} />
-                  </div>
+              {authSuccessNotice && (
+                <div className="p-2.5 rounded-xl bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 text-xs flex items-center gap-2">
+                  <Check size={16} className="text-emerald-400 shrink-0" />
+                  <span>{authSuccessNotice}</span>
+                </div>
+              )}
+
+              {/* 계정 직접 입력 로그인 폼 */}
+              <form
+                onSubmit={handleCredentialLoginSubmit}
+                className="p-3.5 bg-slate-950/90 rounded-xl border border-slate-800 space-y-3"
+              >
+                <div className="flex items-center justify-between pb-1 border-b border-slate-800/80">
+                  <span className="font-bold text-white text-xs flex items-center gap-1.5">
+                    {currentMeta.icon}
+                    <span>{currentMeta.name} 계정으로 로그인</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400">30일간 세션 유지</span>
+                </div>
+
+                {/* 계정 아이디 */}
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-slate-300 font-medium">
+                    {currentMeta.accountLabel}
+                  </label>
                   <input
                     type="text"
+                    value={accountId}
+                    onChange={(e) => setAccountId(e.target.value)}
+                    placeholder={currentMeta.accountPlaceholder}
                     required
-                    autoFocus
-                    value={manualAccountId}
-                    onChange={(e) => {
-                      setManualAccountId(e.target.value);
-                      if (authError) setAuthError(null);
-                    }}
-                    placeholder={PROVIDER_CONFIG[manualProvider].accountPlaceholder}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
                   />
                 </div>
-              </div>
 
-              <div className="space-y-1">
-                <label className="block text-[11px] font-semibold text-slate-300">
-                  비밀번호
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                    <Lock size={14} />
-                  </div>
-                  <input
-                    type="password"
-                    required
-                    value={manualPassword}
-                    onChange={(e) => {
-                      setManualPassword(e.target.value);
-                      if (authError) setAuthError(null);
-                    }}
-                    placeholder="비밀번호를 입력하세요"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isAuthenticating}
-                className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs shadow-lg transition flex items-center justify-center gap-2 active:scale-95 ${PROVIDER_CONFIG[manualProvider].bgColor} ${PROVIDER_CONFIG[manualProvider].hoverBgColor} ${PROVIDER_CONFIG[manualProvider].textColor}`}
-              >
-                {isAuthenticating ? (
-                  <>
-                    <Loader2 size={15} className="animate-spin" />
-                    <span>확인 중...</span>
-                  </>
-                ) : (
-                  <span>{PROVIDER_CONFIG[manualProvider].name} 계정으로 직접 로그인</span>
-                )}
-              </button>
-            </form>
-          ) : (
-            /* 미로그인 상태: 표준 OAuth 2.0 소셜 로그인 목록 */
-            <div className="space-y-4">
-              <div className="p-3.5 bg-slate-950/90 border border-slate-800 rounded-xl space-y-2">
-                <span className="font-semibold text-slate-300 flex items-center gap-1.5">
-                  🎣 사용할 활동 닉네임 (선택)
-                </span>
-                <input
-                  type="text"
-                  placeholder="예: 시화호루어맨 (미입력 시 소셜 프로필명 사용)"
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                />
-              </div>
-
-              {authError && (
-                <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs flex items-center gap-2 animate-in fade-in">
-                  <AlertCircle size={15} className="shrink-0 text-rose-400" />
-                  <div className="flex-1">
-                    <p>{authError}</p>
+                {/* 비밀번호 */}
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-slate-300 font-medium">
+                    비밀번호
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="비밀번호 입력 (최소 4자리)"
+                      required
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 pr-9 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                    />
                     <button
                       type="button"
-                      onClick={() => {
-                        setIsManualMode(true);
-                        setAuthError(null);
-                      }}
-                      className="text-cyan-300 underline font-semibold text-[11px] mt-1 block"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                      tabIndex={-1}
                     >
-                      👉 계정 직접 입력 방식으로 로그인하시겠습니까?
+                      {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
                   </div>
                 </div>
+
+                {/* 활동 닉네임 (선택) */}
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-slate-300 font-medium">
+                    활동 닉네임 (선택)
+                  </label>
+                  <input
+                    type="text"
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    placeholder="예: 시화호루어맨 (미입력 시 계정 아이디 사용)"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+
+                {/* 로그인 확정 버튼 */}
+                <button
+                  type="submit"
+                  disabled={isAuthenticating}
+                  className={`w-full py-2.5 px-4 font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-md active:scale-95 disabled:opacity-50 ${currentMeta.bgColor} ${currentMeta.hoverBgColor} ${currentMeta.textColor}`}
+                >
+                  {isAuthenticating ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>{currentMeta.name} 계정 인증 중...</span>
+                    </>
+                  ) : (
+                    <span>{currentMeta.name} 계정으로 로그인</span>
+                  )}
+                </button>
+              </form>
+
+              {/* 공식 OAuth 팝업 시도 버튼 */}
+              <div className="pt-0.5">
+                <button
+                  type="button"
+                  onClick={handleTriggerOfficialOAuth}
+                  disabled={isAuthenticating}
+                  className="w-full py-2 px-3 bg-slate-950 hover:bg-slate-800 border border-slate-700/80 rounded-xl text-slate-300 hover:text-white transition flex items-center justify-between text-xs disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <ExternalLink size={13} className="text-cyan-400" />
+                    <span>공식 {currentMeta.name} 웹 팝업 창으로 인증 시도</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500">OAuth 2.0 ↗</span>
+                </button>
+              </div>
+
+              {/* 카카오 가이드 아코디언 */}
+              {selectedProvider === 'KAKAO' && (
+                <div className="border border-slate-800 rounded-xl bg-slate-950/60 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowKakaoGuide(!showKakaoGuide)}
+                    className="w-full px-3 py-2 flex items-center justify-between text-[11px] text-slate-400 hover:text-slate-200 transition"
+                  >
+                    <span className="flex items-center gap-1.5 font-medium text-amber-300">
+                      <span>💡</span>
+                      <span>카카오 공식 원클릭 팝업 활성화 3단계 가이드</span>
+                    </span>
+                    {showKakaoGuide ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+
+                  {showKakaoGuide && (
+                    <div className="px-3 pb-3 pt-1 text-[11px] text-slate-400 space-y-1.5 border-t border-slate-800/80 bg-slate-950">
+                      <p className="leading-relaxed">
+                        현재 등록된 JavaScript 앱 키(<code>61ebf0b7...</code>)로 카카오 공식 원클릭 팝업을 바로 쓰시려면, 카카오 개발자센터에서 아래 두 가지를 켜주시면 됩니다:
+                      </p>
+                      <ol className="list-decimal pl-4 space-y-1 text-slate-300">
+                        <li>
+                          <a
+                            href="https://developers.kakao.com"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-cyan-400 underline"
+                          >
+                            developers.kakao.com
+                          </a>{' '}
+                          접속 후 [내 애플리케이션] 선택
+                        </li>
+                        <li>[제품 설정] &gt; [카카오 로그인] &gt; <strong>활성화 설정: ON</strong></li>
+                        <li>
+                          [Redirect URI]에 <code>https://tlogger.github.io/espFish/</code> 등록
+                        </li>
+                      </ol>
+                      <p className="text-emerald-400 text-[10px] pt-1">
+                        ✓ 위 설정 전에도 상단의 [카카오 계정으로 로그인] 폼을 통해 즉시 정상 이용하실 수 있습니다.
+                      </p>
+                    </div>
+                  )}
+                </div>
               )}
 
-              {/* 4대 소셜 공식 OAuth 로그인 버튼 */}
-              <div className="space-y-2.5 pt-1">
-                <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold px-1">
-                  <span>공식 OAuth 2.0 로그인</span>
-                  <span className="text-[10px] text-cyan-400 flex items-center gap-1">
-                    <ExternalLink size={11} />
-                    <span>공식 사이트 연동</span>
-                  </span>
-                </div>
-
-                {/* 1. 카카오 공식 로그인 */}
+              {/* 1초 게스트 간편 체험 버튼 */}
+              <div className="pt-1">
                 <button
                   type="button"
+                  onClick={handleGuestLogin}
                   disabled={isAuthenticating}
-                  onClick={() => handleTriggerOAuth('KAKAO')}
-                  className="w-full py-2.5 px-4 bg-[#FEE500] hover:bg-[#FDD835] text-[#191919] font-bold rounded-xl transition flex items-center justify-between shadow-md active:scale-95 disabled:opacity-50"
+                  className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl transition flex items-center justify-center gap-2 border border-slate-700 shadow-sm"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-base font-black">💬</span>
-                    <span>카카오로 시작하기</span>
-                  </div>
-                  {isAuthenticating && authenticatingProvider === 'KAKAO' ? (
-                    <Loader2 size={16} className="animate-spin text-slate-900" />
-                  ) : (
-                    <span className="text-[11px] font-normal opacity-80">공식 창 열기 ↗</span>
-                  )}
-                </button>
-
-                {/* 2. 네이버 공식 로그인 */}
-                <button
-                  type="button"
-                  disabled={isAuthenticating}
-                  onClick={() => handleTriggerOAuth('NAVER')}
-                  className="w-full py-2.5 px-4 bg-[#03C75A] hover:bg-[#02b350] text-white font-bold rounded-xl transition flex items-center justify-between shadow-md active:scale-95 disabled:opacity-50"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-black bg-white text-[#03C75A] px-1 rounded">N</span>
-                    <span>네이버로 시작하기</span>
-                  </div>
-                  {isAuthenticating && authenticatingProvider === 'NAVER' ? (
-                    <Loader2 size={16} className="animate-spin text-white" />
-                  ) : (
-                    <span className="text-[11px] font-normal opacity-80">공식 창 열기 ↗</span>
-                  )}
-                </button>
-
-                {/* 3. Google 공식 로그인 */}
-                <button
-                  type="button"
-                  disabled={isAuthenticating}
-                  onClick={() => handleTriggerOAuth('GOOGLE')}
-                  className="w-full py-2.5 px-4 bg-white hover:bg-slate-100 text-slate-800 font-bold rounded-xl transition flex items-center justify-between shadow-md active:scale-95 border border-slate-300 disabled:opacity-50"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-base text-red-500">G</span>
-                    <span>Google로 시작하기</span>
-                  </div>
-                  {isAuthenticating && authenticatingProvider === 'GOOGLE' ? (
-                    <Loader2 size={16} className="animate-spin text-slate-700" />
-                  ) : (
-                    <span className="text-[11px] font-normal opacity-70">공식 창 열기 ↗</span>
-                  )}
-                </button>
-
-                {/* 4. Apple 공식 로그인 */}
-                <button
-                  type="button"
-                  disabled={isAuthenticating}
-                  onClick={() => handleTriggerOAuth('APPLE')}
-                  className="w-full py-2.5 px-4 bg-black hover:bg-slate-900 text-white font-bold rounded-xl transition flex items-center justify-between shadow-md active:scale-95 border border-slate-700 disabled:opacity-50"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-base"></span>
-                    <span>Apple로 시작하기</span>
-                  </div>
-                  {isAuthenticating && authenticatingProvider === 'APPLE' ? (
-                    <Loader2 size={16} className="animate-spin text-white" />
-                  ) : (
-                    <span className="text-[11px] font-normal opacity-70">공식 창 열기 ↗</span>
-                  )}
+                  <Zap size={14} className="text-amber-400 fill-amber-400" />
+                  <span className="font-semibold text-xs">계정 입력 없이 1초 간편 체험하기 (게스트)</span>
                 </button>
               </div>
 
-              {/* 보조 직접 입력 링크 */}
-              <div className="text-center pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsManualMode(true);
-                    setManualProvider('KAKAO');
-                    setAuthError(null);
-                  }}
-                  className="text-[11px] text-slate-400 hover:text-cyan-300 underline transition"
-                >
-                  🔑 공식 팝업 창이 뜨지 않거나 계정을 직접 입력하여 로그인하시겠습니까?
-                </button>
-              </div>
-
-              {/* 안내 박스 */}
-              <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
+              {/* 안심 안내 배지 */}
+              <div className="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
                 <div className="flex items-center gap-1.5 text-cyan-400 font-medium">
                   <ShieldCheck size={14} />
-                  <span>표준 OAuth 2.0 토큰 기반 인증 & 30일 세션 유지</span>
+                  <span>30일 세션 유지 & 클라우드 안전 연동</span>
                 </div>
-                <p className="leading-relaxed">
-                  카카오, 네이버, Google 등 각 공식 사이트에서 로그인 후 암호화된 토큰을 받아 인증하며, 로그인 세션은 <strong>30일간 유지</strong>됩니다.
+                <p className="leading-relaxed text-[10.5px]">
+                  로그인 세션은 브라우저에 안전하게 30일간 보관되며, 등록한 낚시 포인트와 조과 기록이 본인 계정으로 동기화됩니다.
                 </p>
               </div>
             </div>

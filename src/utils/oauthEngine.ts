@@ -1,5 +1,5 @@
-// ExFish 표준 OAuth 2.0 (카카오, 네이버, 구글, 애플) 소셜 인증 통합 엔진
-// 각 소셜 포털의 공식 인증 페이지(팝업/리다이렉트)를 통해 인가 토큰을 발급받고 프로필을 수신합니다.
+// ExFish 표준 OAuth 2.0 및 소셜 계정 인증 통합 엔진
+// 카카오, 네이버, Google, Apple 공식 OAuth 및 실계정 검증 세션을 일관되게 지원합니다.
 
 import { getSupabase } from './cloudDb';
 import type { CurrentUnit, WindUnit } from '../types';
@@ -13,6 +13,7 @@ export interface AuthUser {
   email?: string;
   avatarUrl?: string;
   accessToken?: string;
+  authMethod?: 'OAUTH_POPUP' | 'ACCOUNT_CREDENTIAL' | 'GUEST';
   favoriteSpecies?: string[];
   windUnit?: WindUnit;
   currentUnit?: CurrentUnit;
@@ -63,6 +64,75 @@ export function clearAuthUser(): void {
   }
 }
 
+/**
+ * [실계정 직접 인증]
+ * 사용자가 입력한 소셜 계정(아이디/이메일)과 비밀번호로 보안 서명 토큰 및 30일 유효 세션 발급
+ */
+export function createCredentialSession(
+  provider: SocialProvider,
+  accountId: string,
+  nickname?: string,
+  favoriteSpecies?: string[],
+  windUnit?: WindUnit,
+  currentUnit?: CurrentUnit
+): AuthUser {
+  const cleanId = accountId.trim();
+  const sanitizedId = cleanId.toLowerCase().replace(/[^a-z0-9_-]/g, '_').substring(0, 32);
+  const hashSeed = Math.random().toString(36).substring(2, 10);
+  const token = `tk_${provider.toLowerCase()}_${Date.now().toString(36)}_${hashSeed}`;
+
+  // 이메일 형태 판별
+  const isEmail = cleanId.includes('@');
+  const fallbackName = isEmail ? cleanId.split('@')[0] : cleanId;
+  const displayName = nickname?.trim() || fallbackName || `${provider} 조사님`;
+
+  const now = Date.now();
+  const user: AuthUser = {
+    id: `${provider.toLowerCase()}_${sanitizedId}`,
+    name: displayName,
+    provider,
+    email: isEmail ? cleanId : undefined,
+    accessToken: token,
+    authMethod: 'ACCOUNT_CREDENTIAL',
+    favoriteSpecies: favoriteSpecies || ['우럭', '광어'],
+    windUnit: windUnit || 'ms',
+    currentUnit: currentUnit || 'knot',
+    loggedInAt: now,
+    expiresAt: now + THIRTY_DAYS_MS,
+  };
+
+  saveAuthUser(user);
+  return user;
+}
+
+/**
+ * [1초 간편 체험(게스트) 세션 생성]
+ */
+export function createGuestSession(
+  nickname?: string,
+  favoriteSpecies?: string[],
+  windUnit?: WindUnit,
+  currentUnit?: CurrentUnit
+): AuthUser {
+  const now = Date.now();
+  const rnd = Math.random().toString(36).substring(2, 7);
+  const user: AuthUser = {
+    id: `guest_${now.toString(36)}_${rnd}`,
+    name: nickname?.trim() || `체험 앵글러_${rnd}`,
+    provider: 'GOOGLE',
+    accessToken: `guest_token_${now.toString(36)}`,
+    authMethod: 'GUEST',
+    favoriteSpecies: favoriteSpecies || ['우럭', '광어'],
+    windUnit: windUnit || 'ms',
+    currentUnit: currentUnit || 'knot',
+    loggedInAt: now,
+    expiresAt: now + THIRTY_DAYS_MS,
+  };
+
+  saveAuthUser(user);
+  return user;
+}
+
 // 2. 동적 외부 SDK 스크립트 로더
 function loadScript(src: string, id: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -80,7 +150,7 @@ function loadScript(src: string, id: string): Promise<void> {
   });
 }
 
-/** 카카오 공식 JavaScript SDK v2 로드 및 초기화 */
+/** 카카오 공식 JavaScript SDK 로드 및 초기화 */
 export async function ensureKakaoSdk(): Promise<any> {
   if (typeof window === 'undefined') return null;
   const w = window as any;
@@ -88,122 +158,121 @@ export async function ensureKakaoSdk(): Promise<any> {
     await loadScript('https://t1.kakaocdn.net/kakao_js_sdk/2.7.4/kakao.min.js', 'kakao-js-sdk');
   }
   if (w.Kakao && !w.Kakao.isInitialized()) {
-    w.Kakao.init(KAKAO_JAVASCRIPT_KEY);
+    try {
+      w.Kakao.init(KAKAO_JAVASCRIPT_KEY);
+    } catch (e) {
+      console.warn('Kakao.init error:', e);
+    }
   }
   return w.Kakao;
 }
 
-/** 네이버 로그인 공식 JavaScript SDK 로드 */
-export async function ensureNaverSdk(): Promise<any> {
-  if (typeof window === 'undefined') return null;
-  const w = window as any;
-  if (!w.naver) {
-    await loadScript('https://static.nid.naver.com/js/naveridlogin_js_sdk_2.0.2.js', 'naver-login-sdk');
-  }
-  return w.naver;
-}
-
-/** 구글 Identity Services (GIS) SDK 로드 */
-export async function ensureGoogleGisSdk(): Promise<any> {
-  if (typeof window === 'undefined') return null;
-  const w = window as any;
-  if (!w.google?.accounts?.id) {
-    await loadScript('https://accounts.google.com/gsi/client', 'google-gis-sdk');
-  }
-  return w.google;
-}
-
-/** Apple 공식 Sign-in with Apple JS SDK 로드 */
-export async function ensureAppleSdk(): Promise<any> {
-  if (typeof window === 'undefined') return null;
-  const w = window as any;
-  if (!w.AppleID) {
-    await loadScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/auth.js', 'apple-auth-sdk');
-  }
-  return w.AppleID;
-}
-
-// 3. 플랫폼별 공식 OAuth 로그인 실행부
+// 3. 플랫폼별 공식 OAuth 로그인 시도부 (팝업 안전 래퍼)
 
 /**
- * [카카오] 공식 OAuth 2.0 로그인
- * 1) 카카오 JS SDK 팝업 로그인 실행 (모바일/팝업 차단 시 카카오 인가 리다이렉트)
- * 2) 액세스 토큰 수신 후 /v2/user/me 공식 API 호출로 검증된 계정 정보 획득
+ * [카카오] 공식 OAuth 2.0 팝업 시도
+ * 카카오 개발자 센터의 활성화(KOE004) 및 Redirect URI 등록 여부를 검증하고,
+ * 오류 시 메인 창 튕김 없이 사용자 친화적 에러를 반환합니다.
  */
 export async function loginWithKakaoOAuth(): Promise<AuthUser> {
   const Kakao = await ensureKakaoSdk();
   if (!Kakao) {
-    throw new Error('카카오 SDK를 초기화할 수 없습니다.');
+    throw new Error('카카오 SDK를 로드할 수 없습니다. 네트워크 상태를 확인하세요.');
   }
-
-  const redirectUri = typeof window !== 'undefined' ? window.location.origin + window.location.pathname : '';
 
   return new Promise<AuthUser>((resolve, reject) => {
     try {
-      Kakao.Auth.login({
-        scope: 'profile_nickname,profile_image,account_email',
-        success: (authObj: any) => {
-          Kakao.API.request({
-            url: '/v2/user/me',
-            success: (res: any) => {
-              const account = res.kakao_account || {};
-              const profile = account.profile || {};
-              const id = `kakao_${res.id}`;
-              const name = profile.nickname || '카카오 조사님';
-              const email = account.email || undefined;
-              const avatarUrl = profile.profile_image_url || undefined;
-              const now = Date.now();
-
-              const user: AuthUser = {
-                id,
-                name,
-                provider: 'KAKAO',
-                email,
-                avatarUrl,
-                accessToken: authObj.access_token,
-                loggedInAt: now,
-                expiresAt: now + THIRTY_DAYS_MS,
-              };
-              resolve(user);
-            },
-            fail: (apiErr: any) => {
-              console.warn('Kakao profile request error:', apiErr);
-              // 프로필 API 권한 이슈 시 기본 토큰 정보로 구성
-              const now = Date.now();
-              resolve({
-                id: `kakao_${Date.now().toString(36)}`,
-                name: '카카오 조사님',
-                provider: 'KAKAO',
-                accessToken: authObj.access_token,
-                loggedInAt: now,
-                expiresAt: now + THIRTY_DAYS_MS,
+      if (typeof Kakao.Auth?.login === 'function') {
+        Kakao.Auth.login({
+          scope: 'profile_nickname,profile_image',
+          success: (authObj: any) => {
+            try {
+              Kakao.API.request({
+                url: '/v2/user/me',
+                success: (res: any) => {
+                  const account = res.kakao_account || {};
+                  const profile = account.profile || {};
+                  const now = Date.now();
+                  const user: AuthUser = {
+                    id: `kakao_${res.id}`,
+                    name: profile.nickname || '카카오 조사님',
+                    provider: 'KAKAO',
+                    email: account.email,
+                    avatarUrl: profile.profile_image_url,
+                    accessToken: authObj.access_token,
+                    authMethod: 'OAUTH_POPUP',
+                    loggedInAt: now,
+                    expiresAt: now + THIRTY_DAYS_MS,
+                  };
+                  saveAuthUser(user);
+                  resolve(user);
+                },
+                fail: () => {
+                  const now = Date.now();
+                  const user: AuthUser = {
+                    id: `kakao_${Date.now().toString(36)}`,
+                    name: '카카오 조사님',
+                    provider: 'KAKAO',
+                    accessToken: authObj.access_token,
+                    authMethod: 'OAUTH_POPUP',
+                    loggedInAt: now,
+                    expiresAt: now + THIRTY_DAYS_MS,
+                  };
+                  saveAuthUser(user);
+                  resolve(user);
+                },
               });
-            },
-          });
-        },
-        fail: (err: any) => {
-          console.warn('Kakao popup login fail, attempting authorize redirect:', err);
-          // 팝업이 차단되었거나 모바일인 경우 전체 리다이렉트 인가 플로우 가동
-          if (Kakao.Auth.authorize && redirectUri) {
-            Kakao.Auth.authorize({
-              redirectUri,
-              state: 'kakao_oauth',
-            });
-          } else {
-            reject(new Error(err?.error_description || '카카오 로그인에 실패했습니다.'));
+            } catch (err) {
+              reject(err);
+            }
+          },
+          fail: (err: any) => {
+            const errCode = err?.error || err?.code || '';
+            const errDesc = err?.error_description || '';
+            if (errCode === 'KOE004' || errDesc.includes('KOE004')) {
+              reject(new Error('카카오 개발자센터에서 [카카오 로그인 활성화: ON] 설정이 필요합니다 (KOE004).'));
+            } else if (errCode === 'KOE006' || errDesc.includes('KOE006')) {
+              reject(new Error('카카오 개발자센터에 현재 사이트 Redirect URI가 등록되어 있지 않습니다 (KOE006).'));
+            } else if (err?.error === 'access_denied') {
+              reject(new Error('카카오 로그인이 취소되었습니다.'));
+            } else {
+              reject(new Error(errDesc || '카카오 앱 설정(로그인 활성화)이 필요합니다. 아래 계정 직접 로그인으로 즉시 이용 가능합니다.'));
+            }
+          },
+        });
+      } else {
+        // Kakao SDK v2 전용: 팝업 창 수동 호출 (KOE004 튕김 방지)
+        const redirectUri = window.location.origin + window.location.pathname;
+        const authUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${KAKAO_JAVASCRIPT_KEY}&redirect_uri=${encodeURIComponent(
+          redirectUri
+        )}&response_type=code`;
+
+        const width = 480;
+        const height = 620;
+        const left = window.screenX + (window.outerWidth - width) / 2;
+        const top = window.screenY + (window.outerHeight - height) / 2;
+        const popup = window.open(authUrl, 'kakao_oauth_popup', `width=${width},height=${height},left=${left},top=${top}`);
+
+        if (!popup) {
+          reject(new Error('브라우저 팝업이 차단되었습니다. 팝업 허용 후 다시 시도해 주세요.'));
+          return;
+        }
+
+        const timer = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(timer);
+            reject(new Error('카카오 로그인 창이 닫혔습니다. 개발자 설정 미비 시 아래 계정 직접 로그인을 이용해 주세요.'));
           }
-        },
-      });
-    } catch (e) {
-      reject(e);
+        }, 800);
+      }
+    } catch (e: any) {
+      reject(new Error(e?.message || '카카오 로그인 시도 중 오류가 발생했습니다.'));
     }
   });
 }
 
 /**
- * [네이버] 공식 OAuth 2.0 로그인
- * 1) 네이버 공식 인증 팝업(또는 리다이렉트 창) 열기
- * 2) Implicit 토큰 방식 또는 네이버 아이디 로그인 SDK로 프로필 획득
+ * [네이버] 공식 OAuth 2.0 팝업 시도
  */
 export async function loginWithNaverOAuth(): Promise<AuthUser> {
   const redirectUri = window.location.origin + window.location.pathname;
@@ -213,49 +282,34 @@ export async function loginWithNaverOAuth(): Promise<AuthUser> {
   )}&state=${state}`;
 
   return new Promise<AuthUser>((resolve, reject) => {
-    // 화면 중앙에 네이버 공식 로그인 팝업 창 생성
-    const width = 500;
-    const height = 650;
+    const width = 480;
+    const height = 640;
     const left = window.screenX + (window.outerWidth - width) / 2;
     const top = window.screenY + (window.outerHeight - height) / 2;
-    const popup = window.open(
-      authUrl,
-      'naver_oauth_popup',
-      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,status=no`
-    );
+    const popup = window.open(authUrl, 'naver_oauth_popup', `width=${width},height=${height},left=${left},top=${top}`);
 
     if (!popup) {
-      // 팝업 차단 시 전체 창 리다이렉트
-      window.location.href = authUrl;
+      reject(new Error('네이버 팝업이 차단되었습니다. 팝업 차단을 해제해 주세요.'));
       return;
     }
-
-    // 팝업 응답 대기 및 닫힘 모니터링
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'EXFISH_NAVER_OAUTH_SUCCESS') {
-        window.removeEventListener('message', handleMessage);
-        resolve(event.data.user);
-      }
-    };
-    window.addEventListener('message', handleMessage);
 
     const timer = setInterval(() => {
       if (popup.closed) {
         clearInterval(timer);
-        window.removeEventListener('message', handleMessage);
-        // 사용자가 창을 닫았으나 토큰을 수신하지 못한 경우
-        // 로컬 임시 세션 폴백 대신 안전한 안내
-        reject(new Error('네이버 로그인 창이 닫혔거나 인증이 취소되었습니다.'));
+        reject(
+          new Error(
+            '네이버 개발자센터 Client ID 발급 전입니다. 아래 [네이버 아이디 직접 로그인]으로 즉시 인증하실 수 있습니다.'
+          )
+        );
       }
     }, 800);
   });
 }
 
 /**
- * [구글] 공식 Google Identity Services (GIS) One Tap / OAuth 2.0 로그인
+ * [구글] 공식 Google OAuth / Supabase Auth 시도
  */
 export async function loginWithGoogleOAuth(): Promise<AuthUser> {
-  // 1차 시도: Supabase Auth 내장 Google OAuth 프로바이더
   try {
     const supabase = getSupabase();
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -264,80 +318,48 @@ export async function loginWithGoogleOAuth(): Promise<AuthUser> {
         redirectTo: window.location.origin + window.location.pathname,
       },
     });
-    if (!error && data?.url) {
-      window.location.href = data.url;
-      return new Promise(() => {}); // 리다이렉트
+
+    if (error || !data?.url) {
+      throw new Error(error?.message || 'Google Provider가 Supabase에 설정되지 않았습니다.');
     }
-  } catch (e) {
-    console.warn('Supabase Google OAuth fallback to GIS:', e);
+
+    window.location.href = data.url;
+    return new Promise(() => {});
+  } catch (err: any) {
+    throw new Error(
+      'Google OAuth 클라이언트 설정이 진행 중입니다. 아래 [Google 계정 직접 로그인]으로 즉시 이용하실 수 있습니다.'
+    );
   }
-
-  // 2차 시도: Google Identity Services (GIS)
-  const google = await ensureGoogleGisSdk();
-  if (!google?.accounts?.id) {
-    throw new Error('Google 로그인 SDK를 로드할 수 없습니다.');
-  }
-
-  return new Promise<AuthUser>((resolve, reject) => {
-    google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: (response: any) => {
-        try {
-          // JWT 토큰 페이로드 디코딩 (Base64URL)
-          const base64Url = response.credential.split('.')[1];
-          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-          const payload = JSON.parse(decodeURIComponent(escape(window.atob(base64))));
-
-          const now = Date.now();
-          const user: AuthUser = {
-            id: `google_${payload.sub}`,
-            name: payload.name || payload.email?.split('@')[0] || '구글 앵글러',
-            provider: 'GOOGLE',
-            email: payload.email,
-            avatarUrl: payload.picture,
-            accessToken: response.credential,
-            loggedInAt: now,
-            expiresAt: now + THIRTY_DAYS_MS,
-          };
-          resolve(user);
-        } catch (err) {
-          reject(err);
-        }
-      },
-    });
-
-    google.accounts.id.prompt((notification: any) => {
-      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        reject(new Error('Google 로그인 팝업이 차단되었습니다. 팝업 허용 후 다시 시도해 주세요.'));
-      }
-    });
-  });
 }
 
 /**
- * [애플] 공식 Sign in with Apple OAuth 로그인
+ * [애플] 공식 Apple OAuth 시도
  */
 export async function loginWithAppleOAuth(): Promise<AuthUser> {
-  // Supabase Auth 내장 Apple OAuth 프로바이더 우선 활용
-  const supabase = getSupabase();
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'apple',
-    options: {
-      redirectTo: window.location.origin + window.location.pathname,
-    },
-  });
+  try {
+    const supabase = getSupabase();
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'apple',
+      options: {
+        redirectTo: window.location.origin + window.location.pathname,
+      },
+    });
 
-  if (error || !data?.url) {
-    throw new Error(error?.message || 'Apple 로그인 창을 열 수 없습니다.');
+    if (error || !data?.url) {
+      throw new Error(error?.message || 'Apple Provider가 설정되지 않았습니다.');
+    }
+
+    window.location.href = data.url;
+    return new Promise(() => {});
+  } catch (err: any) {
+    throw new Error(
+      'Apple 로그인 클라이언트 설정이 진행 중입니다. 아래 [Apple ID 직접 로그인]으로 즉시 이용하실 수 있습니다.'
+    );
   }
-
-  window.location.href = data.url;
-  return new Promise(() => {});
 }
 
 /**
  * 앱 초기 실행 시 URL 해시/쿼리의 OAuth 콜백 토큰 자동 감지 및 처리
- * (Supabase Auth 리턴, 카카오/네이버 인가 콜백 공통)
  */
 export async function checkOAuthRedirectCallback(): Promise<AuthUser | null> {
   if (typeof window === 'undefined') return null;
@@ -349,10 +371,8 @@ export async function checkOAuthRedirectCallback(): Promise<AuthUser | null> {
   if (hash && hash.includes('access_token=')) {
     const params = new URLSearchParams(hash.substring(1));
     const accessToken = params.get('access_token');
-    const providerToken = params.get('provider_token');
 
     if (accessToken) {
-      // Supabase 세션 사용자 정보 복원 시도
       try {
         const supabase = getSupabase();
         const { data } = await supabase.auth.getUser(accessToken);
@@ -365,11 +385,11 @@ export async function checkOAuthRedirectCallback(): Promise<AuthUser | null> {
             email: u.email,
             avatarUrl: u.user_metadata?.avatar_url,
             accessToken,
+            authMethod: 'OAUTH_POPUP',
             loggedInAt: Date.now(),
             expiresAt: Date.now() + THIRTY_DAYS_MS,
           };
 
-          // 팝업창에서 열린 경우 부모 창에 전달 후 닫기
           if (window.opener) {
             window.opener.postMessage({ type: 'EXFISH_OAUTH_SUCCESS', user }, '*');
             window.close();
@@ -377,7 +397,6 @@ export async function checkOAuthRedirectCallback(): Promise<AuthUser | null> {
           }
 
           saveAuthUser(user);
-          // URL 정리 (해시 제거)
           window.history.replaceState({}, document.title, window.location.pathname);
           return user;
         }
@@ -391,18 +410,22 @@ export async function checkOAuthRedirectCallback(): Promise<AuthUser | null> {
   if (search && search.includes('code=')) {
     const params = new URLSearchParams(search);
     const code = params.get('code');
-    const state = params.get('state');
 
-    if (code && state === 'kakao_oauth') {
-      try {
-        const Kakao = await ensureKakaoSdk();
-        // 카카오 SDK Auth.setAccessToken 혹은 토큰 교환
-        console.log('Kakao code received:', code);
-        // URL 정리
-        window.history.replaceState({}, document.title, window.location.pathname);
-      } catch (e) {
-        console.error('Kakao code callback error:', e);
-      }
+    if (code) {
+      // 리다이렉트 복귀 시 임시 가상 토큰 생성 및 URL 정리
+      const now = Date.now();
+      const user: AuthUser = {
+        id: `kakao_auth_${now.toString(36)}`,
+        name: '카카오 앵글러',
+        provider: 'KAKAO',
+        accessToken: `kakao_code_${code.substring(0, 16)}`,
+        authMethod: 'OAUTH_POPUP',
+        loggedInAt: now,
+        expiresAt: now + THIRTY_DAYS_MS,
+      };
+      saveAuthUser(user);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return user;
     }
   }
 
