@@ -7,7 +7,7 @@ import {
   Circle,
   useKakaoLoader,
 } from 'react-kakao-maps-sdk';
-import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon, Map as MapIcon, Satellite, Moon, Sun, Lightbulb, LocateFixed } from 'lucide-react';
+import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon, Map as MapIcon, Satellite, Moon, Sun, LocateFixed, ChevronUp } from 'lucide-react';
 import { MaterialSpotMarker } from './MaterialSpotMarker';
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo } from '../types';
 import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
@@ -93,6 +93,7 @@ interface MapViewProps {
   onConfirmMicroAdjust?: (spotId: string, newLat: number, newLng: number) => void;
   currentUser?: { id: string; name: string } | null;
   onStartMicroAdjust?: (spot: FishingSpot) => void;
+  onOpenDetail?: (spot: FishingSpot) => void;
   isSunMode?: boolean;
   onToggleSunMode?: () => void;
 }
@@ -114,6 +115,7 @@ export const MapView: React.FC<MapViewProps> = ({
   onConfirmMicroAdjust,
   currentUser = null,
   onStartMicroAdjust,
+  onOpenDetail,
   isSunMode = false,
   onToggleSunMode,
 }) => {
@@ -242,30 +244,6 @@ export const MapView: React.FC<MapViewProps> = ({
 
   // 볼륨 키 줌 안내 토스트 상태 (Phase 2 하드웨어 연동)
   const [volumeToast, setVolumeToast] = React.useState<string | null>(null);
-
-  // 화면 꺼짐 방지(Keep-Awake) 상태
-  const [isKeepAwake, setIsKeepAwake] = React.useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('exfish_keep_awake') === 'true';
-    }
-    return false;
-  });
-
-  const toggleKeepAwake = async () => {
-    const next = !isKeepAwake;
-    setIsKeepAwake(next);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('exfish_keep_awake', String(next));
-    }
-    await setScreenKeepAwake(next);
-    triggerHaptic(next ? 'success' : 'light');
-  };
-
-  React.useEffect(() => {
-    if (isKeepAwake) {
-      setScreenKeepAwake(true);
-    }
-  }, []);
 
   // 하드웨어 볼륨 키 지도 줌 인/아웃 리스너 (Android Phase 2)
   React.useEffect(() => {
@@ -1045,21 +1023,40 @@ export const MapView: React.FC<MapViewProps> = ({
                     {spot.name}
                   </span>
 
-                  {/* PC 및 지도 화면 포인트 아이콘 하단 미세이동 아이콘 버튼 (포인트 작성자 전용) */}
-                  {isSelected && isAuthor && onStartMicroAdjust && !microAdjustSpot && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        isMarkerClickRef.current = true;
-                        onStartMicroAdjust(spot);
-                      }}
-                      className="mt-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-[11px] shadow-xl flex items-center gap-1 active:scale-95 transition pointer-events-auto border border-emerald-300 ring-2 ring-emerald-400/40"
-                      title="위성 스카이뷰에서 마커를 드래그하여 위치 미세이동"
-                    >
-                      <Crosshair size={12} className="shrink-0 text-slate-950 animate-pulse" />
-                      <span>미세이동</span>
-                    </button>
+                  {/* [요구사항 4] 지도 화면 포인트 아이콘 하단 미세이동 및 상세보기 아이콘 (텍스트 없이 순수 아이콘만) */}
+                  {isSelected && !microAdjustSpot && (
+                    <div className="flex items-center gap-1.5 mt-1 pointer-events-auto">
+                      {isAuthor && onStartMicroAdjust && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            isMarkerClickRef.current = true;
+                            onStartMicroAdjust(spot);
+                          }}
+                          className="p-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-xl flex items-center justify-center transition border border-emerald-400/60"
+                          title="포인트 위치 미세이동 (스카이뷰 드래깅)"
+                          aria-label="미세이동"
+                        >
+                          <Crosshair size={13} className="shrink-0 text-white" />
+                        </button>
+                      )}
+                      {onOpenDetail && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            isMarkerClickRef.current = true;
+                            onOpenDetail(spot);
+                          }}
+                          className="p-1.5 rounded-full bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white shadow-xl flex items-center justify-center transition border border-cyan-400/60"
+                          title="포인트 상세 정보 및 기상/물때 보기"
+                          aria-label="상세보기"
+                        >
+                          <ChevronUp size={14} className="shrink-0 text-white" />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </CustomOverlayMap>
@@ -1214,19 +1211,6 @@ export const MapView: React.FC<MapViewProps> = ({
               title={viewOnlyFavorites ? '전체 포인트 보기' : '내가 찜한 포인트만 보기'}
             >
               <Star size={17} className={viewOnlyFavorites ? 'fill-amber-400 text-amber-400' : ''} />
-            </button>
-
-            {/* 화면 켜짐 유지 (Screen Keep-Awake) 토글 버튼 */}
-            <button
-              onClick={toggleKeepAwake}
-              className={`p-2 rounded-xl flex items-center justify-center transition active:scale-95 ${
-                isKeepAwake
-                  ? 'bg-amber-500/20 text-amber-300 shadow-md shadow-amber-500/20 ring-1 ring-amber-400'
-                  : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
-              title={isKeepAwake ? '화면 켜짐 유지 켜짐 (낚시 중 화면 꺼짐 방지)' : '화면 켜짐 유지 켜기'}
-            >
-              <Lightbulb size={17} className={isKeepAwake ? 'text-amber-300 fill-amber-300' : 'text-slate-400'} />
             </button>
           </div>
 

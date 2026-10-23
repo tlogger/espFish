@@ -22,6 +22,15 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    applicationVariants.all { variant ->
+        variant.outputs.all {
+            if (variant.buildType.name == 'debug') {
+                outputFileName = "exfish-debug.apk"
+            } else {
+                outputFileName = "exfish.apk"
+            }
+        }
+    }
 }
 
 repositories {

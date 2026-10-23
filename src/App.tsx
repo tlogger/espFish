@@ -724,6 +724,7 @@ export function App() {
             onConfirmMicroAdjust={handleConfirmMicroAdjust}
             currentUser={currentUser}
             onStartMicroAdjust={handleStartMicroAdjust}
+            onOpenDetail={(spot) => handleSelectSpot(spot, false, true)}
             isSunMode={isSunMode}
             onToggleSunMode={() => {
               const next = !isSunMode;
@@ -802,64 +803,9 @@ export function App() {
           </div>
         )}
 
-        {/* 모바일 화면 2: 포인트를 탭했을 때 하단 슬림 바 (상세 정보 텍스트 완전 제거, 아이콘 기반 미니멀 캡슐) */}
-        {selectedSpot && !isMobileDrawerOpen && (
-          <div className="md:hidden fixed bottom-4 left-4 right-4 z-30 animate-in fade-in slide-in-from-bottom-2 duration-150">
-            <div className="bg-slate-900/95 backdrop-blur-md border border-cyan-500/50 rounded-full px-4 py-2 shadow-2xl text-white flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-base shrink-0">📍</span>
-                <span className="font-bold text-sm text-cyan-300 truncate">
-                  {selectedSpot.name}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                {/* 미세이동 아이콘: 작성자 전용, 상세보기 아이콘 바로 옆에 배치 */}
-                {Boolean(
-                  currentUser &&
-                    (selectedSpot.user_id === currentUser.id ||
-                      selectedSpot.user_id === 'user-me' ||
-                      currentUser.id === 'user-me')
-                ) && (
-                  <button
-                    onClick={() => handleStartMicroAdjust(selectedSpot)}
-                    className="p-2 rounded-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow flex items-center justify-center transition border border-emerald-400/50"
-                    title="포인트 위치 미세이동 (스카이뷰 드래깅)"
-                    aria-label="포인트 위치 미세이동"
-                  >
-                    <Crosshair size={16} />
-                  </button>
-                )}
-                <button
-                  onClick={() => setIsMobileDrawerOpen(true)}
-                  className="p-2 rounded-full bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white shadow flex items-center justify-center transition"
-                  title="포인트 상세 및 기상 보기"
-                  aria-label="포인트 상세 및 기상 보기"
-                >
-                  <ChevronUp size={16} />
-                </button>
-                <button
-                  onClick={() => setSelectedSpot(null)}
-                  className="p-2 rounded-full bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white shadow flex items-center justify-center transition"
-                  title="선택 해제"
-                  aria-label="선택 해제"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 플로팅 포인트 등록 버튼:
-            - 모바일: 포인트 미선택 시에만 단순 원형(+) 아이콘으로 표시, 포인트 선택 시 가림 방지를 위해 자동 숨김
-            - PC: 상시 우하단에 텍스트 포함 버튼으로 표시
-        */}
+        {/* 플로팅 포인트 등록 버튼 */}
         {!isMobileDrawerOpen && (
-          <div
-            className={`fixed bottom-4 md:bottom-6 right-4 md:right-6 z-30 ${
-              selectedSpot ? 'hidden md:block' : 'block'
-            }`}
-          >
+          <div className="fixed bottom-4 md:bottom-6 right-4 md:right-6 z-30 block">
             <button
               onClick={() => {
                 setEditingSpot(null);
