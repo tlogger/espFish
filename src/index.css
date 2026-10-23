@@ -133,3 +133,19 @@ body.sun-mode-active .bg-slate-950 {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(156, 163, 175, 0.7);
 }
+
+/* 모바일 앱 한글 IME 입력 안정화 (글자 씹힘 및 키 입력 딜레이 방지) */
+input, textarea {
+  -webkit-user-modify: read-write-plaintext-only;
+}
+
+/* 디지털 줌 적용 시 오버레이 폰트 및 뱃지 역스케일링 (지도만 확대되고 글씨/라벨은 기본 크기 유지) */
+.kakao-map-container[data-digital-zoom="1.8"] .kakao-invert-restore {
+  transform: scale(0.5555);
+  transform-origin: center center;
+}
+.kakao-map-container[data-digital-zoom="3"] .kakao-invert-restore,
+.kakao-map-container[data-digital-zoom="3.0"] .kakao-invert-restore {
+  transform: scale(0.3333);
+  transform-origin: center center;
+}

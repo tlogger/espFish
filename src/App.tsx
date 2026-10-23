@@ -577,6 +577,17 @@ export function App() {
     return true;
   });
 
+  // 드롭다운 검색용 매칭 포인트 목록 (어종 또는 포인트명 일치)
+  const matchedSpotsInDropdown = React.useMemo(() => {
+    if (!searchQuery || searchQuery.trim().length < 1) return [];
+    const q = searchQuery.trim().toLowerCase();
+    return spots.filter((sp) => {
+      const nameMatch = sp.name.toLowerCase().includes(q);
+      const speciesMatch = sp.target_species.some((s) => s.toLowerCase().includes(q));
+      return nameMatch || speciesMatch;
+    }).slice(0, 10);
+  }, [spots, searchQuery]);
+
   const spotLogs = selectedSpot ? catchLogs.filter((log) => log.spot_id === selectedSpot.id) : [];
 
   return (
@@ -616,8 +627,18 @@ export function App() {
               placeholder="포인트, 어종, 강릉시청 등 지명·항구 검색 (Enter)..."
               value={searchQuery}
               onChange={(e) => {
-                setSearchQuery(e.target.value);
-                if (showPoiDropdown) setShowPoiDropdown(false);
+                const val = e.target.value;
+                setSearchQuery(val);
+                if (val.trim().length >= 1) {
+                  setShowPoiDropdown(true);
+                } else {
+                  setShowPoiDropdown(false);
+                }
+              }}
+              onFocus={() => {
+                if (searchQuery.trim().length >= 1) {
+                  setShowPoiDropdown(true);
+                }
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -658,55 +679,94 @@ export function App() {
             </div>
           </div>
 
-          {/* 장소 검색 결과 드롭다운 팝오버 */}
-          {showPoiDropdown && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden text-xs max-h-72 overflow-y-auto">
-              <div className="px-3 py-1.5 bg-slate-800 text-[11px] text-slate-300 font-semibold flex justify-between items-center border-b border-slate-700">
-                <span className="flex items-center gap-1">
-                  🌐 <strong>'{searchQuery}'</strong> 카카오 지명·항구 검색 결과
-                </span>
-                <button
-                  onClick={() => setShowPoiDropdown(false)}
-                  className="text-slate-400 hover:text-white p-0.5 rounded"
-                >
-                  <X size={13} />
-                </button>
-              </div>
-
-              {isSearchingPoi ? (
-                <div className="p-4 text-center text-slate-400 flex items-center justify-center gap-2">
-                  <Loader2 size={14} className="animate-spin text-cyan-400" />
-                  <span>카카오 전국 해안/항구/주소 검색 중...</span>
-                </div>
-              ) : poiResults.length === 0 ? (
-                <div className="p-4 text-center text-slate-400">
-                  일치하는 장소를 찾지 못했습니다.
-                </div>
-              ) : (
-                poiResults.map((poi, idx) => (
+            {/* 장소 및 포인트 검색 결과 드롭다운 팝오버 */}
+            {showPoiDropdown && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden text-xs max-h-80 overflow-y-auto">
+                <div className="px-3 py-1.5 bg-slate-800 text-[11px] text-slate-300 font-semibold flex justify-between items-center border-b border-slate-700">
+                  <span className="flex items-center gap-1">
+                    🔍 <strong>'{searchQuery}'</strong> 검색 결과
+                  </span>
                   <button
-                    key={idx}
-                    onClick={() => {
-                      setRecenterTarget({ lat: poi.lat, lng: poi.lng, zoom: 14 });
-                      setShowPoiDropdown(false);
-                    }}
-                    className="w-full text-left px-3 py-2.5 hover:bg-cyan-950/70 border-b border-slate-800/80 flex items-start gap-2.5 text-slate-200 transition group"
+                    onClick={() => setShowPoiDropdown(false)}
+                    className="text-slate-400 hover:text-white p-0.5 rounded"
                   >
-                    <span className="text-cyan-400 mt-0.5 group-hover:scale-110 transition">📍</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-white group-hover:text-cyan-300 transition truncate">
-                        {poi.display_name.split('(')[0]}
-                      </div>
-                      <div className="text-[11px] text-slate-400 truncate">{poi.display_name}</div>
-                      <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                        좌표: {poi.lat.toFixed(4)}, {poi.lng.toFixed(4)} ({poi.type})
-                      </div>
-                    </div>
+                    <X size={13} />
                   </button>
-                ))
-              )}
-            </div>
-          )}
+                </div>
+
+                {/* 1순위: 등록된 낚시 포인트 및 대상어종 일치 결과 */}
+                {matchedSpotsInDropdown.length > 0 && (
+                  <div>
+                    <div className="px-3 py-1 bg-cyan-950/80 border-b border-cyan-800/40 text-[10.5px] font-bold text-cyan-300 flex items-center gap-1">
+                      <span>🎣 등록된 낚시 포인트 ({matchedSpotsInDropdown.length}건)</span>
+                    </div>
+                    {matchedSpotsInDropdown.map((sp) => (
+                      <button
+                        key={`dropdown-spot-${sp.id}`}
+                        onClick={() => {
+                          handleSelectSpot(sp, true, false);
+                          setShowPoiDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-cyan-950/60 border-b border-slate-800/70 flex items-center justify-between text-slate-200 transition group"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-white group-hover:text-cyan-300 transition truncate flex items-center gap-1.5">
+                            <span>📍 {sp.name}</span>
+                            {sp.target_species.some(s => s.toLowerCase().includes(searchQuery.trim().toLowerCase())) && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-normal">
+                                어종 일치
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10.5px] text-slate-400 truncate mt-0.5">
+                            어종: {sp.target_species.join(', ')} · 장르: {sp.fishing_methods.join(', ')}
+                          </div>
+                        </div>
+                        <span className="text-[11px] text-cyan-400 font-semibold shrink-0 ml-2 group-hover:translate-x-0.5 transition">
+                          이동 →
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* 2순위: 카카오 전국 지명·항구·주소 검색 결과 */}
+                {isSearchingPoi ? (
+                  <div className="p-4 text-center text-slate-400 flex items-center justify-center gap-2">
+                    <Loader2 size={14} className="animate-spin text-cyan-400" />
+                    <span>카카오 전국 지명·항구 검색 중...</span>
+                  </div>
+                ) : poiResults.length > 0 ? (
+                  <div>
+                    <div className="px-3 py-1 bg-slate-800/70 border-b border-slate-700/60 text-[10.5px] font-bold text-slate-300 flex items-center gap-1">
+                      <span>🌐 카카오 지명·항구·주소 ({poiResults.length}건)</span>
+                    </div>
+                    {poiResults.map((poi, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setRecenterTarget({ lat: poi.lat, lng: poi.lng, zoom: 14 });
+                          setShowPoiDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-slate-800 border-b border-slate-800/80 flex items-start gap-2.5 text-slate-200 transition group"
+                      >
+                        <span className="text-cyan-400 mt-0.5 group-hover:scale-110 transition">⚓</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-white group-hover:text-cyan-300 transition truncate">
+                            {poi.display_name.split('(')[0]}
+                          </div>
+                          <div className="text-[11px] text-slate-400 truncate">{poi.display_name}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : matchedSpotsInDropdown.length === 0 ? (
+                  <div className="p-4 text-center text-slate-400">
+                    일치하는 포인트나 지명을 찾지 못했습니다.
+                  </div>
+                ) : null}
+              </div>
+            )}
         </div>
 
         {/* 툴바: PC 웹 로그인 / 회원 정보 버튼 (아이콘 전용) */}

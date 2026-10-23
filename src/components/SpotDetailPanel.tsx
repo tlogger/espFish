@@ -1983,10 +1983,29 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                 🚗 차량 내비게이션 목적지 안내
               </span>
-              <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 text-xs space-y-1">
-                <div>
-                  <strong className="text-slate-400">네비 검색 지명:</strong>{' '}
-                  <span className="text-amber-200 font-semibold">{destinationName}</span>
+              <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 text-xs space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <strong className="text-slate-400">네비 검색 지명:</strong>{' '}
+                    <a
+                      href={kakaoNaviUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-amber-300 font-bold hover:text-amber-200 underline decoration-amber-500/50 hover:decoration-amber-300 inline-flex items-center gap-1 transition"
+                      title="카카오맵 길찾기 바로 연결"
+                    >
+                      <span>{destinationName}</span>
+                      <ExternalLink size={12} className="text-amber-400" />
+                    </a>
+                  </div>
+                  <a
+                    href={kakaoNaviUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold inline-flex items-center gap-1 shrink-0 transition"
+                  >
+                    <span>카카오맵</span>
+                  </a>
                 </div>
                 {spot.navi_url && (
                   <div className="truncate">
@@ -2386,15 +2405,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 {/* 4. 사거리 및 물리 특성 요약 */}
                 <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5 text-[11px]">
                   <div className="flex justify-between text-slate-300">
-                    <span>공기역학 산출 사거리:</span>
+                    <span>예상 사거리:</span>
                     <strong className="text-cyan-300 font-mono text-xs">{tackleConfig.calibratedDistanceMeters}m</strong>
-                  </div>
-                  <div className="flex justify-between text-slate-400 text-[10.5px]">
-                    <span>{tackleConfig.rodType === 'SURF' ? '원투 추진력 / 지렛대:' : '탄성효율 / 레버암:'}</span>
-                    <span className="text-amber-300 font-mono">
-                      {tackleConfig.rodType === 'SURF' ? '원심력 ' : 'η '}
-                      {Math.round(tackleConfig.rodElasticityEfficiency * 100)}% / ×{tackleConfig.rodLengthFactor}
-                    </span>
                   </div>
                   <div className="flex justify-between text-slate-400 text-[10.5px]">
                     <span>지도 동심원 눈금 링 반경:</span>

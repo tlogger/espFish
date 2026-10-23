@@ -552,6 +552,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
   return (
     <div
+      data-digital-zoom={digitalZoom.toFixed(1)}
       className={`relative w-full h-full bg-slate-950 overflow-hidden kakao-map-container ${
         isDarkMode ? 'kakao-dark-mode' : ''
       } ${isSunMode ? 'exfish-sun-mode' : ''}`}
@@ -1740,15 +1741,8 @@ export const MapView: React.FC<MapViewProps> = ({
               return (
                 <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5 text-xs sm:text-sm">
                   <div className="flex justify-between text-slate-300">
-                    <span>공기역학 산출 사거리:</span>
+                    <span>예상 사거리:</span>
                     <strong className="font-mono text-cyan-300 text-sm font-bold">{tackleConfig.calibratedDistanceMeters}m</strong>
-                  </div>
-                  <div className="flex justify-between text-[11px] sm:text-xs text-slate-400">
-                    <span>{tackleConfig.rodType === 'SURF' ? '원투 추진력 / 지렛대:' : '탄성효율 / 레버암:'}</span>
-                    <span className="font-mono text-amber-300">
-                      {tackleConfig.rodType === 'SURF' ? '원심력 ' : 'η '}
-                      {Math.round(tackleConfig.rodElasticityEfficiency * 100)}% / ×{tackleConfig.rodLengthFactor}
-                    </span>
                   </div>
                   <div className="flex justify-between text-[11px] sm:text-xs text-slate-400 pt-1 border-t border-slate-800/80">
                     <span>수심 10m 바닥 안착:</span>
@@ -1761,9 +1755,6 @@ export const MapView: React.FC<MapViewProps> = ({
                     <span className="font-mono">
                       {sink.effSinkSpeedMps}m/s · 흘림 +{sink.driftDistanceM}m
                     </span>
-                  </div>
-                  <div className="text-[10px] sm:text-[11px] text-amber-300/90 pt-1 border-t border-slate-800/60 leading-tight">
-                    💡 지그헤드+2인치 쉐드 웜 및 합사 방출 길이/호수 연동 바람 편류(오렌지 라인) 시뮬레이션 적용됨
                   </div>
                 </div>
               );
