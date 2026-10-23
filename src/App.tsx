@@ -581,8 +581,8 @@ export function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      {/* 2초 스플래시 스크린 (앱 시작 시 4대 핵심 가치 안내) */}
-      {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} durationMs={2200} />}
+      {/* 1.5초 스플래시 스크린 */}
+      {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} durationMs={1500} />}
 
       {/* 글로벌 상단 헤더 & 내비게이션 바 */}
       <header className="h-14 bg-slate-900 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 shadow-md gap-2">
@@ -594,7 +594,9 @@ export function App() {
           title="ExFish 새로고침"
           aria-label="ExFish 메인 새로고침"
         >
-          <span className="text-2xl filter drop-shadow">🎣</span>
+          <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center p-1 shadow-md shrink-0 border border-slate-700">
+            <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="ExFish Logo" className="w-full h-full object-contain" />
+          </div>
           <div className="flex flex-col">
             <span className="text-base sm:text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500 bg-clip-text text-transparent leading-none">
               ExFish
