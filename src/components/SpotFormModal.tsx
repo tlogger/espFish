@@ -487,18 +487,18 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
           <div className="p-3.5 bg-slate-800/60 border border-slate-700/80 rounded-xl space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-slate-200 font-bold text-xs flex items-center gap-1.5">
-                <span>🎯 캐스팅 공략 각도 (원형 레이더뷰)</span>
+                <span>🎯 캐스팅 방향</span>
               </label>
               <button
                 type="button"
                 onClick={() => setHasCastingRange(!hasCastingRange)}
-                className={`text-[11px] px-2 py-0.5 rounded font-medium transition ${
+                className={`text-[11px] px-2.5 py-1 rounded-md font-semibold transition cursor-pointer ${
                   hasCastingRange
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
-                    : 'bg-slate-700 text-slate-400'
+                    ? 'bg-cyan-500 text-slate-950 font-bold shadow'
+                    : 'bg-slate-750 hover:bg-slate-700 text-slate-400 border border-slate-650'
                 }`}
               >
-                {hasCastingRange ? '✓ 공략 각도 사용 중' : '미지정 (설정 안 함)'}
+                {hasCastingRange ? '✓ 사용' : '미사용'}
               </button>
             </div>
 
@@ -512,7 +512,6 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                   const span = castingEndDeg >= castingStartDeg
                     ? castingEndDeg - castingStartDeg
                     : 360 - castingStartDeg + castingEndDeg;
-                  const centerBearing = (castingStartDeg + span / 2) % 360;
 
                   const rad1 = (castingStartDeg * Math.PI) / 180;
                   const rad2 = (castingEndDeg * Math.PI) / 180;
@@ -523,15 +522,10 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                   const largeArcFlag = span > 180 ? 1 : 0;
                   const sectorPath = `M ${cx} ${cy} L ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2.toFixed(1)} ${y2.toFixed(1)} Z`;
 
-                  // 중심 화살표 끝점
-                  const centerRad = (centerBearing * Math.PI) / 180;
-                  const arrowTipX = cx + 58 * Math.sin(centerRad);
-                  const arrowTipY = cy - 58 * Math.cos(centerRad);
-
                   return (
-                    <div className="flex flex-col sm:flex-row items-center gap-4 bg-slate-900/80 p-3 rounded-xl border border-slate-750">
-                      {/* SVG 레이더 원형 뷰 */}
-                      <div className="relative shrink-0">
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4 bg-slate-900/80 p-3 rounded-xl border border-slate-750">
+                      {/* SVG 레이더 원형 뷰 (시작각, 종료각 텍스트 내부 통합) */}
+                      <div className="relative shrink-0 flex items-center justify-center">
                         <svg
                           width="180"
                           height="180"
@@ -576,10 +570,10 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                           <line x1={cx - r} y1={cy} x2={cx + r} y2={cy} stroke="#334155" strokeWidth="1" />
 
                           {/* 방위 텍스트 */}
-                          <text x={cx} y="14" fill="#38bdf8" fontSize="10" fontWeight="bold" textAnchor="middle">N(0°)</text>
-                          <text x="170" y={cy + 3} fill="#94a3b8" fontSize="9" textAnchor="end">E(90°)</text>
-                          <text x={cx} y="174" fill="#94a3b8" fontSize="9" textAnchor="middle">S(180°)</text>
-                          <text x="10" y={cy + 3} fill="#94a3b8" fontSize="9" textAnchor="start">W(270°)</text>
+                          <text x={cx} y="14" fill="#38bdf8" fontSize="10" fontWeight="bold" textAnchor="middle">N</text>
+                          <text x="170" y={cy + 3} fill="#94a3b8" fontSize="9" textAnchor="end">E</text>
+                          <text x={cx} y="174" fill="#94a3b8" fontSize="9" textAnchor="middle">S</text>
+                          <text x="10" y={cy + 3} fill="#94a3b8" fontSize="9" textAnchor="start">W</text>
 
                           {/* 유효 캐스팅 부채꼴 섹터 */}
                           <path
@@ -589,56 +583,19 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                             strokeWidth="1.8"
                           />
 
-                          {/* 주요 캐스팅 중심 방위 화살표 (파란색) */}
-                          <line
-                            x1={cx}
-                            y1={cy}
-                            x2={arrowTipX}
-                            y2={arrowTipY}
-                            stroke="#3b82f6"
-                            strokeWidth="2.5"
-                          />
-                          <circle cx={arrowTipX} cy={arrowTipY} r="3" fill="#60a5fa" />
-
-                          {/* 시작각 핸들 (에메랄드/그린 S) */}
+                          {/* 시작각 핸들 (에메랄드 S) */}
                           <circle cx={x1} cy={y1} r="5" fill="#10b981" stroke="#ffffff" strokeWidth="1.5" />
-                          {/* 끝각 핸들 (시안/블루 E) */}
+                          {/* 끝각 핸들 (시안 E) */}
                           <circle cx={x2} cy={y2} r="5" fill="#06b6d4" stroke="#ffffff" strokeWidth="1.5" />
 
-                          {/* 중심 포인트 */}
-                          <circle cx={cx} cy={cy} r="3.5" fill="#38bdf8" />
+                          {/* 시작 각도 & 종료 각도 레이더 표시 내부에 표기 */}
+                          <text x={cx} y={cy - 6} fill="#10b981" fontSize="11" fontWeight="bold" textAnchor="middle">
+                            {castingStartDeg}°
+                          </text>
+                          <text x={cx} y={cy + 12} fill="#06b6d4" fontSize="11" fontWeight="bold" textAnchor="middle">
+                            ~ {castingEndDeg}°
+                          </text>
                         </svg>
-                      </div>
-
-                      {/* 각도 요약 및 설명 */}
-                      <div className="flex-1 space-y-2 text-xs">
-                        <div className="bg-slate-950/70 p-2.5 rounded-lg border border-slate-800 space-y-1">
-                          <div className="flex justify-between items-center text-slate-300">
-                            <span>시작 각도 (Start):</span>
-                            <span className="font-mono font-bold text-emerald-400">
-                              {castingStartDeg}° ({getCompassDirection(castingStartDeg)})
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center text-slate-300">
-                            <span>종료 각도 (End):</span>
-                            <span className="font-mono font-bold text-cyan-400">
-                              {castingEndDeg}° ({getCompassDirection(castingEndDeg)})
-                            </span>
-                          </div>
-                          <div className="pt-1 border-t border-slate-800 flex justify-between items-center">
-                            <span className="text-slate-400">유효 공략 화각:</span>
-                            <span className="font-bold text-amber-300">{span}° 부채꼴</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-slate-400">주 캐스팅 중심 방위:</span>
-                            <span className="font-bold text-blue-400 font-mono">
-                              {Math.round(centerBearing)}° ({getCompassDirection(centerBearing)})
-                            </span>
-                          </div>
-                        </div>
-                        <p className="text-[11px] text-slate-400 leading-tight">
-                          * 레이더를 클릭하거나 아래 슬라이더로 캐스팅 투척이 가능한 바다 방면 유효 범위를 설정하세요.
-                        </p>
                       </div>
                     </div>
                   );
@@ -648,8 +605,7 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs">
-                      <span className="text-emerald-400 font-medium">시작 각도 (시계방향)</span>
-                      <span className="font-mono font-bold text-white">{castingStartDeg}°</span>
+                      <span className="text-emerald-400 font-medium">시작 {castingStartDeg}°</span>
                     </div>
                     <input
                       type="range"
@@ -662,8 +618,7 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                   </div>
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs">
-                      <span className="text-cyan-400 font-medium">종료 각도</span>
-                      <span className="font-mono font-bold text-white">{castingEndDeg}°</span>
+                      <span className="text-cyan-400 font-medium">종료 {castingEndDeg}°</span>
                     </div>
                     <input
                       type="range"
@@ -676,37 +631,37 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                   </div>
                 </div>
 
-                {/* 빠른 프리셋 선택 버튼 */}
+                {/* 빠른 방향 프리셋: 동, 서, 남, 북 및 60, 90, 120 극단적 단순화 */}
                 <div className="space-y-1.5 pt-1">
-                  <span className="text-[11px] text-slate-400 font-medium">⚡ 빠른 방향 프리셋</span>
-                  <div className="flex flex-wrap gap-1.5 text-xs">
+                  <span className="text-[11px] text-slate-400 font-medium">⚡ 빠른 프리셋</span>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
                     {[
-                      { label: '동쪽 외해 (45°~135°)', start: 45, end: 135 },
-                      { label: '남동 연안 (90°~180°)', start: 90, end: 180 },
-                      { label: '남서 갯바위 (180°~270°)', start: 180, end: 270 },
-                      { label: '서쪽 바다 (225°~315°)', start: 225, end: 315 },
-                      { label: '북서 홈통 (270°~360°)', start: 270, end: 360 },
+                      { label: '동(E)', start: 45, end: 135 },
+                      { label: '서(W)', start: 225, end: 315 },
+                      { label: '남(S)', start: 135, end: 225 },
+                      { label: '북(N)', start: 315, end: 45 },
                     ].map((p, idx) => (
                       <button
                         type="button"
-                        key={idx}
+                        key={`cardinal-${idx}`}
                         onClick={() => {
                           setCastingStartDeg(p.start);
-                          setCastingEndDeg(p.end % 360);
+                          setCastingEndDeg(p.end);
                         }}
-                        className="px-2 py-1 bg-slate-750 hover:bg-slate-700 text-slate-300 rounded border border-slate-650 text-[11px] transition"
+                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 text-xs font-bold transition"
                       >
                         {p.label}
                       </button>
                     ))}
+                    <span className="text-slate-600 px-1">|</span>
                     {[
-                      { label: '60° 집중각', delta: 30 },
-                      { label: '90° 표준각', delta: 45 },
-                      { label: '120° 와이드', delta: 60 },
+                      { label: '60°', delta: 30 },
+                      { label: '90°', delta: 45 },
+                      { label: '120°', delta: 60 },
                     ].map((a, idx) => (
                       <button
                         type="button"
-                        key={`ap-${idx}`}
+                        key={`angle-${idx}`}
                         onClick={() => {
                           const span = castingEndDeg >= castingStartDeg
                             ? castingEndDeg - castingStartDeg
@@ -717,7 +672,7 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                           setCastingStartDeg(s);
                           setCastingEndDeg(e);
                         }}
-                        className="px-2 py-1 bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 rounded border border-cyan-800/60 text-[11px] font-medium transition"
+                        className="px-2.5 py-1 bg-cyan-950/70 hover:bg-cyan-900 text-cyan-300 rounded-md border border-cyan-800/60 text-xs font-bold transition"
                       >
                         {a.label}
                       </button>
@@ -749,20 +704,20 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
             </label>
           </div>
 
-          {/* 버튼: 모바일 화면에서 하단에 고정(sticky)되어 항상 저장/취소 가능하도록 개선 */}
-          <div className="sticky bottom-0 bg-slate-900/95 backdrop-blur -mx-6 -mb-6 p-4 border-t border-slate-800 flex justify-end gap-3 z-10">
+          {/* 버튼: 플로팅(sticky)되지 않고 모달 창 콘텐츠 가장 아래에 자연스럽게 위치 */}
+          <div className="pt-4 border-t border-slate-800 flex justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition"
+              className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition cursor-pointer"
             >
               취소
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold shadow-lg shadow-cyan-500/20 transition active:scale-95"
+              className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold shadow-lg shadow-cyan-500/20 transition active:scale-95 cursor-pointer"
             >
-              {editingSpot ? '포인트 수정 완료' : '포인트 저장하기'}
+              {editingSpot ? '수정' : '포인트 저장하기'}
             </button>
           </div>
         </form>

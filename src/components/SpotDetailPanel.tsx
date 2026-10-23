@@ -392,18 +392,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     <ChevronDown size={13} />
                   </button>
                 )}
-                {onToggleFavorite && (
-                  <button
-                    onClick={() => onToggleFavorite(spot.id)}
-                    className={`p-1.5 rounded-lg bg-black/60 backdrop-blur-sm border border-white/10 transition active:scale-95 ${
-                      isFavorited ? 'text-amber-400' : 'text-slate-200 hover:text-amber-400'
-                    }`}
-                    title={isFavorited ? '즐겨찾기(찜) 해제' : '즐겨찾기(찜) 추가'}
-                    aria-label="즐겨찾기"
-                  >
-                    <Star size={13} className={isFavorited ? 'fill-amber-400 text-amber-400' : ''} />
-                  </button>
-                )}
                 <button
                   onClick={() => {
                     if (navigator.share) {
@@ -611,8 +599,11 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {activeTab === 'WEATHER_TIDE' && (
           <div className="space-y-4">
-            {/* [제안 2] 국립해양조사원·해양경찰청 연안안전사고 위험예보제 위젯 */}
+            {/* [제안 2] 국립해양조사원·해양경찰청 연안안전사고 위험예보제 위젯 (갯바위/해변에만 적용) */}
             {(() => {
+              const isRockOrBeach = spot.spot_type === 'ROCK' || spot.spot_type === 'BEACH';
+              if (!isRockOrBeach) return null;
+
               const isSpringTide = tide ? (tide.mulNumber >= 6 && tide.mulNumber <= 10) : false;
               const now = new Date();
               const curMinutes = now.getHours() * 60 + now.getMinutes();
@@ -691,9 +682,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               );
             })()}
 
-            {/* [항목 1] 갯바위 들물 고립 방지 탈출 골든타임 카운트다운 타이머 & 비프 경보 */}
+            {/* [항목 1] 갯바위 들물 고립 방지 탈출 골든타임 카운트다운 타이머 & 비프 경보 (갯바위/해변에만 적용) */}
             {tide && (() => {
-              if (!tide.lowTides || tide.lowTides.length === 0) return null;
+              const isRockOrBeach = spot.spot_type === 'ROCK' || spot.spot_type === 'BEACH';
+              if (!isRockOrBeach || !tide.lowTides || tide.lowTides.length === 0) return null;
               const now = new Date();
               const curMins = now.getHours() * 60 + now.getMinutes();
 
@@ -1185,53 +1177,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               );
             })()}
 
-            {/* 너울성(Swell) 파도 위험도 지수 (파고×파주기 결합 에너지) */}
-            {(() => {
-              const waveH = simWaveHeight;
-              const waveP = marine?.wavePeriod || 6.0;
-              const swell = calculateSwellRisk(waveH, waveP);
-              return (
-                <div className={`p-2.5 rounded-xl border flex items-center justify-between text-xs backdrop-blur-sm ${swell.badgeColor}`}>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-base shrink-0">🌊</span>
-                    <div className="min-w-0">
-                      <div className="font-bold flex items-center gap-1.5 truncate">
-                        <span>{swell.title}</span>
-                        <span className="text-[10px] font-mono opacity-80 font-normal">
-                          (파고 {waveH.toFixed(1)}m × 주기 {waveP}s = 에너지 {swell.energyScore})
-                        </span>
-                      </div>
-                      <div className="text-[10.5px] opacity-90 truncate mt-0.5">
-                        {swell.description}
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded border border-current shrink-0">
-                    {swell.level === 'DANGER' ? '진입금지' : swell.level === 'CAUTION' ? '주의요망' : '양호'}
-                  </span>
-                </div>
-              );
-            })()}
-
             {/* 3. [제안 6] 현재 시각 기준 연속 조위 변화 곡선 (-6h ~ +36h, 스크롤 없는 반응형 100% 뷰) */}
             {tide && (
               <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2.5">
-                {/* KHOA 53개 관측소 실시간 API 연동 안내 */}
-                {(() => {
-                  const stationInfo = findNearestKhoaStation(spot.lat, spot.lng);
-                  return (
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900 border border-cyan-800/60 text-xs flex-wrap">
-                      <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                      <span className="font-bold text-cyan-200">
-                        📍 KHOA 국립해양조사원 {stationInfo.station.name} 관측소
-                      </span>
-                      <span className="font-mono text-[11px] text-slate-400">
-                        (직선거리 {stationInfo.distanceKm}km, 코드 {stationInfo.station.code})
-                      </span>
-                    </div>
-                  );
-                })()}
-
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-bold text-slate-200 flex items-center gap-1.5">
                     🌊 조위 변화 곡선 (-6h ~ +36h 실시간 예측)
@@ -2458,9 +2406,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 </span>
                 <span className="text-[10px] text-slate-400 font-medium">최신 업로드순</span>
               </div>
-              <p className="text-[11px] text-slate-400">
-                유튜브에서 최근 업로드된 이 포인트의 생생한 실시간 조황 및 공략 영상을 확인하세요.
-              </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {/* 1. 포인트 전체 최신 조황 */}
                 <a
@@ -2523,14 +2468,11 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
         {activeTab === 'MEMOS' && (
           <div className="space-y-3 text-xs">
             {/* 상단 안내 카드 */}
-            <div className="p-3.5 bg-gradient-to-r from-slate-900 to-indigo-950/60 border border-indigo-900/40 rounded-xl space-y-1">
+            <div className="p-3 bg-gradient-to-r from-slate-900 to-indigo-950/60 border border-indigo-900/40 rounded-xl">
               <div className="flex items-center gap-1.5 font-bold text-indigo-300">
                 <MessageSquare size={14} />
-                <span>조사님들의 실시간 현장 메모 & 방명록</span>
+                <span>현장 메모 & 방명록</span>
               </div>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
-                현장 진입로 상태, 갯바위 안전 주의, 주차 혼잡도, 실시간 물돌이 팁 등 생생한 정보를 공유해 주세요!
-              </p>
             </div>
 
             {/* 새 메모 작성 폼 */}
