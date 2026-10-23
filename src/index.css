@@ -1,6 +1,28 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
 
+/* 전체 기본 타이포그래피 베이스 및 PC웹 글자 크기 1포인트 상향 조정 */
+html {
+  font-size: 15px;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 17px; /* PC 데스크톱 환경에서 rem 스케일 1pt+ 확장 */
+  }
+
+  /* PC웹에서 초소형 픽셀 폰트 가독성 보정 */
+  .text-\[9px\] {
+    font-size: 11px !important;
+  }
+  .text-\[10px\] {
+    font-size: 12px !important;
+  }
+  .text-\[11px\] {
+    font-size: 13px !important;
+  }
+}
+
 /* Leaflet map styles */
 .leaflet-container {
   width: 100%;

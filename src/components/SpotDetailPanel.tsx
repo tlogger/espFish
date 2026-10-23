@@ -414,7 +414,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </button>
               <button
                 onClick={onClose}
-                className="p-1.5 rounded-lg bg-black/50 text-slate-300 hover:text-white transition text-xs"
+                className="p-1.5 rounded-lg bg-black/50 text-slate-300 hover:text-white transition text-xs md:hidden"
                 title="닫기"
               >
                 ✕
@@ -850,37 +850,37 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               );
             })()}
 
-            {/* [요구사항 3] 오늘 물때 & 일출/일몰, 만조/간조 텍스트 간단 요약 표기 */}
+            {/* [요구사항 7] 오늘 물때 & 일출/일몰, 만조/간조 크게 강조 표기 */}
             {tide && (
-              <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-2xl shadow-md space-y-1.5 text-xs">
-                <div className="flex items-center justify-between text-slate-200">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-sm text-cyan-300">🌊 {tide.mulText}</span>
-                    <span className="text-[11px] text-slate-400">({tide.lunarDateStr})</span>
+              <div className="p-3.5 sm:p-4 bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-slate-950/95 border border-cyan-500/40 rounded-2xl shadow-xl space-y-2.5">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-extrabold text-base sm:text-lg text-cyan-300 drop-shadow">🌊 {tide.mulText}</span>
+                    <span className="text-xs sm:text-sm text-slate-300 font-medium">({tide.lunarDateStr})</span>
                     {currentTidePoint && (
-                      <span className="text-[11px] text-cyan-200 font-mono bg-cyan-950/70 border border-cyan-800/60 px-1.5 py-0.5 rounded">
+                      <span className="text-xs sm:text-sm text-cyan-200 font-mono font-bold bg-cyan-950/90 border border-cyan-700/70 px-2 py-0.5 rounded-lg shadow-inner">
                         현재 {currentTidePoint.height}cm ({currentTidePoint.stateText})
                       </span>
                     )}
                   </div>
-                  <div className="text-[11px] text-slate-300 flex items-center gap-1.5">
-                    <span>🌅 일출 {tide.sunrise}</span>
-                    <span className="text-slate-600">·</span>
-                    <span>🌇 일몰 {tide.sunset}</span>
+                  <div className="text-xs sm:text-sm font-semibold text-slate-200 flex items-center gap-2 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700/60 shadow-sm">
+                    <span className="text-amber-300">🌅 일출 {tide.sunrise}</span>
+                    <span className="text-slate-500">|</span>
+                    <span className="text-indigo-300">🌇 일몰 {tide.sunset}</span>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800/80 text-slate-300 flex-wrap gap-y-1">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-rose-400 font-bold">🔴 만조:</span>
-                    <span className="font-mono text-slate-200">
-                      {tide.highTides.map((t) => `${t.time} (${t.height}cm)`).join(', ')}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1.5 border-t border-slate-800/90">
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-rose-950/30 border border-rose-900/40">
+                    <span className="text-rose-400 font-extrabold text-xs sm:text-sm shrink-0">🔴 만조</span>
+                    <span className="font-mono text-xs sm:text-sm text-rose-100 font-bold truncate">
+                      {tide.highTides.length > 0 ? tide.highTides.map((t) => `${t.time} (${t.height}cm)`).join(' · ') : '--'}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-blue-400 font-bold">🔵 간조:</span>
-                    <span className="font-mono text-slate-200">
-                      {tide.lowTides.map((t) => `${t.time} (${t.height}cm)`).join(', ')}
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-blue-950/30 border border-blue-900/40">
+                    <span className="text-blue-400 font-extrabold text-xs sm:text-sm shrink-0">🔵 간조</span>
+                    <span className="font-mono text-xs sm:text-sm text-blue-100 font-bold truncate">
+                      {tide.lowTides.length > 0 ? tide.lowTides.map((t) => `${t.time} (${t.height}cm)`).join(' · ') : '--'}
                     </span>
                   </div>
                 </div>
@@ -1374,29 +1374,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   </ResponsiveContainer>
                 </div>
 
-                {/* 일출, 일몰, 만조, 간조 조위 및 조차 정보 요약 바 */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px] pt-1 border-t border-slate-800">
-                  <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-center">
-                    <div className="text-[10px] text-slate-400">🌅 일출 (해창)</div>
-                    <div className="font-mono font-bold text-amber-300">{tide.sunrise}</div>
-                  </div>
-                  <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-center">
-                    <div className="text-[10px] text-slate-400">🌇 일몰 (피딩)</div>
-                    <div className="font-mono font-bold text-indigo-300">{tide.sunset}</div>
-                  </div>
-                  <div className="p-2 rounded-xl bg-rose-950/40 border border-rose-900/40 text-center">
-                    <div className="text-[10px] text-rose-400">🔴 오늘 만조 (조위)</div>
-                    <div className="font-mono font-bold text-rose-200 text-xs">
-                      {tide.highTides[0] ? `${tide.highTides[0].time} (${tide.highTides[0].height}cm)` : '--'}
-                    </div>
-                  </div>
-                  <div className="p-2 rounded-xl bg-blue-950/40 border border-blue-900/40 text-center">
-                    <div className="text-[10px] text-blue-400">🔵 오늘 간조 (조위)</div>
-                    <div className="font-mono font-bold text-blue-200 text-xs">
-                      {tide.lowTides[0] ? `${tide.lowTides[0].time} (${tide.lowTides[0].height}cm)` : '--'}
-                    </div>
-                  </div>
-                </div>
+
               </div>
             )}
 

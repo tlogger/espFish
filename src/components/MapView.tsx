@@ -1222,64 +1222,68 @@ export const MapView: React.FC<MapViewProps> = ({
           )}
         </div>
 
-        {/* 보조 액션 버튼들 (수심선 토글 & 채비 캘리브레이션 & 찜한 포인트 필터 & GPS 내 위치) */}
-        <div className="flex items-center gap-2">
-          {/* 150m 격자수심 + 실시간 조위 합성 동적 등심선(5~30m) 토글 버튼 */}
-          <button
-            onClick={toggleDepthContours}
-            className={`p-2.5 border rounded-xl shadow-xl backdrop-blur flex items-center justify-center transition active:scale-95 ${
-              showDepthContours
-                ? 'bg-blue-600 text-white border-blue-400 shadow-blue-500/30 ring-1 ring-blue-400'
-                : 'bg-slate-900/95 hover:bg-slate-800 text-slate-400 border-slate-700/80'
-            }`}
-            title={
-              showDepthContours
-                ? '150m 격자 + 실시간 조위 합성 등심선(5~30m) 끄기'
-                : '150m 격자 + 실시간 조위 합성 등심선(5~30m) 켜기'
-            }
-          >
-            <WavesIcon size={16} className={showDepthContours ? 'text-white' : 'text-slate-400'} />
-          </button>
+        {/* 보조 액션 단일 머티리얼 툴바 패널 (수심선 토글 & 채비 캘리브레이션 & 찜한 포인트 필터 & GPS 내 위치) */}
+        <div className="flex items-center bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-1 shadow-2xl divide-x divide-slate-800/80">
+          <div className="flex items-center gap-0.5 pr-1">
+            {/* 150m 격자수심 + 실시간 조위 합성 동적 등심선(5~30m) 토글 버튼 */}
+            <button
+              onClick={toggleDepthContours}
+              className={`p-2 rounded-xl flex items-center justify-center transition active:scale-95 ${
+                showDepthContours
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
+                  : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+              title={
+                showDepthContours
+                  ? '150m 격자 + 실시간 조위 합성 등심선(5~30m) 끄기'
+                  : '150m 격자 + 실시간 조위 합성 등심선(5~30m) 켜기'
+              }
+            >
+              <WavesIcon size={17} className={showDepthContours ? 'text-white' : 'text-slate-400'} />
+            </button>
 
-          {/* 공기역학 채비 캘리브레이션 버튼 */}
-          <button
-            onClick={() => setIsTacklePopoverOpen(!isTacklePopoverOpen)}
-            className={`p-2.5 border rounded-xl shadow-xl backdrop-blur flex items-center justify-center transition active:scale-95 ${
-              isTacklePopoverOpen
-                ? 'bg-cyan-600 text-white border-cyan-400 ring-1 ring-cyan-400'
-                : 'bg-slate-900/95 hover:bg-slate-800 text-slate-400 border-slate-700/80'
-            }`}
-            title="채비 공기역학 캘리브레이션 (루어 무게 & PE 라인 호수 설정)"
-          >
-            <Sliders size={16} className={isTacklePopoverOpen ? 'text-white' : 'text-slate-400'} />
-          </button>
+            {/* 공기역학 채비 캘리브레이션 버튼 */}
+            <button
+              onClick={() => setIsTacklePopoverOpen(!isTacklePopoverOpen)}
+              className={`p-2 rounded-xl flex items-center justify-center transition active:scale-95 ${
+                isTacklePopoverOpen
+                  ? 'bg-cyan-600 text-white shadow-md shadow-cyan-500/30'
+                  : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+              title="채비 공기역학 캘리브레이션 (루어 무게 & PE 라인 호수 설정)"
+            >
+              <Sliders size={17} className={isTacklePopoverOpen ? 'text-white' : 'text-slate-400'} />
+            </button>
 
-          {/* 찜한 포인트만 보기 필터 */}
-          <button
-            onClick={() => setViewOnlyFavorites(!viewOnlyFavorites)}
-            className={`p-2.5 border rounded-xl shadow-xl backdrop-blur flex items-center justify-center transition active:scale-95 ${
-              viewOnlyFavorites
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-amber-500/20'
-                : 'bg-slate-900/95 hover:bg-slate-800 text-slate-400 border-slate-700/80'
-            }`}
-            title={viewOnlyFavorites ? '전체 포인트 보기' : '내가 찜한 포인트만 보기'}
-          >
-            <Star size={16} className={viewOnlyFavorites ? 'fill-amber-400 text-amber-400' : ''} />
-          </button>
+            {/* 찜한 포인트만 보기 필터 */}
+            <button
+              onClick={() => setViewOnlyFavorites(!viewOnlyFavorites)}
+              className={`p-2 rounded-xl flex items-center justify-center transition active:scale-95 ${
+                viewOnlyFavorites
+                  ? 'bg-amber-500/20 text-amber-300 shadow-md shadow-amber-500/20'
+                  : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+              title={viewOnlyFavorites ? '전체 포인트 보기' : '내가 찜한 포인트만 보기'}
+            >
+              <Star size={17} className={viewOnlyFavorites ? 'fill-amber-400 text-amber-400' : ''} />
+            </button>
+          </div>
 
-          {/* GPS 내 위치 바로가기 버튼 */}
-          <button
-            onClick={handleLocateMe}
-            disabled={isLocating}
-            title="내 현재 GPS 위치 찾기"
-            className="p-2.5 bg-slate-900/95 hover:bg-slate-800 text-cyan-400 border border-slate-700/80 rounded-xl shadow-xl backdrop-blur flex items-center justify-center transition active:scale-95"
-          >
-            {isLocating ? (
-              <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <span className="text-lg leading-none">🎯</span>
-            )}
-          </button>
+          <div className="pl-1">
+            {/* GPS 내 위치 바로가기 버튼 */}
+            <button
+              onClick={handleLocateMe}
+              disabled={isLocating}
+              title="내 현재 GPS 위치 찾기"
+              className="p-2 hover:bg-slate-800 text-cyan-400 rounded-xl flex items-center justify-center transition active:scale-95"
+            >
+              {isLocating ? (
+                <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span className="text-base leading-none">🎯</span>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* 채비 및 로드 탄성 공기역학 캘리브레이션 플로팅 팝업 */}
@@ -1641,21 +1645,42 @@ export const MapView: React.FC<MapViewProps> = ({
         )}
       </div>
 
-      {/* [요구사항 3] 미니멀 위치 조정 컴팩트 패널 */}
+      {/* [요구사항 1] 미니멀 위치 조정 컴팩트 패널 (저장 및 취소 버튼 상단 헤더 배치로 하단 간섭 원천 방지) */}
       {microAdjustSpot && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-auto max-w-[92vw] z-30 bg-slate-900/95 border border-emerald-500/60 rounded-xl p-2.5 shadow-2xl backdrop-blur text-white flex flex-col items-center gap-2 animate-fade-in text-xs">
-          <div className="flex items-center justify-between w-full border-b border-slate-800 pb-1.5 px-1">
-            <div className="flex items-center gap-1.5 font-bold text-emerald-300 text-xs">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-auto max-w-[92vw] z-30 bg-slate-900/95 border border-emerald-500/60 rounded-xl p-2 shadow-2xl backdrop-blur text-white flex flex-col items-center gap-1.5 animate-fade-in text-xs">
+          <div className="flex items-center justify-between w-full gap-3 border-b border-slate-800 pb-1 px-1">
+            <div className="flex items-center gap-1 font-bold text-emerald-300 text-xs">
               <Crosshair size={14} className="text-emerald-400 animate-pulse" />
               <span>위치 조정</span>
+              {distMeters > 0.05 && (
+                <span className="text-[10px] text-emerald-400 font-mono font-semibold">+{distMeters.toFixed(1)}m</span>
+              )}
             </div>
-            {distMeters > 0.05 && (
-              <span className="text-[10px] text-emerald-400 font-mono font-semibold">+{distMeters.toFixed(1)}m</span>
-            )}
+
+            {/* 상단 액션: 저장 & 취소 버튼 상단 배치 */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => onConfirmMicroAdjust && onConfirmMicroAdjust(microAdjustSpot.id, adjustedPos.lat, adjustedPos.lng)}
+                className="py-1 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition active:scale-95 flex items-center gap-0.5"
+                title="조정 위치 저장"
+              >
+                <Check size={13} />
+                <span>저장</span>
+              </button>
+              <button
+                type="button"
+                onClick={onCancelMicroAdjust}
+                className="py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition"
+                title="조정 취소"
+              >
+                취소
+              </button>
+            </div>
           </div>
 
           {/* D-Pad 1m 단위 미세 넛지 컨트롤 (라벨 텍스트 완전 제거) */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 pt-0.5">
             <button
               type="button"
               onClick={() => handleNudge(0.000009, 0)}
@@ -1691,25 +1716,6 @@ export const MapView: React.FC<MapViewProps> = ({
               aria-label="동쪽 1m"
             >
               ►
-            </button>
-          </div>
-
-          {/* 저장 버튼(왼쪽), 취소 버튼(오른쪽) */}
-          <div className="flex gap-2 w-full pt-0.5">
-            <button
-              type="button"
-              onClick={() => onConfirmMicroAdjust && onConfirmMicroAdjust(microAdjustSpot.id, adjustedPos.lat, adjustedPos.lng)}
-              className="flex-1 py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition active:scale-95 flex items-center justify-center gap-1"
-            >
-              <Check size={13} />
-              <span>저장</span>
-            </button>
-            <button
-              type="button"
-              onClick={onCancelMicroAdjust}
-              className="flex-1 py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition flex items-center justify-center"
-            >
-              취소
             </button>
           </div>
         </div>
