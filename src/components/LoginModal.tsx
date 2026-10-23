@@ -381,6 +381,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   {DEFAULT_POPULAR_SPECIES.map((sp) => {
                     const isSelected = selectedSpecies.includes(sp);
                     const ecology = SPECIES_ENCYCLOPEDIA[sp];
+                    const isTastiest = ecology?.tastiestMonths?.includes(new Date().getMonth() + 1);
                     return (
                       <button
                         type="button"
@@ -393,7 +394,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                         }`}
                       >
                         <div className="flex items-center justify-between font-bold text-xs">
-                          <span>{sp}</span>
+                          <span className="flex items-center gap-1">
+                            {sp}
+                            {isTastiest && (
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-500/40 font-bold" title="지금 제철 꿀맛">
+                                🍽️제철
+                              </span>
+                            )}
+                          </span>
                           {isSelected && <Check size={12} className="text-cyan-400" />}
                         </div>
                         <span className="text-[10px] text-slate-500 mt-0.5 truncate">

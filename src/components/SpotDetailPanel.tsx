@@ -49,6 +49,7 @@ import { ChecklistModal } from './ChecklistModal';
 import { BiteScoreHelpModal } from './BiteScoreHelpModal';
 import { deleteCloudMemo, fetchCloudMemos, saveCloudMemo } from '../utils/cloudDb';
 import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
+import { SpeciesQuickModal } from './SpeciesQuickModal';
 import { getSpeciesRigInfo } from '../utils/speciesRigs';
 import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeatherText, getWindyWebUrl } from '../utils/weatherApi';
 import { generatePostMortemReport } from '../utils/postMortemEngine';
@@ -245,6 +246,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
   const windyUrl = getWindyWebUrl(spot.lat, spot.lng);
 
+  // 미니 어종 백과사전 모달 상태
+  const [quickModalSpecies, setQuickModalSpecies] = React.useState<string | null>(null);
+
   // 네비 목적지 명칭: 사용자가 지정한 navi_name이 있으면 그것을 우선 사용, 없으면 spot.name
   const destinationName = spot.navi_name && spot.navi_name.trim().length > 0 ? spot.navi_name.trim() : spot.name;
 
@@ -433,10 +437,52 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 {spot.name}
               </h1>
 
-              {/* 대상 어종 */}
+              {/* 대상 어종 (탭 시 3초 퀵 카드 팝업 연결) */}
               {spot.target_species && spot.target_species.length > 0 && (
-                <div className="text-[11px] text-cyan-300 font-bold truncate drop-shadow">
-                  🎯 {spot.target_species.slice(0, 4).join(', ')}
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  <span className="text-[11px] text-cyan-400 font-bold drop-shadow flex items-center gap-1">
+                    🎯 대상어:
+                  </span>
+                  {spot.target_species.slice(0, 5).map((sp, idx) => {
+                    const eco = SPECIES_ENCYCLOPEDIA[sp] || Object.values(SPECIES_ENCYCLOPEDIA).find(e => e.name.includes(sp) || sp.includes(e.name));
+                    const isTastiest = eco?.tastiestMonths?.includes(new Date().getMonth() + 1);
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setQuickModalSpecies(sp)}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900/90 hover:bg-cyan-950/80 border border-slate-700/80 hover:border-cyan-400 text-[10.5px] font-bold text-slate-200 transition active:scale-95 shadow-sm"
+                        title="클릭하여 3초 어종 요약 카드 보기"
+                      >
+                        <span>{sp}</span>
+                        {eco?.minLengthCm && (
+                          <span className="text-[9px] px-1 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-600/30">
+                            {eco.minLengthCm}↓방생
+                          </span>
+                        )}
+                        {isTastiest && (
+                          <span className="text-[9px] px-1 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-500/40 font-bold" title="지금 제철 꿀맛">
+                            🍽️제철
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* [신규 고도화: 제안 2] 지금 이 포인트에서 가장 입질 확률 높은 추천 타깃 1줄 하이라이트 */}
+              {biteScore?.topSpecies && (
+                <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-cyan-950/90 to-blue-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/40 text-[11px] shadow">
+                  <span className="text-cyan-400 font-black shrink-0">✨ 실시간 최고 타깃:</span>
+                  <button
+                    type="button"
+                    onClick={() => biteScore.topSpecies && setQuickModalSpecies(biteScore.topSpecies.speciesName)}
+                    className="font-bold text-white underline decoration-cyan-400 underline-offset-2 hover:text-cyan-200"
+                  >
+                    {biteScore.topSpecies.speciesName} ({biteScore.topSpecies.score}점)
+                  </button>
+                  <span className="text-slate-400 text-[10px] hidden xs:inline">· {biteScore.topSpecies.activityMatch}</span>
                 </div>
               )}
 
@@ -2640,6 +2686,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
       <BiteScoreHelpModal
         isOpen={isBiteScoreHelpOpen}
         onClose={() => setIsBiteScoreHelpOpen(false)}
+      />
+
+      {/* [신규 고도화: 제안 4] 3초 초간결 미니 어종 카드 팝업 */}
+      <SpeciesQuickModal
+        speciesName={quickModalSpecies}
+        onClose={() => setQuickModalSpecies(null)}
       />
     </div>
   );

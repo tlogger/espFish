@@ -1,9 +1,10 @@
 import React from 'react';
-import { ArrowUp, Clock, Compass, RefreshCw } from 'lucide-react';
+import { ArrowUp, Clock, Compass, RefreshCw, ShieldAlert } from 'lucide-react';
 import type { CatchLog, CurrentUnit, FishingMethod, TideDayInfo, WeatherData, WindUnit } from '../types';
 import { syncCatchEnvironment } from '../utils/catchSync';
 import { formatCurrentVelocity, formatWindSpeed, getCompassDirection } from '../utils/weatherApi';
 import { generatePostMortemReport } from '../utils/postMortemEngine';
+import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 
 interface CatchLogModalProps {
   isOpen: boolean;
@@ -371,6 +372,46 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                 placeholder="감성돔, 우럭, 농어, 볼락, 쭈꾸미 등"
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-medium focus:outline-none focus:border-cyan-400"
               />
+
+              {/* 스마트 금어기 / 방생체장 실시간 안내 뱃지 */}
+              {(() => {
+                const trimmed = fishSpecies.trim();
+                const matchedEcology =
+                  SPECIES_ENCYCLOPEDIA[trimmed] ||
+                  Object.values(SPECIES_ENCYCLOPEDIA).find(
+                    (sp) => sp.name.includes(trimmed) || (trimmed && trimmed.includes(sp.name))
+                  );
+
+                if (!matchedEcology) return null;
+
+                const hasMinLength = matchedEcology.minLengthCm != null;
+                const hasProhibited = !!matchedEcology.prohibitedPeriod;
+                const isUnderSize = !isHitless && fishSize != null && hasMinLength && fishSize <= (matchedEcology.minLengthCm || 0);
+
+                return (
+                  <div className="mt-1.5 p-2 rounded-lg bg-slate-950/70 border border-slate-800 text-[11px] space-y-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-bold text-slate-300">[{matchedEcology.name}]</span>
+                      {hasMinLength && (
+                        <span className="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-600/40 font-semibold flex items-center gap-0.5">
+                          <ShieldAlert size={11} />
+                          <span>방생 기준: 전장 {matchedEcology.minLengthCm}cm 이하</span>
+                        </span>
+                      )}
+                      {hasProhibited && (
+                        <span className="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-600/40 font-semibold">
+                          금어기: {matchedEcology.prohibitedPeriod}
+                        </span>
+                      )}
+                    </div>
+                    {isUnderSize && (
+                      <p className="text-rose-400 font-bold animate-pulse text-[11px] pt-0.5">
+                        ⚠️ 측정 체장({fishSize}cm)이 법정 금지체장({matchedEcology.minLengthCm}cm) 이하입니다. 어린 치어는 즉시 방생하셨나요? (위반 시 과태료 최대 80만 원)
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
