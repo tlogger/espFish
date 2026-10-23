@@ -180,6 +180,7 @@ export function calculateCalibratedDistance(
   // ----------------------------------------------------
   // [루어대 비거리 연산 엔진]
   // 파워 등급(UL~H)별 탄성 복원율 + 로드 길이(ft) 레버 암
+  // 저그램 지그헤드(0.5~5g) 스풀 림 코일 방출 저항 & 가이드 링 마찰 페널티 반영
   // ML대: 7~30g 허용, MH 및 H대: 50g까지 허용 반영
   // ----------------------------------------------------
   const rodLengthFt = rodLengthM * 3.28084;
@@ -188,7 +189,11 @@ export function calculateCalibratedDistance(
   // 1. 로드 길이 레버 암 계수 (8.6ft 기준 = 1.0)
   const lengthFactor = Math.pow(safeLengthFt / 8.6, 0.65);
 
-  // 2. 로드 파워 탄성 위치에너지 축적 및 복원 효율
+  // 2. 루어 질량 기반 비행 포텐셜 (공기역학적 질량-단면적 및 공기저항 한계 거리)
+  // 1g: ~21m, 3g: ~37m, 5g: ~47m, 10g: ~60m, 25g: ~71m, 50g: ~76m
+  const massPotential = 78.0 * (1 - Math.exp(-0.31 * Math.pow(safeWeight, 0.58)));
+
+  // 3. 로드 파워 탄성 위치에너지 축적 및 복원 효율 (적정 루어 무게와의 일치도)
   const spec = ROD_POWER_SPECS[rodPower] || ROD_POWER_SPECS.M;
   const optW = spec.optWeightG;
 
@@ -202,13 +207,32 @@ export function calculateCalibratedDistance(
 
   const logRatio = Math.log(safeWeight) - Math.log(optW);
   const elasticityEfficiency = Math.exp(-(logRatio * logRatio) / (2 * sigma * sigma));
+  const rodEfficiencyFactor = 0.62 + 0.38 * elasticityEfficiency;
 
-  // 3. 합사 PE 라인 공기저항 계수 (1.0호 기준 = 1.0)
-  const lineFactor = Math.pow(1.0 / safePE, 0.22);
+  // 4. 합사 PE 라인 공기저항 계수 (0.8호 기준 = 1.0)
+  const lineAirFactor = Math.pow(0.8 / safePE, 0.18);
 
-  // 4. 표준 캐스팅 기준 거리 55m에 계수 융합
-  const rawDist = 55.0 * lengthFactor * (0.35 + 0.65 * elasticityEfficiency) * lineFactor;
-  const distanceMeters = Math.round(Math.max(12, Math.min(125, rawDist)));
+  // 5. 스풀 림 방출 저항 및 가이드 링 통과 마찰 저항 (Spool Lip & Guide Ring Payout Friction)
+  // 저그램(0.5g~5g) 지그헤드는 초기 운동에너지(E_k = 0.5*m*v^2)가 극히 작아(1g 시 약 0.2J),
+  // 스피닝 릴 스풀 림에서 나선형(Coil)으로 풀려나갈 때의 저항과 초릿대 가이드 링 마찰(Line Slap)에 의해 속도가 급감함.
+  // 특히 라인이 굵을수록(PE 0.4호 초과) 휨 강성(EI ∝ d^4)으로 인해 방출 저항이 비선형적으로 폭증함.
+  let spoolGuideFactor = 1.0;
+  if (safeWeight < 5.5) {
+    const lightDeficit = (5.5 - safeWeight) / 5.0; // 0.5g -> 1.0, 1g -> 0.9, 3g -> 0.5, 5g -> 0.1
+    const lineStiffnessPenalty = Math.max(0, safePE - 0.3) / 0.5; // 0.4호: 0.2, 0.8호: 1.0, 1.5호: 2.4
+    const loss = 0.38 * Math.pow(lightDeficit, 1.1) * Math.pow(lineStiffnessPenalty, 0.85);
+    spoolGuideFactor = Math.max(0.20, 1.0 - loss);
+  }
+
+  // 6. 비거리 종합 산출
+  const rawDist = massPotential * lengthFactor * rodEfficiencyFactor * lineAirFactor * spoolGuideFactor;
+  const distanceMeters = Math.round(Math.max(3, Math.min(125, rawDist)));
+
+  return {
+    distanceMeters,
+    elasticityEfficiency: Math.round(elasticityEfficiency * 100) / 100,
+    lengthFactor: Math.round(lengthFactor * 100) / 100,
+  };
 
   return {
     distanceMeters,
