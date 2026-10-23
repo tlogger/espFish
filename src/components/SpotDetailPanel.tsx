@@ -855,28 +855,38 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   </div>
                 )}
 
-                {/* 3행: 오늘 만조 및 간조 전체 목록 (아이콘 없이 한줄에 모두 표기) */}
-                <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs sm:text-sm font-mono overflow-x-auto whitespace-nowrap">
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-rose-400 font-bold font-sans">만조</span>
-                    {tide.highTides.length > 0
-                      ? tide.highTides.map((t, idx) => (
-                          <span key={idx} className="bg-rose-950/60 text-rose-200 px-1.5 py-0.5 rounded border border-rose-800/60 font-semibold">
-                            {t.time} ({t.height}cm)
-                          </span>
-                        ))
-                      : '--'}
+                {/* 3행 & 4행: 오늘 만조 및 간조 목록 (만조 한 줄, 간조 한 줄로 명확히 분리) */}
+                <div className="space-y-1.5 pt-0.5">
+                  {/* 만조 행 */}
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-950/80 border border-rose-900/40 text-xs sm:text-sm font-mono overflow-x-auto whitespace-nowrap shadow-xs">
+                    <span className="text-rose-400 font-extrabold font-sans shrink-0 px-1 py-0.2 rounded bg-rose-950/80 border border-rose-800/60">
+                      만조
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {tide.highTides.length > 0
+                        ? tide.highTides.map((t, idx) => (
+                            <span key={idx} className="bg-rose-950/50 text-rose-200 px-2 py-0.5 rounded border border-rose-700/50 font-semibold">
+                              {t.time} <span className="text-rose-300 font-sans text-[11px]">({t.height}cm)</span>
+                            </span>
+                          ))
+                        : <span className="text-slate-500 font-sans">정보 없음</span>}
+                    </div>
                   </div>
-                  <span className="text-slate-600 font-sans">|</span>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-blue-400 font-bold font-sans">간조</span>
-                    {tide.lowTides.length > 0
-                      ? tide.lowTides.map((t, idx) => (
-                          <span key={idx} className="bg-blue-950/60 text-blue-200 px-1.5 py-0.5 rounded border border-blue-800/60 font-semibold">
-                            {t.time} ({t.height}cm)
-                          </span>
-                        ))
-                      : '--'}
+
+                  {/* 간조 행 */}
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-950/80 border border-blue-900/40 text-xs sm:text-sm font-mono overflow-x-auto whitespace-nowrap shadow-xs">
+                    <span className="text-blue-400 font-extrabold font-sans shrink-0 px-1 py-0.2 rounded bg-blue-950/80 border border-blue-800/60">
+                      간조
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {tide.lowTides.length > 0
+                        ? tide.lowTides.map((t, idx) => (
+                            <span key={idx} className="bg-blue-950/50 text-blue-200 px-2 py-0.5 rounded border border-blue-700/50 font-semibold">
+                              {t.time} <span className="text-blue-300 font-sans text-[11px]">({t.height}cm)</span>
+                            </span>
+                          ))
+                        : <span className="text-slate-500 font-sans">정보 없음</span>}
+                    </div>
                   </div>
                 </div>
               </div>

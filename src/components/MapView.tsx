@@ -254,6 +254,73 @@ export const MapView: React.FC<MapViewProps> = ({
   // [요구사항 1] 카카오 기본 줌(Level 1)을 초과하는 2단계 추가 디지털 줌 (1.0x -> 1.8x -> 3.0x)
   const [digitalZoom, setDigitalZoom] = React.useState<number>(1.0);
 
+  // 카카오 맵 인스턴스 참조
+  const mapRef = React.useRef<any>(null);
+
+  // [요구사항 2] 디지털 슈퍼 줌(1.8x, 3.0x) 상태에서 픽셀 드래그 오차 100% 정밀 보정
+  const dragTrackerRef = React.useRef<{
+    isDragging: boolean;
+    lastX: number;
+    lastY: number;
+    totalDist: number;
+  }>({
+    isDragging: false,
+    lastX: 0,
+    lastY: 0,
+    totalDist: 0,
+  });
+
+  const handlePointerDown = (clientX: number, clientY: number) => {
+    if (digitalZoom <= 1.0) return;
+    dragTrackerRef.current = {
+      isDragging: true,
+      lastX: clientX,
+      lastY: clientY,
+      totalDist: 0,
+    };
+  };
+
+  const handlePointerMove = (clientX: number, clientY: number) => {
+    if (digitalZoom <= 1.0 || !dragTrackerRef.current.isDragging || !mapRef.current) return;
+    const dx = clientX - dragTrackerRef.current.lastX;
+    const dy = clientY - dragTrackerRef.current.lastY;
+    dragTrackerRef.current.totalDist += Math.hypot(dx, dy);
+    dragTrackerRef.current.lastX = clientX;
+    dragTrackerRef.current.lastY = clientY;
+
+    try {
+      const map = mapRef.current;
+      const proj = map.getProjection ? map.getProjection() : null;
+      if (proj && (window as any).kakao?.maps?.Point) {
+        const curCenter = map.getCenter();
+        const curPoint = proj.pointFromCoords(curCenter);
+        // 부모 transform scale(digitalZoom)으로 인한 픽셀 이동 왜곡 보정: 화면에서 움직인 만큼 지도 1:1 동기화
+        const newPoint = new (window as any).kakao.maps.Point(
+          curPoint.x - dx / digitalZoom,
+          curPoint.y - dy / digitalZoom
+        );
+        const newCenter = proj.coordsFromPoint(newPoint);
+        map.setCenter(newCenter);
+      } else if (map.panBy) {
+        map.panBy(-dx / digitalZoom, -dy / digitalZoom);
+      }
+    } catch (err) {
+      console.warn('Superzoom drag pan error:', err);
+    }
+  };
+
+  const handlePointerUp = () => {
+    if (dragTrackerRef.current.isDragging) {
+      dragTrackerRef.current.isDragging = false;
+      if (mapRef.current) {
+        try {
+          const c = mapRef.current.getCenter();
+          setCenter({ lat: c.getLat(), lng: c.getLng() });
+        } catch {}
+      }
+    }
+  };
+
   const handleZoomIn = () => {
     if (level > 1) {
       setLevel((prev) => Math.max(1, prev - 1));
@@ -489,13 +556,35 @@ export const MapView: React.FC<MapViewProps> = ({
         isDarkMode ? 'kakao-dark-mode' : ''
       } ${isSunMode ? 'exfish-sun-mode' : ''}`}
     >
-      {/* [요구사항 1] Level 1 상태에서 2단계 추가 디지털 줌 (1.8x, 3.0x) 지원 래퍼 */}
+      {/* [요구사항 1, 2] Level 1 상태에서 2단계 추가 디지털 줌 (1.8x, 3.0x) 지원 래퍼 및 픽셀 드래그 오차 100% 정밀 보정 */}
       <div
-        className="w-full h-full transition-transform duration-200 origin-center"
+        className="w-full h-full transition-transform duration-200 origin-center select-none"
         style={{
           transform: digitalZoom > 1.0 ? `scale(${digitalZoom})` : 'none',
           transformOrigin: 'center center',
+          touchAction: digitalZoom > 1.0 ? 'none' : 'auto',
+          cursor: digitalZoom > 1.0 ? (dragTrackerRef.current.isDragging ? 'grabbing' : 'grab') : 'default',
         }}
+        onMouseDown={(e) => {
+          if (e.button === 0) handlePointerDown(e.clientX, e.clientY);
+        }}
+        onMouseMove={(e) => {
+          handlePointerMove(e.clientX, e.clientY);
+        }}
+        onMouseUp={handlePointerUp}
+        onMouseLeave={handlePointerUp}
+        onTouchStart={(e) => {
+          if (e.touches.length === 1) {
+            handlePointerDown(e.touches[0].clientX, e.touches[0].clientY);
+          }
+        }}
+        onTouchMove={(e) => {
+          if (e.touches.length === 1) {
+            handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+          }
+        }}
+        onTouchEnd={handlePointerUp}
+        onTouchCancel={handlePointerUp}
         onWheel={(e) => {
           if (level === 1) {
             if (e.deltaY < 0 && digitalZoom < 3.0) {
@@ -507,20 +596,29 @@ export const MapView: React.FC<MapViewProps> = ({
         }}
       >
         <Map
+          onCreate={(map) => {
+            mapRef.current = map;
+          }}
+          draggable={digitalZoom === 1.0}
           center={center}
           level={level}
-        mapTypeId={kakaoMapTypeId}
-        style={{ width: '100%', height: '100%' }}
-        onClick={(_target, mouseEvent) => {
-          // 마커나 팝업 클릭 시 지도 클릭 핸들러가 발화되는 관통 현상 원천 차단
-          if (isMarkerClickRef.current) {
-            isMarkerClickRef.current = false;
-            return;
-          }
-          // 지도 빈 공간 클릭 시 바로 모달을 열지 않고 '미니 확인 팝업'을 띄워 실수 터치 방지
-          const latLng = mouseEvent.latLng;
-          setPendingNewSpot({ lat: latLng.getLat(), lng: latLng.getLng() });
-        }}
+          mapTypeId={kakaoMapTypeId}
+          style={{ width: '100%', height: '100%' }}
+          onClick={(_target, mouseEvent) => {
+            // 마커나 팝업 클릭 시 지도 클릭 핸들러가 발화되는 관통 현상 원천 차단
+            if (isMarkerClickRef.current) {
+              isMarkerClickRef.current = false;
+              return;
+            }
+            // 디지털 줌 드래그 중 실수 클릭 차단
+            if (dragTrackerRef.current.totalDist > 6) {
+              dragTrackerRef.current.totalDist = 0;
+              return;
+            }
+            // 지도 빈 공간 클릭 시 바로 모달을 열지 않고 '미니 확인 팝업'을 띄워 실수 터치 방지
+            const latLng = mouseEvent.latLng;
+            setPendingNewSpot({ lat: latLng.getLat(), lng: latLng.getLng() });
+          }}
         onZoomChanged={(target) => {
           setLevel(target.getLevel());
         }}
