@@ -56,7 +56,8 @@ import { getSpeciesRigInfo } from '../utils/speciesRigs';
 import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeatherText, getWindyWebUrl, calculateSwellRisk } from '../utils/weatherApi';
 import { generatePostMortemReport } from '../utils/postMortemEngine';
 import { findNearestKhoaStation } from '../utils/khoaTideEngine';
-import { playEvacuationBeep } from '../utils/tideAlertSound';
+import { playEvacuationBeep, playEvacuationSiren } from '../utils/tideAlertSound';
+import { sendEmergencyEvacuationNotification, requestNotificationPermission, isNativePlatform } from '../utils/nativeBridge';
 import {
   getSavedTackleConfig,
   saveTackleConfig,
@@ -136,16 +137,29 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
     return () => window.removeEventListener('exfish_tackle_updated', handleTackleUpdate);
   }, []);
 
-  // 갯바위 들물 탈출 골든타임 비프 경보 활성화 상태
+  // 갯바위 들물 탈출 골든타임 비프 경보 활성화 상태 (Phase 3: 네이티브 푸시/알람 연동)
   const [isEvacAlarmEnabled, setIsEvacAlarmEnabled] = React.useState(false);
   const evacAlarmIntervalRef = React.useRef<any>(null);
 
+  const toggleEvacAlarm = async () => {
+    if (!isEvacAlarmEnabled) {
+      // 알림 권한 획득 시도
+      await requestNotificationPermission();
+      setIsEvacAlarmEnabled(true);
+      sendEmergencyEvacuationNotification(
+        '🛡️ ExFish 들물 안전 감시 활성화',
+        '갯바위 퇴로 침수 위험 구간 도달 시 비상 사이렌 및 진동이 울립니다.'
+      );
+    } else {
+      setIsEvacAlarmEnabled(false);
+    }
+  };
+
   React.useEffect(() => {
     if (isEvacAlarmEnabled) {
-      playEvacuationBeep();
       evacAlarmIntervalRef.current = setInterval(() => {
         playEvacuationBeep();
-      }, 25000); // 25초마다 위험 경보음 발생
+      }, 25000); // 25초마다 위험 알림 비프
     } else {
       if (evacAlarmIntervalRef.current) {
         clearInterval(evacAlarmIntervalRef.current);
@@ -779,29 +793,35 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       </span>
                     </div>
 
-                    {/* 비프 경보음 토글 및 테스트 버튼 */}
-                    <div className="flex items-center gap-1">
+                    {/* Phase 3: 비프/사이렌 경보음 토글 및 비상 알람 테스트 버튼 */}
+                    <div className="flex items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => playEvacuationBeep()}
-                        className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[10px] flex items-center gap-1 transition active:scale-95"
-                        title="대피 비프 경보음 1회 테스트"
+                        onClick={() => {
+                          sendEmergencyEvacuationNotification(
+                            '🚨 [긴급 대피 훈련] 들물 퇴로 침수 경보',
+                            '테스트 경보: 갯바위 하산로가 침수되기 전 즉시 고지대로 대피하십시오!',
+                            true
+                          );
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-rose-950/80 hover:bg-rose-900 text-rose-200 border border-rose-600/70 text-[10px] flex items-center gap-1 font-bold shadow-sm transition active:scale-95"
+                        title="로컬 알림 + 사이렌 + 햅틱 비상 경보 테스트"
                       >
-                        <Volume2 size={12} className="text-cyan-400" />
-                        <span>소리 테스트</span>
+                        <Volume2 size={12} className="text-rose-400 animate-pulse" />
+                        <span>비상 알람 테스트</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => setIsEvacAlarmEnabled(!isEvacAlarmEnabled)}
-                        className={`px-2 py-0.5 rounded-lg border text-[10px] flex items-center gap-1 font-bold transition active:scale-95 ${
+                        onClick={toggleEvacAlarm}
+                        className={`px-2.5 py-1 rounded-lg border text-[10px] flex items-center gap-1 font-bold transition active:scale-95 shadow-sm ${
                           isEvacAlarmEnabled
-                            ? 'bg-rose-600 text-white border-rose-400 ring-1 ring-rose-300 animate-pulse'
-                            : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+                            ? 'bg-rose-600 text-white border-rose-400 ring-2 ring-rose-400/50 animate-pulse'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
                         }`}
-                        title="주기적 비프 경보 알람 토글"
+                        title="들물 안전 실시간 감시 및 비상 알림 토글"
                       >
                         <Bell size={12} className={isEvacAlarmEnabled ? 'text-white' : 'text-slate-400'} />
-                        <span>{isEvacAlarmEnabled ? '경보음 켜짐' : '비프 알람'}</span>
+                        <span>{isEvacAlarmEnabled ? '안전 감시 가동중' : '들물 감시 켜기'}</span>
                       </button>
                     </div>
                   </div>
