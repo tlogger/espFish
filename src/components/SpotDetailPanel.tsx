@@ -850,38 +850,58 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               );
             })()}
 
-            {/* [요구사항 7] 오늘 물때 & 일출/일몰, 만조/간조 크게 강조 표기 */}
+            {/* [요구사항 1,2,3] 오늘 물때 & 일출/일몰, 현재 수위 두 줄 표기, 오늘 만조/간조 전체 표기 */}
             {tide && (
-              <div className="p-3.5 sm:p-4 bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-slate-950/95 border border-cyan-500/40 rounded-2xl shadow-xl space-y-2.5">
+              <div className="p-3.5 sm:p-4 bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-slate-950/95 border border-cyan-500/40 rounded-2xl shadow-xl space-y-2">
+                {/* 1행: 물때 명칭 & 일출/일몰 (아이콘 없이 텍스트로만 깔끔 표기) */}
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
                     <span className="font-extrabold text-base sm:text-lg text-cyan-300 drop-shadow">🌊 {tide.mulText}</span>
                     <span className="text-xs sm:text-sm text-slate-300 font-medium">({tide.lunarDateStr})</span>
-                    {currentTidePoint && (
-                      <span className="text-xs sm:text-sm text-cyan-200 font-mono font-bold bg-cyan-950/90 border border-cyan-700/70 px-2 py-0.5 rounded-lg shadow-inner">
-                        현재 {currentTidePoint.height}cm ({currentTidePoint.stateText})
-                      </span>
-                    )}
                   </div>
-                  <div className="text-xs sm:text-sm font-semibold text-slate-200 flex items-center gap-2 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700/60 shadow-sm">
-                    <span className="text-amber-300">🌅 일출 {tide.sunrise}</span>
-                    <span className="text-slate-500">|</span>
-                    <span className="text-indigo-300">🌇 일몰 {tide.sunset}</span>
+                  <div className="text-xs sm:text-sm font-semibold text-slate-300 flex items-center gap-2 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700/60 shadow-sm font-mono">
+                    <span className="text-amber-200">일출 {tide.sunrise}</span>
+                    <span className="text-slate-600">|</span>
+                    <span className="text-indigo-200">일몰 {tide.sunset}</span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1.5 border-t border-slate-800/90">
-                  <div className="flex items-center gap-2 p-2 rounded-xl bg-rose-950/30 border border-rose-900/40">
-                    <span className="text-rose-400 font-extrabold text-xs sm:text-sm shrink-0">🔴 만조</span>
-                    <span className="font-mono text-xs sm:text-sm text-rose-100 font-bold truncate">
-                      {tide.highTides.length > 0 ? tide.highTides.map((t) => `${t.time} (${t.height}cm)`).join(' · ') : '--'}
+                {/* 2행: 현재 수위 (두 번째 줄에 독립 표기) */}
+                {currentTidePoint && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs sm:text-sm text-cyan-200 font-mono font-bold bg-cyan-950/90 border border-cyan-700/70 px-2.5 py-1 rounded-lg shadow-inner flex items-center gap-1.5">
+                      <span className="text-slate-400 font-sans font-normal">현재 수위:</span>
+                      <span className="text-white font-extrabold">{currentTidePoint.height}cm</span>
+                      <span className="text-cyan-300 font-sans">({currentTidePoint.stateText})</span>
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 p-2 rounded-xl bg-blue-950/30 border border-blue-900/40">
-                    <span className="text-blue-400 font-extrabold text-xs sm:text-sm shrink-0">🔵 간조</span>
-                    <span className="font-mono text-xs sm:text-sm text-blue-100 font-bold truncate">
-                      {tide.lowTides.length > 0 ? tide.lowTides.map((t) => `${t.time} (${t.height}cm)`).join(' · ') : '--'}
-                    </span>
+                )}
+
+                {/* 3행: 오늘 만조 및 간조 전체 목록 (칩 형태로 모두 노출) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-800/90">
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-rose-950/30 border border-rose-900/40">
+                    <span className="text-rose-400 font-extrabold text-xs sm:text-sm shrink-0 mt-0.5">🔴 만조</span>
+                    <div className="flex flex-wrap items-center gap-1.5 font-mono text-xs sm:text-sm text-rose-100 font-bold">
+                      {tide.highTides.length > 0
+                        ? tide.highTides.map((t, idx) => (
+                            <span key={idx} className="bg-rose-900/40 px-2 py-0.5 rounded border border-rose-700/50">
+                              {t.time} ({t.height}cm)
+                            </span>
+                          ))
+                        : '--'}
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-blue-950/30 border border-blue-900/40">
+                    <span className="text-blue-400 font-extrabold text-xs sm:text-sm shrink-0 mt-0.5">🔵 간조</span>
+                    <div className="flex flex-wrap items-center gap-1.5 font-mono text-xs sm:text-sm text-blue-100 font-bold">
+                      {tide.lowTides.length > 0
+                        ? tide.lowTides.map((t, idx) => (
+                            <span key={idx} className="bg-blue-900/40 px-2 py-0.5 rounded border border-blue-700/50">
+                              {t.time} ({t.height}cm)
+                            </span>
+                          ))
+                        : '--'}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1211,26 +1231,18 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             {/* 3. [제안 6] 현재 시각 기준 연속 조위 변화 곡선 (-6h ~ +36h, 스크롤 없는 반응형 100% 뷰) */}
             {tide && (
               <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2.5">
-                {/* [항목 5] KHOA 53개 관측소 실시간 API 연동 & 잔차 지수감쇄 하이브리드 엔진 뱃지 */}
+                {/* KHOA 53개 관측소 실시간 API 연동 안내 */}
                 {(() => {
                   const stationInfo = findNearestKhoaStation(spot.lat, spot.lng);
                   return (
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-cyan-800/60 text-xs">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                        <span className="font-bold text-cyan-200">
-                          📍 KHOA 국립해양조사원 {stationInfo.station.name} 관측소
-                        </span>
-                        <span className="font-mono text-[10.5px] text-slate-400">
-                          (직선거리 {stationInfo.distanceKm}km, 코드 {stationInfo.station.code})
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-[10px]">
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono font-bold flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                          <span>하이브리드 잔차(e^-λt) 보정 가동중</span>
-                        </span>
-                      </div>
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900 border border-cyan-800/60 text-xs flex-wrap">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                      <span className="font-bold text-cyan-200">
+                        📍 KHOA 국립해양조사원 {stationInfo.station.name} 관측소
+                      </span>
+                      <span className="font-mono text-[11px] text-slate-400">
+                        (직선거리 {stationInfo.distanceKm}km, 코드 {stationInfo.station.code})
+                      </span>
                     </div>
                   );
                 })()}
@@ -1239,14 +1251,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   <span className="font-bold text-slate-200 flex items-center gap-1.5">
                     🌊 조위 변화 곡선 (-6h ~ +36h 실시간 예측)
                   </span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-bold">
-                      ✨ 피딩 구간 표시
-                    </span>
-                    <span className="text-[10px] text-cyan-400 font-mono font-semibold hidden sm:inline">
-                      한 화면 맞춤
-                    </span>
-                  </div>
                 </div>
 
                 {/* 그래프 본체: 스크롤 없이 가로 100% 반응형으로 채움 */}

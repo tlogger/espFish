@@ -118,33 +118,38 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
     const highs: { time: string; height: number }[] = [];
     const lows: { time: string; height: number }[] = [];
 
-    const highCandidates = [firstHighHour, (firstHighHour + tideCycle) % 24, (firstHighHour + tideCycle * 2) % 24];
-    const lowCandidates = [
-      (firstHighHour + tideCycle / 2) % 24,
-      (firstHighHour + tideCycle * 1.5) % 24,
-      (firstHighHour + tideCycle * 2.5) % 24,
-    ];
-
-    highCandidates.sort((a, b) => a - b).forEach((hr) => {
+    // 당일 00:00~23:59 사이에 발생하는 모든 만조 시각 산출 (반일주조 12.42시간 간격)
+    const highHours: number[] = [];
+    for (let k = -1; k <= 2; k++) {
+      const hr = firstHighHour + k * tideCycle;
       if (hr >= 0 && hr < 24) {
-        const h = Math.floor(hr);
-        const m = Math.floor((hr - h) * 60);
-        highs.push({
-          time: `${padZero(h)}:${padZero(m)}`,
-          height: Math.round(meanSeaLevel + amplitude),
-        });
+        highHours.push(hr);
       }
+    }
+    highHours.sort((a, b) => a - b).forEach((hr) => {
+      const h = Math.floor(hr);
+      const m = Math.floor((hr - h) * 60);
+      highs.push({
+        time: `${padZero(h)}:${padZero(m)}`,
+        height: Math.round(meanSeaLevel + amplitude),
+      });
     });
 
-    lowCandidates.sort((a, b) => a - b).forEach((hr) => {
+    // 당일 00:00~23:59 사이에 발생하는 모든 간조 시각 산출 (만조 대비 6.21시간 위상차)
+    const lowHours: number[] = [];
+    for (let k = -2; k <= 2; k++) {
+      const hr = firstHighHour + (k + 0.5) * tideCycle;
       if (hr >= 0 && hr < 24) {
-        const h = Math.floor(hr);
-        const m = Math.floor((hr - h) * 60);
-        lows.push({
-          time: `${padZero(h)}:${padZero(m)}`,
-          height: Math.max(10, Math.round(meanSeaLevel - amplitude)),
-        });
+        lowHours.push(hr);
       }
+    }
+    lowHours.sort((a, b) => a - b).forEach((hr) => {
+      const h = Math.floor(hr);
+      const m = Math.floor((hr - h) * 60);
+      lows.push({
+        time: `${padZero(h)}:${padZero(m)}`,
+        height: Math.max(10, Math.round(meanSeaLevel - amplitude)),
+      });
     });
 
     const dayName = `${padZero(curDate.getMonth() + 1)}/${padZero(curDate.getDate())} (${['일', '월', '화', '수', '목', '금', '토'][curDate.getDay()]})`;
@@ -155,8 +160,8 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
       mulText,
       sunrise: formatTime(times.sunrise),
       sunset: formatTime(times.sunset),
-      highTides: highs.slice(0, 2),
-      lowTides: lows.slice(0, 2),
+      highTides: highs,
+      lowTides: lows,
     });
   }
 

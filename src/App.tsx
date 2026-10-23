@@ -262,7 +262,7 @@ export function App() {
         setIsMobileDrawerOpen(true);
       }
       if (shouldRecenter) {
-        setRecenterTarget({ lat: spot.lat, lng: spot.lng, zoom: 14 });
+        setRecenterTarget({ lat: spot.lat, lng: spot.lng, zoom: 16 });
       }
 
       // 1. 한국형 물때 & 36시간 연속 조석 곡선 & 3일간 일출일몰 즉시 계산

@@ -284,7 +284,7 @@ export const MapView: React.FC<MapViewProps> = ({
         const kakaoLevel = Math.max(1, Math.min(14, 18 - recenterTarget.zoom));
         setLevel(kakaoLevel);
       } else {
-        setLevel(3);
+        setLevel(2); // 포인트 선택 시 줌 레벨 한 단계 더 확대 (레벨 2: 약 30m)
       }
     }
   }, [recenterTarget]);
@@ -298,7 +298,7 @@ export const MapView: React.FC<MapViewProps> = ({
     }
     if (selectedSpot && !microAdjustSpot) {
       setCenter({ lat: selectedSpot.lat, lng: selectedSpot.lng });
-      setLevel(3);
+      setLevel(2); // 포인트 클릭 시 줌 레벨 한 단계 더 확대 (레벨 2)
       setPendingNewSpot(null);
     }
   }, [selectedSpot?.id, microAdjustSpot]);
@@ -674,7 +674,7 @@ export const MapView: React.FC<MapViewProps> = ({
                 clickable={false}
               >
                 <div className="flex flex-col items-center gap-1 pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                  <div className="px-2 py-0.5 rounded-full bg-slate-950/95 text-cyan-300 border border-cyan-500/80 text-[8.5px] font-mono font-bold shadow-lg flex items-center gap-1.5">
+                  <div className="px-2.5 py-1 rounded-full bg-slate-950/95 text-cyan-300 border border-cyan-500/80 text-[10.5px] sm:text-xs font-mono font-bold shadow-lg flex items-center gap-1.5">
                     <span>🌊 착수수심: -{landingDepth}m</span>
                     <span className="text-slate-500">|</span>
                     <span className="text-amber-300">⏱️ 바닥 안착: 약 {sinkPhysics.fallTimeSec}초</span>
@@ -814,10 +814,10 @@ export const MapView: React.FC<MapViewProps> = ({
                   zIndex={48}
                   clickable={false}
                 >
-                  <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[9px] shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1">
+                  <div className="px-2 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[10.5px] sm:text-xs shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1">
                     <span>{driftStart.actualDistanceM}m</span>
                     {driftStart.driftDistanceM >= 1.0 && (
-                      <span className="text-[8px] text-amber-300 font-normal">
+                      <span className="text-[9.5px] text-amber-300 font-normal">
                         ({driftStart.driftAngleDeg > 0 ? '우' : '좌'} {driftStart.driftDistanceM}m)
                       </span>
                     )}
@@ -832,10 +832,10 @@ export const MapView: React.FC<MapViewProps> = ({
                   zIndex={48}
                   clickable={false}
                 >
-                  <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[9px] shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1">
+                  <div className="px-2 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[10.5px] sm:text-xs shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1">
                     <span>{driftMid.actualDistanceM}m</span>
                     {driftMid.driftDistanceM >= 1.0 && (
-                      <span className="text-[8px] text-amber-300 font-normal">
+                      <span className="text-[9.5px] text-amber-300 font-normal">
                         ({driftMid.driftAngleDeg > 0 ? '우' : '좌'} {driftMid.driftDistanceM}m)
                       </span>
                     )}
@@ -850,10 +850,10 @@ export const MapView: React.FC<MapViewProps> = ({
                   zIndex={48}
                   clickable={false}
                 >
-                  <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[9px] shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1">
+                  <div className="px-2 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[10.5px] sm:text-xs shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1">
                     <span>{driftEnd.actualDistanceM}m</span>
                     {driftEnd.driftDistanceM >= 1.0 && (
-                      <span className="text-[8px] text-amber-300 font-normal">
+                      <span className="text-[9.5px] text-amber-300 font-normal">
                         ({driftEnd.driftAngleDeg > 0 ? '우' : '좌'} {driftEnd.driftDistanceM}m)
                       </span>
                     )}
@@ -1286,17 +1286,17 @@ export const MapView: React.FC<MapViewProps> = ({
           </div>
         </div>
 
-        {/* 채비 및 로드 탄성 공기역학 캘리브레이션 플로팅 팝업 */}
+        {/* 채비 및 로드 탄성 공기역학 캘리브레이션 플로팅 팝업 (폰트 1pt+ 확대) */}
         {isTacklePopoverOpen && (
-          <div className="w-80 sm:w-88 max-w-[94vw] max-h-[85vh] overflow-y-auto bg-slate-950/95 border border-cyan-500/60 rounded-2xl p-3 shadow-2xl backdrop-blur text-white flex flex-col gap-2.5 animate-fade-in text-xs pointer-events-auto">
+          <div className="w-84 sm:w-96 max-w-[95vw] max-h-[85vh] overflow-y-auto bg-slate-950/95 border border-cyan-500/60 rounded-2xl p-3.5 shadow-2xl backdrop-blur text-white flex flex-col gap-3 animate-fade-in text-sm pointer-events-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-              <div className="flex items-center gap-1.5 font-bold text-cyan-300">
-                <Sliders size={14} className="text-cyan-400" />
+              <div className="flex items-center gap-1.5 font-bold text-cyan-300 text-sm sm:text-base">
+                <Sliders size={16} className="text-cyan-400" />
                 <span>장비·채비 공기역학 캘리브레이터</span>
               </div>
               <button
                 onClick={() => setIsTacklePopoverOpen(false)}
-                className="text-slate-400 hover:text-white text-xs px-1.5 py-0.5 rounded bg-slate-800"
+                className="text-slate-400 hover:text-white text-xs px-2 py-0.5 rounded bg-slate-800"
               >
                 닫기
               </button>
@@ -1313,7 +1313,7 @@ export const MapView: React.FC<MapViewProps> = ({
                     const updated = saveTackleConfig(tackleConfig.weightGrams, tackleConfig.peLineSize, newPower, newLenM);
                     setTackleConfig(updated);
                   }}
-                  className={`flex-1 py-1 text-center text-[11px] font-bold rounded-md transition ${
+                  className={`flex-1 py-1.5 text-center text-xs sm:text-sm font-bold rounded-md transition ${
                     tackleConfig.rodType === 'LURE'
                       ? 'bg-cyan-500 text-slate-950 shadow'
                       : 'text-slate-400 hover:text-slate-200'
@@ -1331,7 +1331,7 @@ export const MapView: React.FC<MapViewProps> = ({
                     setTackleConfig(updated);
                     setSelectedWeightCategory('SURF');
                   }}
-                  className={`flex-1 py-1 text-center text-[11px] font-bold rounded-md transition ${
+                  className={`flex-1 py-1.5 text-center text-xs sm:text-sm font-bold rounded-md transition ${
                     tackleConfig.rodType === 'SURF'
                       ? 'bg-amber-500 text-slate-950 shadow'
                       : 'text-slate-400 hover:text-slate-200'
@@ -1343,8 +1343,8 @@ export const MapView: React.FC<MapViewProps> = ({
 
               {/* 루어대: 파워 6개 선택 & 1.6~3.0m 전장 */}
               {tackleConfig.rodType === 'LURE' ? (
-                <div className="space-y-1.5 bg-slate-900/60 p-2 rounded-xl border border-slate-800">
-                  <div className="flex justify-between items-center text-[11px]">
+                <div className="space-y-2 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                  <div className="flex justify-between items-center text-xs sm:text-sm">
                     <span className="text-slate-300">루어대 파워 등급:</span>
                     <span className="font-mono font-bold text-cyan-300">
                       {tackleConfig.rodPower} (최적 {ROD_POWER_SPECS[tackleConfig.rodPower]?.optWeightG}g)
@@ -1364,7 +1364,7 @@ export const MapView: React.FC<MapViewProps> = ({
                           );
                           setTackleConfig(updated);
                         }}
-                        className={`py-1 rounded text-[10.5px] font-bold font-mono transition ${
+                        className={`py-1.5 rounded text-xs font-bold font-mono transition ${
                           tackleConfig.rodPower === p
                             ? 'bg-cyan-500 text-slate-950 shadow ring-1 ring-cyan-300'
                             : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
@@ -1374,13 +1374,13 @@ export const MapView: React.FC<MapViewProps> = ({
                       </button>
                     ))}
                   </div>
-                  <div className="text-[9.5px] text-cyan-400/90 leading-tight">
+                  <div className="text-[10.5px] sm:text-xs text-cyan-400/90 leading-tight">
                     * {ROD_POWER_SPECS[tackleConfig.rodPower]?.description}
                   </div>
 
                   {/* 루어대 전장 1.6m ~ 3.0m (ft 동시 표기) */}
-                  <div className="space-y-1 pt-1 border-t border-slate-800/80">
-                    <div className="flex justify-between items-center text-[11px]">
+                  <div className="space-y-1.5 pt-1.5 border-t border-slate-800/80">
+                    <div className="flex justify-between items-center text-xs sm:text-sm">
                       <span className="text-slate-300">루어대 전장:</span>
                       <span className="font-mono font-bold text-cyan-300">
                         {tackleConfig.rodLengthM.toFixed(1)}m ({tackleConfig.rodLengthFt.toFixed(1)}ft)
@@ -1402,7 +1402,7 @@ export const MapView: React.FC<MapViewProps> = ({
                         );
                         setTackleConfig(updated);
                       }}
-                      className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                      className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                     />
                     <div className="flex flex-wrap gap-1">
                       {[
@@ -1424,7 +1424,7 @@ export const MapView: React.FC<MapViewProps> = ({
                             );
                             setTackleConfig(updated);
                           }}
-                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition ${
+                          className={`px-2 py-0.5 rounded text-[10.5px] sm:text-xs font-mono transition ${
                             Math.abs(tackleConfig.rodLengthM - item.m) < 0.05
                               ? 'bg-cyan-500/30 text-cyan-200 border border-cyan-400/80 font-bold'
                               : 'bg-slate-900/90 text-slate-400 hover:text-slate-200 border border-slate-800'
@@ -1438,8 +1438,8 @@ export const MapView: React.FC<MapViewProps> = ({
                 </div>
               ) : (
                 /* 원투대: 고정 규격 길이 (2.7, 3.3, 4.2, 4.5, 5.4m) */
-                <div className="space-y-1.5 bg-slate-900/60 p-2 rounded-xl border border-slate-800">
-                  <div className="flex justify-between items-center text-[11px]">
+                <div className="space-y-2 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                  <div className="flex justify-between items-center text-xs sm:text-sm">
                     <span className="text-slate-300">원투대 규격 전장 (m/ft):</span>
                     <span className="font-mono font-bold text-amber-300">
                       {tackleConfig.rodLengthM.toFixed(1)}m ({tackleConfig.rodLengthFt.toFixed(1)}ft)
@@ -1471,12 +1471,12 @@ export const MapView: React.FC<MapViewProps> = ({
                             : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
                         }`}
                       >
-                        <span className="text-[10px] font-mono font-bold leading-tight">{surf.m}m</span>
-                        <span className="text-[8px] opacity-75 font-mono">{surf.sub}</span>
+                        <span className="text-xs font-mono font-bold leading-tight">{surf.m}m</span>
+                        <span className="text-[9.5px] opacity-75 font-mono">{surf.sub}</span>
                       </button>
                     ))}
                   </div>
-                  <div className="text-[9px] text-amber-300/90 leading-tight">
+                  <div className="text-[10.5px] sm:text-xs text-amber-300/90 leading-tight">
                     * 원투대는 휨·탄성의 왜곡보다 "추 무게(8~40호)"와 "로드 길이"가 비거리를 지배합니다.
                   </div>
                 </div>
@@ -1485,11 +1485,11 @@ export const MapView: React.FC<MapViewProps> = ({
 
             {/* 2. 추 / 봉돌 무게 선택 (지그헤드, 온스, 주꾸미, 원투봉돌) */}
             <div className="space-y-1.5">
-              <div className="flex justify-between items-center text-[11px]">
+              <div className="flex justify-between items-center text-xs sm:text-sm">
                 <span className="text-slate-300">추/봉돌 무게:</span>
                 <span className="font-mono font-bold text-cyan-300">
                   {tackleConfig.weightGrams}g
-                  <span className="text-[9.5px] text-slate-400 font-normal ml-1">
+                  <span className="text-[10.5px] sm:text-xs text-slate-400 font-normal ml-1">
                     ({getWeightDescription(tackleConfig.weightGrams)})
                   </span>
                 </span>
@@ -1507,20 +1507,20 @@ export const MapView: React.FC<MapViewProps> = ({
                     key={tab.cat}
                     type="button"
                     onClick={() => setSelectedWeightCategory(tab.cat)}
-                    className={`py-1 rounded text-center transition ${
+                    className={`py-1.5 rounded text-center transition ${
                       selectedWeightCategory === tab.cat
                         ? 'bg-slate-800 text-cyan-300 font-bold border border-cyan-500/50 shadow-xs'
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    <div className="text-[10px] leading-tight">{tab.label}</div>
-                    <div className="text-[8px] opacity-75 font-mono leading-tight">{tab.desc}</div>
+                    <div className="text-xs leading-tight">{tab.label}</div>
+                    <div className="text-[9.5px] opacity-75 font-mono leading-tight">{tab.desc}</div>
                   </button>
                 ))}
               </div>
 
               {/* 프리셋 버튼 목록 */}
-              <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1 bg-slate-900/70 rounded-lg border border-slate-800">
+              <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1.5 bg-slate-900/70 rounded-lg border border-slate-800">
                 {WEIGHT_PRESETS.filter((p) => p.category === selectedWeightCategory).map((preset) => (
                   <button
                     key={preset.id}
@@ -1534,14 +1534,14 @@ export const MapView: React.FC<MapViewProps> = ({
                       );
                       setTackleConfig(updated);
                     }}
-                    className={`px-1.5 py-0.5 rounded text-[9.5px] font-mono flex items-center gap-0.5 transition ${
+                    className={`px-2 py-1 rounded text-xs font-mono flex items-center gap-0.5 transition ${
                       Math.abs(tackleConfig.weightGrams - preset.weightGrams) < 0.15
                         ? 'bg-cyan-500 text-slate-950 font-bold shadow'
                         : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
                     }`}
                   >
                     <span>{preset.label}</span>
-                    <span className="text-[8px] opacity-75">({preset.subLabel})</span>
+                    <span className="text-[9.5px] opacity-75">({preset.subLabel})</span>
                   </button>
                 ))}
               </div>
@@ -1563,9 +1563,9 @@ export const MapView: React.FC<MapViewProps> = ({
                   );
                   setTackleConfig(updated);
                 }}
-                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
               />
-              <div className="flex justify-between text-[8.5px] text-slate-500 font-mono">
+              <div className="flex justify-between text-[10px] sm:text-[11px] text-slate-400 font-mono">
                 <span>1g (지그)</span>
                 <span>28g (1oz)</span>
                 <span>75g (20호)</span>
@@ -1574,8 +1574,8 @@ export const MapView: React.FC<MapViewProps> = ({
             </div>
 
             {/* 3. 합사 라인 호수 슬라이더 (0.4~3.0호) */}
-            <div className="space-y-1">
-              <div className="flex justify-between items-center text-[11px]">
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-center text-xs sm:text-sm">
                 <span className="text-slate-300">원줄 합사 (PE)</span>
                 <span className="font-mono font-bold text-cyan-300">{tackleConfig.peLineSize.toFixed(1)}호</span>
               </div>
@@ -1595,9 +1595,9 @@ export const MapView: React.FC<MapViewProps> = ({
                   );
                   setTackleConfig(updated);
                 }}
-                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
               />
-              <div className="flex justify-between text-[8.5px] text-slate-500 font-mono">
+              <div className="flex justify-between text-[10px] sm:text-[11px] text-slate-400 font-mono">
                 <span>0.4호 (아징)</span>
                 <span>1.0호 (에깅)</span>
                 <span>2.0호 (원투)</span>
@@ -1611,31 +1611,31 @@ export const MapView: React.FC<MapViewProps> = ({
               const demoCur = marine?.currentVelocity ?? 0.3;
               const sink = calculateSinkingPhysics(tackleConfig.weightGrams, demoDepth, demoCur);
               return (
-                <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1 text-[11px]">
+                <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5 text-xs sm:text-sm">
                   <div className="flex justify-between text-slate-300">
                     <span>공기역학 산출 사거리:</span>
-                    <strong className="font-mono text-cyan-300 text-xs">{tackleConfig.calibratedDistanceMeters}m</strong>
+                    <strong className="font-mono text-cyan-300 text-sm font-bold">{tackleConfig.calibratedDistanceMeters}m</strong>
                   </div>
-                  <div className="flex justify-between text-[10px] text-slate-400">
+                  <div className="flex justify-between text-[11px] sm:text-xs text-slate-400">
                     <span>{tackleConfig.rodType === 'SURF' ? '원투 추진력 / 지렛대:' : '탄성효율 / 레버암:'}</span>
                     <span className="font-mono text-amber-300">
                       {tackleConfig.rodType === 'SURF' ? '원심력 ' : 'η '}
                       {Math.round(tackleConfig.rodElasticityEfficiency * 100)}% / ×{tackleConfig.rodLengthFactor}
                     </span>
                   </div>
-                  <div className="flex justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800/80">
+                  <div className="flex justify-between text-[11px] sm:text-xs text-slate-400 pt-1 border-t border-slate-800/80">
                     <span>수심 10m 바닥 안착:</span>
                     <span className="font-mono text-emerald-300 font-semibold">
                       약 {sink.fallTimeSec}초 (유속 {demoCur}m/s 시)
                     </span>
                   </div>
-                  <div className="flex justify-between text-[9.5px] text-slate-500">
+                  <div className="flex justify-between text-[10.5px] sm:text-[11px] text-slate-500">
                     <span>침강속도 / 조류흘림:</span>
                     <span className="font-mono">
                       {sink.effSinkSpeedMps}m/s · 흘림 +{sink.driftDistanceM}m
                     </span>
                   </div>
-                  <div className="text-[8.5px] text-amber-300/90 pt-1 border-t border-slate-800/60 leading-tight">
+                  <div className="text-[10px] sm:text-[11px] text-amber-300/90 pt-1 border-t border-slate-800/60 leading-tight">
                     💡 지그헤드+2인치 쉐드 웜 및 합사 방출 길이/호수 연동 바람 편류(오렌지 라인) 시뮬레이션 적용됨
                   </div>
                 </div>
