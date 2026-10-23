@@ -7,7 +7,8 @@ import {
   Circle,
   useKakaoLoader,
 } from 'react-kakao-maps-sdk';
-import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon, Map as MapIcon, Satellite, Moon, Sun, Lightbulb } from 'lucide-react';
+import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon, Map as MapIcon, Satellite, Moon, Sun, Lightbulb, LocateFixed } from 'lucide-react';
+import { MaterialSpotMarker } from './MaterialSpotMarker';
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo } from '../types';
 import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
 import { KOREA_DEPTH_CONTOURS, estimateDepthAtPoint } from '../data/depthContours';
@@ -229,8 +230,15 @@ export const MapView: React.FC<MapViewProps> = ({
     setMapMode(mode);
     if (typeof window !== 'undefined') {
       localStorage.setItem('exfish_map_mode', mode);
+      document.documentElement.setAttribute('data-map-mode', mode);
     }
   };
+
+  React.useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-map-mode', mapMode);
+    }
+  }, [mapMode]);
 
   // 볼륨 키 줌 안내 토스트 상태 (Phase 2 하드웨어 연동)
   const [volumeToast, setVolumeToast] = React.useState<string | null>(null);
@@ -408,7 +416,9 @@ export const MapView: React.FC<MapViewProps> = ({
   if (error) {
     return (
       <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-rose-300 gap-3">
-        <AlertCircle size={40} className="text-amber-400" />
+        <div className="w-12 h-12 rounded-full bg-red-600 border-2 border-white shadow-xl shadow-red-600/50 flex items-center justify-center text-white font-black text-2xl animate-pulse">
+          !
+        </div>
         <h3 className="text-base font-bold text-white">카카오 맵 API 활성화 안내</h3>
         <div className="text-xs text-slate-300 max-w-lg leading-relaxed bg-slate-900 border border-slate-800 p-4 rounded-xl text-left space-y-2 shadow-xl">
           <p className="font-semibold text-amber-300">
@@ -489,79 +499,8 @@ export const MapView: React.FC<MapViewProps> = ({
           setCenter({ lat: latLng.getLat(), lng: latLng.getLng() });
         }}
       >
-        {/* KHOA 150m 격자수심 + 실시간 관측 조위 합성 동적 등심선 오버레이 (5m, 10m, 15m, 20m, 25m, 30m) */}
-        {showDepthContours && (
-          <React.Fragment key="khoa-depth-contours-layer">
-            {dynamicBathymetry && dynamicBathymetry.contours.length > 0 ? (
-              dynamicBathymetry.contours.map((contour) => (
-                <React.Fragment key={`dyn-contour-${contour.id}-${contour.depthMeters}`}>
-                  {contour.paths.map((path, pIdx) => (
-                    <Polyline
-                      key={`dyn-path-${contour.id}-${pIdx}`}
-                      path={path}
-                      strokeWeight={contour.strokeWeight}
-                      strokeColor={contour.color}
-                      strokeOpacity={0.88}
-                      strokeStyle={contour.depthMeters <= 5 ? 'shortdash' : contour.depthMeters === 10 ? 'solid' : 'dash'}
-                      zIndex={15}
-                    />
-                  ))}
-                  {contour.labelPos && (
-                    <CustomOverlayMap
-                      position={contour.labelPos}
-                      yAnchor={0.5}
-                      xAnchor={0.5}
-                      zIndex={16}
-                      clickable={false}
-                    >
-                      <div
-                        className="px-1.5 py-0.5 rounded text-[8.5px] font-bold font-mono shadow-md pointer-events-none kakao-invert-restore select-none whitespace-nowrap border"
-                        style={{
-                          backgroundColor: '#020617f0',
-                          color: contour.color,
-                          borderColor: `${contour.color}77`,
-                        }}
-                      >
-                        -{contour.depthMeters}m ({contour.name})
-                      </div>
-                    </CustomOverlayMap>
-                  )}
-                </React.Fragment>
-              ))
-            ) : (
-              KOREA_DEPTH_CONTOURS.map((contour) => (
-                <React.Fragment key={`contour-${contour.id}`}>
-                  <Polyline
-                    path={contour.path}
-                    strokeWeight={contour.depthMeters <= 5 ? 2.2 : contour.depthMeters <= 10 ? 2 : 1.5}
-                    strokeColor={contour.color}
-                    strokeOpacity={0.85}
-                    strokeStyle={contour.depthMeters === 5 ? 'shortdash' : contour.depthMeters === 10 ? 'solid' : 'dash'}
-                    zIndex={15}
-                  />
-                  <CustomOverlayMap
-                    position={contour.labelPos}
-                    yAnchor={0.5}
-                    xAnchor={0.5}
-                    zIndex={16}
-                    clickable={false}
-                  >
-                    <div
-                      className="px-1.5 py-0.5 rounded text-[8.5px] font-bold font-mono shadow-md pointer-events-none kakao-invert-restore select-none whitespace-nowrap border"
-                      style={{
-                        backgroundColor: '#020617f0',
-                        color: contour.color,
-                        borderColor: `${contour.color}77`,
-                      }}
-                    >
-                      -{contour.depthMeters}m ({contour.name})
-                    </div>
-                  </CustomOverlayMap>
-                </React.Fragment>
-              ))
-            )}
-          </React.Fragment>
-        )}
+        {/* [요구사항 4] 조위합성 등고선 표시 기능 당분간 중단 및 렌더링 비활성화 */}
+        {null}
 
         {/* 선택된 포인트의 캐스팅 비거리 동심원 눈금 링 및 유효 공략 부채꼴 섹터 (채비 캘리브레이션 거리 반영) */}
         {showCastingArrows && selectedSpot && (() => {
@@ -728,7 +667,7 @@ export const MapView: React.FC<MapViewProps> = ({
                 clickable={false}
               >
                 <div className="flex flex-col items-center gap-1 pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                  <div className="px-2.5 py-1 rounded-full bg-slate-950/95 text-cyan-300 border border-cyan-500/80 text-[10.5px] sm:text-xs font-mono font-bold shadow-lg flex items-center gap-1.5">
+                  <div className="px-2 py-0.5 rounded-full bg-slate-950/95 text-cyan-300 border border-cyan-500/80 text-[9px] sm:text-[10px] font-mono font-bold shadow-lg flex items-center gap-1.5">
                     <span>🌊 착수수심: -{landingDepth}m</span>
                     <span className="text-slate-500">|</span>
                     <span className="text-amber-300">⏱️ 바닥 안착: 약 {sinkPhysics.fallTimeSec}초</span>
@@ -868,10 +807,10 @@ export const MapView: React.FC<MapViewProps> = ({
                   zIndex={48}
                   clickable={false}
                 >
-                  <div className="px-2 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[10.5px] sm:text-xs shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1">
+                  <div className="px-2.5 py-1 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-extrabold font-mono text-xs sm:text-sm shadow-xl pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1.5">
                     <span>{driftStart.actualDistanceM}m</span>
                     {driftStart.driftDistanceM >= 1.0 && (
-                      <span className="text-[9.5px] text-amber-300 font-normal">
+                      <span className="text-[10.5px] text-amber-300 font-semibold">
                         ({driftStart.driftAngleDeg > 0 ? '우' : '좌'} {driftStart.driftDistanceM}m)
                       </span>
                     )}
@@ -886,10 +825,10 @@ export const MapView: React.FC<MapViewProps> = ({
                   zIndex={48}
                   clickable={false}
                 >
-                  <div className="px-2 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[10.5px] sm:text-xs shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1">
+                  <div className="px-2.5 py-1 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-extrabold font-mono text-xs sm:text-sm shadow-xl pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1.5">
                     <span>{driftMid.actualDistanceM}m</span>
                     {driftMid.driftDistanceM >= 1.0 && (
-                      <span className="text-[9.5px] text-amber-300 font-normal">
+                      <span className="text-[10.5px] text-amber-300 font-semibold">
                         ({driftMid.driftAngleDeg > 0 ? '우' : '좌'} {driftMid.driftDistanceM}m)
                       </span>
                     )}
@@ -904,10 +843,10 @@ export const MapView: React.FC<MapViewProps> = ({
                   zIndex={48}
                   clickable={false}
                 >
-                  <div className="px-2 py-0.5 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-bold font-mono text-[10.5px] sm:text-xs shadow-lg pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1">
+                  <div className="px-2.5 py-1 rounded-full bg-slate-950/95 text-orange-400 border border-orange-500 font-extrabold font-mono text-xs sm:text-sm shadow-xl pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1.5">
                     <span>{driftEnd.actualDistanceM}m</span>
                     {driftEnd.driftDistanceM >= 1.0 && (
-                      <span className="text-[9.5px] text-amber-300 font-normal">
+                      <span className="text-[10.5px] text-amber-300 font-semibold">
                         ({driftEnd.driftAngleDeg > 0 ? '우' : '좌'} {driftEnd.driftDistanceM}m)
                       </span>
                     )}
@@ -990,10 +929,8 @@ export const MapView: React.FC<MapViewProps> = ({
                 className="relative flex items-center justify-center kakao-invert-restore cursor-pointer"
                 title={`현재 내 위치 (GPS 오차 반경 약 ±${Math.round(gpsAccuracy || 10)}m)`}
               >
-                <div className="w-8 h-8 rounded-full bg-cyan-400/30 animate-ping absolute" />
-                <div className="w-6 h-6 rounded-full bg-cyan-500 border-2 border-white shadow-xl flex items-center justify-center text-xs">
-                  🎯
-                </div>
+                <div className="w-6 h-6 rounded-full bg-blue-500/30 animate-ping absolute" />
+                <div className="w-4 h-4 rounded-full bg-blue-500 border-2 border-white shadow-lg" />
               </div>
             </CustomOverlayMap>
           </React.Fragment>
@@ -1081,18 +1018,6 @@ export const MapView: React.FC<MapViewProps> = ({
                 currentUser.id === 'user-me')
           );
 
-          const pinColor = spot.fishing_methods.includes('FLOAT')
-            ? '#f43f5e'
-            : spot.fishing_methods.includes('SURF')
-            ? '#f59e0b'
-            : '#06b6d4';
-
-          const pinEmoji = spot.fishing_methods.includes('FLOAT')
-            ? '🔴'
-            : spot.fishing_methods.includes('SURF')
-            ? '⚓'
-            : '🎣';
-
           return (
             <React.Fragment key={`spot-group-${spot.id}`}>
               <CustomOverlayMap
@@ -1111,26 +1036,12 @@ export const MapView: React.FC<MapViewProps> = ({
                   className="cursor-pointer group flex flex-col items-center kakao-invert-restore"
                   title={`${spot.name} (${spot.target_species.join(', ')}) 클릭하여 선택`}
                 >
-                  <div className="relative">
-                    <div
-                      className={`flex items-center justify-center w-9 h-9 rounded-full shadow-2xl transition-transform duration-200 ${
-                        isSelected
-                          ? 'scale-115 ring-4 ring-cyan-400 border-[3px] border-white'
-                          : 'group-hover:scale-105 border-2 border-white/90'
-                      }`}
-                      style={{ backgroundColor: pinColor }}
-                    >
-                      <span className="text-base select-none leading-none">{pinEmoji}</span>
-                    </div>
-                    {isFavorited && (
-                      <span className="absolute -top-1 -right-1 text-xs">⭐</span>
-                    )}
-                    <div
-                      className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] mx-auto -mt-0.5"
-                      style={{ borderTopColor: pinColor }}
-                    />
-                  </div>
-                  <span className="mt-0.5 px-2 py-0.5 rounded-md bg-slate-950/90 border border-slate-700/80 text-[11px] text-white font-bold whitespace-nowrap shadow-md">
+                  <MaterialSpotMarker
+                    methods={spot.fishing_methods}
+                    isSelected={isSelected}
+                    isFavorited={isFavorited}
+                  />
+                  <span className="mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/95 border border-slate-700/80 text-xs sm:text-sm text-white font-bold whitespace-nowrap shadow-xl">
                     {spot.name}
                   </span>
 
@@ -1276,26 +1187,9 @@ export const MapView: React.FC<MapViewProps> = ({
           )}
         </div>
 
-        {/* 보조 액션 단일 머티리얼 툴바 패널 (수심선 토글 & 채비 캘리브레이션 & 찜한 포인트 필터 & GPS 내 위치) */}
+        {/* 보조 액션 단일 머티리얼 툴바 패널 (채비 캘리브레이션 & 찜한 포인트 필터 & 화면 켜짐 & GPS 내 위치) */}
         <div className="flex items-center bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-1 shadow-2xl divide-x divide-slate-800/80">
           <div className="flex items-center gap-0.5 pr-1">
-            {/* 150m 격자수심 + 실시간 조위 합성 동적 등심선(5~30m) 토글 버튼 */}
-            <button
-              onClick={toggleDepthContours}
-              className={`p-2 rounded-xl flex items-center justify-center transition active:scale-95 ${
-                showDepthContours
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
-                  : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
-              title={
-                showDepthContours
-                  ? '150m 격자 + 실시간 조위 합성 등심선(5~30m) 끄기'
-                  : '150m 격자 + 실시간 조위 합성 등심선(5~30m) 켜기'
-              }
-            >
-              <WavesIcon size={17} className={showDepthContours ? 'text-white' : 'text-slate-400'} />
-            </button>
-
             {/* 공기역학 채비 캘리브레이션 버튼 */}
             <button
               onClick={() => setIsTacklePopoverOpen(!isTacklePopoverOpen)}
@@ -1337,7 +1231,7 @@ export const MapView: React.FC<MapViewProps> = ({
           </div>
 
           <div className="pl-1">
-            {/* GPS 내 위치 바로가기 버튼 */}
+            {/* GPS 내 위치 바로가기 버튼 (간결하고 직관적인 Material Locate 아이콘) */}
             <button
               onClick={handleLocateMe}
               disabled={isLocating}
@@ -1347,7 +1241,7 @@ export const MapView: React.FC<MapViewProps> = ({
               {isLocating ? (
                 <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
               ) : (
-                <span className="text-base leading-none">🎯</span>
+                <LocateFixed size={18} className="text-cyan-400" />
               )}
             </button>
           </div>
