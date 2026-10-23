@@ -13,8 +13,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor-community/keep-awake": "^8.0.1",
     "@capacitor/android": "^8.5.3",
     "@capacitor/core": "^8.5.3",
+    "@capacitor/geolocation": "^8.2.4",
+    "@capacitor/haptics": "^8.0.2",
     "@supabase/supabase-js": "^2.118.0",
     "@types/d3-contour": "^3.0.6",
     "clsx": "^2.1.1",

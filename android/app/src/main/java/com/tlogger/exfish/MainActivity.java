@@ -1,6 +1,7 @@
 package com.tlogger.exfish;
 
 import android.os.Bundle;
+import android.view.KeyEvent;
 import android.webkit.GeolocationPermissions;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -25,5 +26,32 @@ public class MainActivity extends BridgeActivity {
                 }
             });
         }
+    }
+
+    /**
+     * Physical Volume Key Mapping for Field Fishing (Phase 2):
+     * When fishing on rocks or breakwaters with wet/slimy hands,
+     * Hardware Volume Keys trigger Map Zoom In / Out directly!
+     */
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            if (bridge != null && bridge.getWebView() != null) {
+                bridge.getWebView().evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('exfish:volume-zoom', { detail: { dir: 'in' } }));",
+                    null
+                );
+                return true; // Consume event to prevent OS volume HUD from blocking map
+            }
+        } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            if (bridge != null && bridge.getWebView() != null) {
+                bridge.getWebView().evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('exfish:volume-zoom', { detail: { dir: 'out' } }));",
+                    null
+                );
+                return true; // Consume event
+            }
+        }
+        return super.onKeyDown(keyCode, event);
     }
 }

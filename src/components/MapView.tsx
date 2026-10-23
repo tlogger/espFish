@@ -7,7 +7,7 @@ import {
   Circle,
   useKakaoLoader,
 } from 'react-kakao-maps-sdk';
-import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon, Map as MapIcon, Satellite, Moon, Sun } from 'lucide-react';
+import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon, Map as MapIcon, Satellite, Moon, Sun, Lightbulb } from 'lucide-react';
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo } from '../types';
 import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
 import { KOREA_DEPTH_CONTOURS, estimateDepthAtPoint } from '../data/depthContours';
@@ -26,6 +26,12 @@ import {
   WeightCategory,
   getWeightDescription,
 } from '../utils/tackleCalibration';
+import {
+  getNativeLocation,
+  setScreenKeepAwake,
+  triggerHaptic,
+  setupVolumeZoomListener,
+} from '../utils/nativeBridge';
 
 // 카카오 디벨로퍼스 JavaScript 앱 키
 const KAKAO_APP_KEY = '61ebf0b7a0daf24cba357d92677c8d8a';
@@ -226,53 +232,93 @@ export const MapView: React.FC<MapViewProps> = ({
     }
   };
 
-  // 현재 GPS 위치 가져오기 핸들러
-  const handleLocateMe = () => {
-    if (!navigator.geolocation) {
-      alert('이 브라우저는 위치 정보(GPS)를 지원하지 않습니다.');
-      return;
+  // 볼륨 키 줌 안내 토스트 상태 (Phase 2 하드웨어 연동)
+  const [volumeToast, setVolumeToast] = React.useState<string | null>(null);
+
+  // 화면 꺼짐 방지(Keep-Awake) 상태
+  const [isKeepAwake, setIsKeepAwake] = React.useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('exfish_keep_awake') === 'true';
     }
+    return false;
+  });
+
+  const toggleKeepAwake = async () => {
+    const next = !isKeepAwake;
+    setIsKeepAwake(next);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('exfish_keep_awake', String(next));
+    }
+    await setScreenKeepAwake(next);
+    triggerHaptic(next ? 'success' : 'light');
+  };
+
+  React.useEffect(() => {
+    if (isKeepAwake) {
+      setScreenKeepAwake(true);
+    }
+  }, []);
+
+  // 하드웨어 볼륨 키 지도 줌 인/아웃 리스너 (Android Phase 2)
+  React.useEffect(() => {
+    const cleanup = setupVolumeZoomListener((dir) => {
+      if (dir === 'in') {
+        setLevel((prev) => Math.max(1, prev - 1));
+        setVolumeToast('🔍 지도 확대 (볼륨+)');
+      } else {
+        setLevel((prev) => Math.min(14, prev + 1));
+        setVolumeToast('🔍 지도 축소 (볼륨-)');
+      }
+    });
+    return cleanup;
+  }, []);
+
+  React.useEffect(() => {
+    if (volumeToast) {
+      const timer = setTimeout(() => setVolumeToast(null), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [volumeToast]);
+
+  // 현재 GPS 위치 가져오기 핸들러 (네이티브 FusedLocation & 브라우저 통합)
+  const handleLocateMe = async () => {
     setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setIsLocating(false);
-        const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        setMyLocation(userPos);
-        setGpsAccuracy(pos.coords.accuracy || 10);
-        setCenter(userPos);
-        setLevel(3); // 상세 50m 레벨
-      },
-      (err) => {
-        setIsLocating(false);
-        console.warn('Geolocation error:', err);
-        alert('현재 위치 정보를 가져올 수 없습니다. 브라우저의 위치 권한을 확인해 주세요.');
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+    try {
+      const pos = await getNativeLocation();
+      setIsLocating(false);
+      const userPos = { lat: pos.lat, lng: pos.lng };
+      setMyLocation(userPos);
+      setGpsAccuracy(pos.accuracy || 10);
+      setCenter(userPos);
+      setLevel(2); // 상세 약 30m 레벨
+      triggerHaptic('success');
+    } catch (err) {
+      setIsLocating(false);
+      console.warn('Geolocation error:', err);
+      alert('현재 위치 정보를 가져올 수 없습니다. GPS 및 위치 권한을 확인해 주세요.');
+    }
   };
 
   // 초기 진입 시 사용자 위치 자동 이동 보장을 위한 플래그
   const hasAutoLocatedRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (!hasAutoLocatedRef.current && typeof navigator !== 'undefined' && navigator.geolocation) {
+    if (!hasAutoLocatedRef.current) {
       hasAutoLocatedRef.current = true;
       setIsLocating(true);
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
+      getNativeLocation()
+        .then((pos) => {
           setIsLocating(false);
-          const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          const userPos = { lat: pos.lat, lng: pos.lng };
           setMyLocation(userPos);
-          setGpsAccuracy(pos.coords.accuracy || 12);
+          setGpsAccuracy(pos.accuracy || 12);
           setCenter(userPos);
           setLevel(4); // 약 100m~250m 상세 레벨
-        },
-        (err) => {
+        })
+        .catch((err) => {
           setIsLocating(false);
           console.warn('Initial geolocation failed or denied:', err);
-        },
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
+        });
     }
   }, []);
 
@@ -323,6 +369,7 @@ export const MapView: React.FC<MapViewProps> = ({
   }, [microAdjustSpot]);
 
   const handleNudge = (deltaLat: number, deltaLng: number) => {
+    triggerHaptic('light');
     setAdjustedPos((prev) => {
       const next = {
         lat: Number((prev.lat + deltaLat).toFixed(7)),
@@ -1267,6 +1314,19 @@ export const MapView: React.FC<MapViewProps> = ({
             >
               <Star size={17} className={viewOnlyFavorites ? 'fill-amber-400 text-amber-400' : ''} />
             </button>
+
+            {/* 화면 켜짐 유지 (Screen Keep-Awake) 토글 버튼 */}
+            <button
+              onClick={toggleKeepAwake}
+              className={`p-2 rounded-xl flex items-center justify-center transition active:scale-95 ${
+                isKeepAwake
+                  ? 'bg-amber-500/20 text-amber-300 shadow-md shadow-amber-500/20 ring-1 ring-amber-400'
+                  : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+              title={isKeepAwake ? '화면 켜짐 유지 켜짐 (낚시 중 화면 꺼짐 방지)' : '화면 켜짐 유지 켜기'}
+            >
+              <Lightbulb size={17} className={isKeepAwake ? 'text-amber-300 fill-amber-300' : 'text-slate-400'} />
+            </button>
           </div>
 
           <div className="pl-1">
@@ -1274,7 +1334,7 @@ export const MapView: React.FC<MapViewProps> = ({
             <button
               onClick={handleLocateMe}
               disabled={isLocating}
-              title="내 현재 GPS 위치 찾기"
+              title="내 현재 GPS 위치 찾기 (고정밀 GPS)"
               className="p-2 hover:bg-slate-800 text-cyan-400 rounded-xl flex items-center justify-center transition active:scale-95"
             >
               {isLocating ? (
@@ -1645,6 +1705,13 @@ export const MapView: React.FC<MapViewProps> = ({
         )}
       </div>
 
+      {/* 물리 볼륨 키 줌 안내 플로팅 토스트 (Phase 2) */}
+      {volumeToast && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-slate-950/90 text-cyan-300 border border-cyan-500/70 rounded-full px-4 py-1.5 text-xs font-bold shadow-2xl backdrop-blur animate-fade-in pointer-events-none flex items-center gap-1.5">
+          <span>{volumeToast}</span>
+        </div>
+      )}
+
       {/* [요구사항 1] 미니멀 위치 조정 컴팩트 패널 (저장 및 취소 버튼 상단 헤더 배치로 하단 간섭 원천 방지) */}
       {microAdjustSpot && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-auto max-w-[92vw] z-30 bg-slate-900/95 border border-emerald-500/60 rounded-xl p-2 shadow-2xl backdrop-blur text-white flex flex-col items-center gap-1.5 animate-fade-in text-xs">
@@ -1661,7 +1728,10 @@ export const MapView: React.FC<MapViewProps> = ({
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => onConfirmMicroAdjust && onConfirmMicroAdjust(microAdjustSpot.id, adjustedPos.lat, adjustedPos.lng)}
+                onClick={() => {
+                  triggerHaptic('success');
+                  onConfirmMicroAdjust && onConfirmMicroAdjust(microAdjustSpot.id, adjustedPos.lat, adjustedPos.lng);
+                }}
                 className="py-1 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition active:scale-95 flex items-center gap-0.5"
                 title="조정 위치 저장"
               >
