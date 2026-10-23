@@ -433,9 +433,16 @@ export const MapView: React.FC<MapViewProps> = ({
               <strong>[활성화 설정]</strong> 토글을 <strong>[ON (활성화)]</strong>으로 켜기
             </li>
             <li>
-              <strong>[앱 설정] → [플랫폼] → [Web 플랫폼]</strong> 사이트 도메인에{' '}
-              <code className="text-amber-200">https://tlogger.github.io</code> 및{' '}
-              <code className="text-amber-200">http://localhost:5173</code> 등록 확인
+              <strong>[앱 설정] → [플랫폼] → [Web 플랫폼]</strong> 사이트 도메인에 아래 4개 주소 등록:
+              <div className="mt-1.5 grid grid-cols-1 gap-1 text-[11px] font-mono bg-slate-950 p-2.5 rounded border border-slate-800">
+                <span className="text-amber-200">https://localhost</span>
+                <span className="text-amber-200">http://localhost</span>
+                <span className="text-cyan-300">https://tlogger.github.io</span>
+                <span className="text-cyan-300">http://localhost:5173</span>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">
+                * 안드로이드 앱(웹뷰)은 <code className="text-amber-300">https://localhost</code> 도메인으로 카카오 인증을 요청하므로 필수 등록해야 합니다.
+              </p>
             </li>
           </ol>
         </div>
