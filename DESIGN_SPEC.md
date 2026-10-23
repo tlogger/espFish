@@ -1,43 +1,44 @@
-# 🎣 ExFish 웹 플랫폼 세부 설계 사양서 (v4.2 프로덕션 확정판)
+# 🎣 ExFish 모바일/웹 플랫폼 세부 설계 사양서 (v5.0 프로덕션 확정판)
 > **슬로건**: *"ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며..."*  
-> **버전**: Version 4.2 (Production Live Mirror Edition)  
-> **최종 개정일**: 2026년 10월 22일  
+> **버전**: Version 5.0 (Field Ergonomics & Selective Safety Edition)  
+> **최종 개정일**: 2026년 10월 23일  
 > **공개 저장소**: [https://github.com/tlogger/espFish](https://github.com/tlogger/espFish)  
 > **라이브 서비스**: [https://tlogger.github.io/espFish/](https://tlogger.github.io/espFish/)  
-> **문서 상태**: 프로덕션 배포용 엔지니어링 표준 사양 (Audited & Approved by @reviewer)
+> **문서 상태**: 모바일 Android 하이브리드 앱 및 웹 프로덕션 배포용 엔지니어링 표준 사양 (Audited & Approved by @reviewer)
 
 ---
 
-## 0. 공학 표준 기호 정의표 (Nomenclature Table)
+## 0. 공학 & 물리 기호 정의표 (Nomenclature Table)
 
 본 사양서 전반에서 사용하는 물리량, 수학 기호, SI 단위 및 낚시 현장 관용 단위를 아래와 같이 정의합니다.
 
 | 기호 (Symbol) | 물리량 명칭 (Quantity) | SI 단위 | 현장 관용 단위 | 기본값 / 기준 파라미터 |
 | :--- | :--- | :---: | :---: | :--- |
 | $D_{\text{cast}}$ | 지상 캐스팅 실효 비거리 | $\text{m}$ | $\text{m}$ | $55.0\text{ m}$ (기준 비거리) |
-| $L_{\text{feet}}$ | 낚싯대(로드) 전장 전장 규격 | $\text{m}$ | $\text{ft}$ (피트) | $8.6\text{ ft}$ (표준 에깅/워킹 루어대) |
-| $W$ | 루어·채비 총 자중 (무게) | $\text{kg}$ | $\text{g}$ (그램), $\text{oz}$ | 장르별 상이 ($0.5\text{g} \le W \le 200\text{g}$) |
-| $W_{\text{opt}}$ | 로드 파워별 최적 스위트스팟 무게 | $\text{kg}$ | $\text{g}$ (그램) | M파워 기준 $22.0\text{g}$ |
+| $L_{\text{feet}}$ | 낚싯대(로드) 전장 규격 | $\text{m}$ | $\text{ft}$ (피트) | $8.6\text{ ft}$ (표준 에깅/워킹 루어대) |
+| $W$ | 루어·채비 총 자중 (무게) | $\text{kg}$ | $\text{g}$ (그램), $\text{oz}$, 호 | 장르별 상이 ($0.5\text{g} \le W \le 150\text{g}$) |
+| $W_{\text{opt}}$ | 로드 파워별 최적 스위트스팟 무게 | $\text{kg}$ | $\text{g}$ (그램) | M파워 기준 $22.0\text{g}$, 원투 $95\text{g}$ |
 | $\eta_{\text{power}}$ | 로드 블랭크 탄성 에너지 축적 효율 | 무차원 ($0 \sim 1$) | $\%$ | 최적 부하 시 $1.00$ ($100\%$) |
-| $\sigma_{\text{under}}$ | 저부하(Underload) 감쇄 표준편차 | 무차원 | 무차원 | $0.60$ |
+| $\sigma_{\text{under}}$ | 저부하(Underload) 탄성 감쇄 표준편차 | 무차원 | 무차원 | $0.60$ |
 | $\sigma_{\text{over}}$ | 과부하(Overload) 붕괴 표준편차 | 무차원 | 무차원 | $0.38$ |
 | $\text{PE}$ | 원줄 합사(Braid Line) 호수 규격 | 무차원 (Gou) | 호 (PE) | $1.0\text{호}$ (직경 $\approx 0.165\text{mm}$) |
 | $K_{\text{line}}$ | 원줄 공기역학 항력 감쇄 계수 | 무차원 | 무차원 | PE 1.0호 기준 $1.00$ |
 | $K_{\text{wind}}$ | 풍향·풍속 벡터 비거리 보정 계수 | 무차원 | $\%$ | $0.65 \sim 1.35$ ($-35\% \sim +35\%$) |
+| $S_{\text{drift}}$ | 측풍 및 합사 방출에 의한 횡방향 편류 거리 | $\text{m}$ | $\text{m}$ | 오렌지 라인 착수 편류 변위 |
 | $v_{\text{sink}}$ | 루어 수중 정지 종단 침강 속도 | $\text{m/s}$ | $\text{m/s}$, $\text{sec/m}$ | 납 메탈 기준 $0.28\sqrt{W}$ |
 | $C_{\text{lure}}$ | 루어 유체역학 형상 계수 | 무차원 | 무차원 | 메탈(1.00), 에기(0.25), 텅스텐(1.25) |
 | $v_{\text{eff}}$ | 조류 원줄 양력 감쇄 유효 침강 속도 | $\text{m/s}$ | $\text{m/s}$ | $0.15 \sim 2.80\text{ m/s}$ (클램핑) |
 | $V_{\text{current}}$ | 해류/조류 표층 유속 | $\text{m/s}$ | $\text{m/s}$, $\text{knot}$ | $1\text{ knot} \approx 0.514\text{ m/s}$ |
-| $H$ | 캐스팅 착수 지점 수심 | $\text{m}$ | $\text{m}$ | 수심 등심선 보간치 ($-5\text{m} \sim -50\text{m}$) |
+| $H$ | 캐스팅 착수 지점 수심 | $\text{m}$ | $\text{m}$ | KHOA 수심 등심선 기반 보간치 |
 | $T_{\text{bottom}}$ | 채비 바닥 안착 소요 시간 (폴링 카운트) | $\text{s}$ (초) | $\text{초}$ | $H / v_{\text{eff}}$ |
-| $D_{\text{drift}}$ | 침강 중 조류에 의한 수평 흘림 거리 | $\text{m}$ | $\text{m}$ | $V_{\text{current}} \times T_{\text{bottom}}$ |
+| $D_{\text{drift,tide}}$ | 침강 중 조류에 의한 수평 흘림 거리 | $\text{m}$ | $\text{m}$ | $V_{\text{current}} \times T_{\text{bottom}}$ |
 | $\hat{H}(t, \mathbf{x})$ | 시공간 하이브리드 보정 조위 수위 | $\text{cm}$ | $\text{cm}$ | 국립해양조사원(KHOA) 조위면 기준 |
 | $H_{\text{harmonic}}$ | 4대 조화분조 합성 천문조위 | $\text{cm}$ | $\text{cm}$ | $M_2, S_2, K_1, O_1$ 분조 합성 |
 | $\Delta H_{\text{obs}}$ | KHOA 관측소 실측 잔차 (Observed Error) | $\text{cm}$ | $\text{cm}$ | $H_{\text{obs}}(t_0) - H_{\text{harmonic}}(t_0)$ |
 | $\lambda$ | 조위 잔차 시간 지수감쇄 계수 | $\text{h}^{-1}$ | $\text{h}^{-1}$ | $\lambda = \frac{\ln 2}{6} \approx 0.1155\text{ h}^{-1}$ (반감기 6h) |
 | $R$ | 관측소-포인트 간 대권 거리 | $\text{km}$ | $\text{km}$ | Haversine 공식 산출치 |
 | $R_0$ | 조위 잔차 공간 가우스 상관 거리 | $\text{km}$ | $\text{km}$ | $35.0\text{ km}$ ($2R_0 = 70\text{ km}$ 임계) |
-| $T_{\text{escape}}$ | 갯바위 들물 탈출 골든타임 | $\text{min}$ (분) | 분 (min) | $45 \sim 120\text{분}$ (조차 가변) |
+| $T_{\text{escape}}$ | 들물 탈출 골든타임 | $\text{min}$ (분) | 분 (min) | 기본 $90\text{분}$ (조차 연동 동적 가변) |
 | $\Delta H_{\text{tide}}$ | 일일 최대 조차 (만조위 - 간조위) | $\text{m}$ | $\text{m}$, $\text{cm}$ | 서해 대조기 기준 최대 $8.5\text{m}$ |
 | $\mathbf{x}$ | 7대 환경 특성 입력 벡터 | 혼합 | 혼합 | 수온, 조류, 풍향, 기압, 파고 등 7개 차원 |
 | $\phi_j$ | $j$번째 환경 인자의 SHAP 한계 기여도 | 무차원 | $\%$ | 로지스틱 회귀 logit 기여분 |
@@ -46,10 +47,10 @@
 
 ## 1. 프로젝트 개요 및 브랜드 철학
 
-### 1.1 플랫폼 비전: 실패의 과학적 데이터 복기
-기존 상용 낚시 앱(어신, 물반고기반, Fishbrain 등)은 1% 미만의 대형어 조과 사진과 협찬 광고에 치우친 **생존 편향(Survivorship Bias)**의 한계를 지닙니다. 그러나 실제 앵글러의 출조 중 60~70%는 입질 한 번 받지 못하는 **'꽝(Skunk/No-Fish)'**입니다.
+### 1.1 플랫폼 비전: '꽝'의 과학적 복기와 현장 인간공학 (Field Ergonomics)
+기존 상용 낚시 애플리케이션(어신, 물반고기반, Fishbrain 등)은 1% 미만의 대형어 조과 사진과 협찬 광고에 치우친 **생존 편향(Survivorship Bias)**의 한계를 지닙니다. 그러나 실제 대한민국 연안 앵글러의 출조 중 60~70%는 입질 한 번 받지 못하는 **'꽝(Skunk/No-Fish/입질 무)'**입니다.
 
-ExFish는 *"ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며..."*라는 슬로건 아래, 실패한 출조를 단순 삭제하거나 망각하는 대신 **당시의 정량적 물리량(수온, 조석, 유속, 풍향·풍속, 채비, 기압)**으로 박제하여 실패 원인을 과학적으로 복기하는 **'프로 앵글러 전용 테크니컬 피싱 인텔리전스 계측기'**입니다.
+ExFish는 *"ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며..."*라는 슬로건 아래, 실패한 출조를 단순 삭제하거나 망각하는 대신 **당시의 정량적 물리량(수온, 조석 수위, 유속 및 유향, 풍향·풍속, 기압, 루어/채비 무게, 원줄 호수)**으로 박제하여 실패 원인을 과학적으로 복기하는 **'프로 앵글러 전용 테크니컬 피싱 인텔리전스 계측기'**입니다.
 
 ```mermaid
 flowchart LR
@@ -58,17 +59,19 @@ flowchart LR
         A1 --> A3["꽝/실패 70회 (기록 삭제/원인 불명 반복)"]
     end
 
-    subgraph ExFishSystem ["ExFish v4.1 테크니컬 인텔리전스"]
+    subgraph ExFishSystem ["ExFish v5.0 테크니컬 인텔리전스"]
         B1["출조 100회"] --> B2["히트 물리 스냅샷 (30회)"]
         B1 --> B3["꽝 공식 복기 로그 (70회)"]
         B2 --> B4["개인화 히트 확률 머신러닝 엔진 고도화"]
         B3 --> B5["7대 환경 벡터 & SHAP 실패 기여도 분석<br/>(수온급변 42%, 조류정체 31%)"]
         B5 --> B4
+        B4 --> B6["차기 출조 최적 물때/채비 추천"]
     end
 ```
 
 ### 1.2 핵심 기술 스택
 - **프론트엔드 코어**: React 19 + TypeScript + Tailwind CSS v4 + Vite v8
+- **모바일 네이티브 런타임**: Capacitor 7 Android 하이브리드 앱 아키텍처
 - **지도 엔진**: 카카오 맵 JS SDK (`react-kakao-maps-sdk`) — 50cm급 고해상도 위성 실사 항공사진, 커스텀 벡터 오버레이
 - **사운드 합성 엔진**: Web Audio API 기반 무의존 순수 듀얼톤($880\text{Hz} \rightarrow 440\text{Hz}$) 경보 합성기
 - **백그라운드 안전장치**: Screen Wake Lock API (`navigator.wakeLock`) + Web Notifications API
@@ -81,60 +84,150 @@ flowchart LR
 
 ---
 
-## 2. 지도 엔진 및 가상 조준경 물리 HUD 명세
+## 2. 지형 분류 체계 및 조건부 안전 경보 엔진
+
+ExFish v5.0은 현장 낚시인의 실제 행동 패턴과 지형 위험도를 반영하여 **조건부 안전 경보(Selective Hazard Alerting)** 원칙을 확립합니다. 안전한 방파제나 선착장에서 불필요한 고립 경보가 남발되면 앵글러의 경각심이 둔화되는 **경보 피로(Alert Fatigue)**를 원천 방지합니다.
 
 ```mermaid
-graph TD
-    GPS["스마트폰 GPS 수신"] --> AC["수평 오차 파란색 반경 원 (Accuracy Circle) 투영"]
-    AC --> TL["발밑 GPS ↔ 가상 핀 타깃팅 벡터 지향선 (Targeting Line) 연결"]
-    SKY["고해상도 위성 스카이뷰 (Level <= 4)"] --> TARGET["전방 수중여 / 테트라포드 육안 식별"]
-    TARGET --> D_PAD["화면 중앙 가상 십자선 (Crosshair) & 1m D-Pad 넛지 조준"]
-    D_PAD --> RADAR["원형 레이더뷰 시작각/종료각 유효 부채꼴 확정"]
-    TL --> RADAR
-    RADAR --> HUD["공기역학 비거리 + 바람 상호작용 + 조류 흘림선 HUD"]
+flowchart TD
+    SpotSelect["포인트 선택 (SpotType 판정)"] --> CheckType{"위험 지형 여부 판정<br/>(isHazardTerrain)"}
+    
+    CheckType -- "ROCK (갯바위)<br/>SEAWALL (석축)<br/>BEACH (해변/백사장)" --> HazardEngine["3대 고위험 지형 안전 엔진 가동"]
+    CheckType -- "BREAKWATER (방파제)<br/>PIER (선착장)" --> SafeEngine["비경보 일반 모드 가동<br/>(고립 경보·위험예보 배너 비활성화)"]
+
+    subgraph HazardSubEngine ["조건부 안전 엔진 동작"]
+        HazardEngine --> E1["만조 120분 전 감지 (isNearHighTide)"]
+        HazardEngine --> E2["너울/파고 위험 지수 (Energy = H * T)"]
+        HazardEngine --> E3["연안안전사고 위험예보 (관심/주의/경고)"]
+        HazardEngine --> E4["들물 고립 카운트다운 타이머 (90분)"]
+        E4 --> SoundAlert{"위험 단계 판정"}
+        SoundAlert -- "위험 (잔여 <= 0분)" --> DualTone["Web Audio API 듀얼톤 비프음 (880Hz -> 440Hz)"]
+        SoundAlert -- "주의 (잔여 <= 30분)" --> ScreenWake["Screen Wake Lock & Web Push 발령"]
+    end
 ```
 
-### 2.1 3대 지도 모드 전환
-1. **🗺️ 일반 지도 (`ROADMAP`)**: 주간에 항만 지명, 주차장, 도로를 직관적으로 파악.
-2. **🛰️ 고해상도 스카이뷰 (`HYBRID`)**: 50cm급 실사 항공사진으로 갯바위 여밭, 물골, 간출암, 테트라포드 발판을 실사로 정밀 탐색.
-3. **🌙 야간 다크 모드 (`DARK`)**: 캔버스 톤 반전 및 저조도 야간 시야 보호 테마 적용 (`localStorage` 영구 보존).
+### 2.1 5대 지형 분류 및 위험 판정 로직
+시스템은 `spot.spot_type`을 기준으로 위험 지형 여부를 다음과 같이 판정합니다:
 
-### 2.2 가상 십자선 조준경 (Virtual Crosshair) & 1m D-Pad 정밀 조준
-- **개념 재정의**: 스마트폰 GPS의 5~15m 수평 오차(CEP)를 고려하여, 1m D-Pad는 발밑 GPS 수정이 아닌 **"위성 실사 영상에서 육안 식별되는 전방 수중여/간출암/방파제 끝선을 원격 조준경처럼 미세 타깃팅하는 도구"**로 동작.
-- **GPS 정확도 원 시각화**: 기기 수신 정확도(`coords.accuracy`)를 반투명 청색 원(`accuracyCircle`, fillOpacity: 0.15, strokeColor: `#3B82F6`)으로 지도상에 실시간 투영.
-- **타깃팅 벡터 지향선 (Targeting Line)**:
-  - 앵글러의 현재 실측 위치(GPS 수신 좌표)와 원격 가상 조준경 핀(Virtual Crosshair Target) 사이에 **황금색 점선 지향선(Golden Dash Vector Line, strokeWeight: 2, strokeColor: `#F59E0B`, strokeStyle: `shortdash`)**을 실시간 연결.
-  - 선 중앙에 **`내 위치로부터 거리: XX.X m | 방위각: XXX°`** 플로팅 거리 뱃지(`CustomOverlay`)를 투영하여, 앵글러가 서 있는 발판과 공략하려는 수중여 사이의 실측 이격 거리를 직관적으로 인지.
-- **마커 2D 드래깅 및 1m 넛지 (모바일 최적화 컴팩트 패널)**:
-  - 작성자 본인 포인트일 때만 **`[🎯 위치 조정]`** 컨트롤 활성화.
-  - 모바일 웹 뷰포트에서 화면을 가리던 과도한 설명 문구('위성 스카이뷰 마커 직접 드래깅', '기존 좌표, 새 좌표' 등)를 전면 제거하고 직관적인 **'위치 조정'** 헤더로 단축.
-  - 가로/세로 40×40px(`w-10 h-10`) D-Pad 버튼으로 엄지 조작성 확보.
-  - 오터치 방지를 위해 **'저장' 버튼(에메랄드)을 왼쪽, '취소' 버튼을 오른쪽**에 배치하고, 저장 후 불필요한 알림 팝업 없이 즉시 지도에 확정 반영.
+```typescript
+// 지형 위험 판정: 갯바위, 석축, 해변/백사장만 고립 위험 지형으로 분류
+const isHazardTerrain = 
+  spot.spot_type === 'ROCK' || 
+  spot.spot_type === 'SEAWALL' || 
+  spot.spot_type === 'BEACH';
+```
 
-### 2.3 원형 레이더뷰 유효 캐스팅 부채꼴 섹터
-- **시작각 및 종료각 지정**: 방위 문자열(N, NE 등) 대신 각도기 다이얼/슬라이더를 통해 유효 공략 각도(예: $45^\circ \sim 135^\circ$)를 지정.
-- **레이더 가이드 라인**: 시작각(녹색 점선)과 종료각(시안색 점선)이 최대 사거리까지 뻗어나가며, 호 중심에는 거리 눈금 뱃지 표출.
-- **전방위(ALL) 폐지**: 실제 갯바위/방파제는 배후 육지가 존재하므로 전방위 지정을 제거하고 부채꼴 각도로 표준화.
+| 지형 코드 (`SpotType`) | 한국어 지형 명칭 | 위험 지형 판정 (`isHazardTerrain`) | 고립 경보 & 위험예보 위젯 | 주요 필드 위험 요인 |
+| :--- | :--- | :---: | :---: | :--- |
+| **`ROCK`** | **갯바위** | **TRUE (위험)** | **상시 가동** | 들물 시 퇴로 침수, 너울성 파도 피격, 낙상 |
+| **`SEAWALL`** | **석축** | **TRUE (위험)** | **상시 가동** | 만조 수위 상승 시 발판 침수, 해조류 미끄러짐 |
+| **`BEACH`** | **해변 / 백사장** | **TRUE (위험)** | **상시 가동** | 갯골(Trench) 급류 차단, 이안류, 간출 사주 고립 |
+| **`BREAKWATER`** | **방파제** | **FALSE (일반)** | **비활성화 (사족 제거)** | 테트라포드 추락 주의(별도 메모 안내) 외 고립 무관 |
+| **`PIER`** | **선착장 / 물양장** | **FALSE (일반)** | **비활성화 (사족 제거)** | 육상 인접 평탄 지형으로 들물 고립 위험 전무 |
 
-### 2.4 실시간 바람·조류 상호작용 물리 HUD & 오렌지색 편류(Drift) 라인
-- **바람 벡터 ($W_{\text{to}} = (W_{\text{from}} + 180^\circ) \bmod 360^\circ$)와 캐스팅 각도($\theta_{\text{cast}}$)의 각도차($\Delta\theta$) 판정**:
-  - **바람 진행 벡터 화살표**: 포인트 중심에서 바람이 불어가는 방향($W_{\text{to}}$)으로 45m 뻗어나가는 시안색 화살표 및 풍향·풍속 배지(예: `💨 북동풍 4.5m/s`) 표출.
-  - **불필요한 안내 문구 제거**: 기존의 '옆바람 (줄날림 주의)' 등 사족 텍스트를 전면 삭제하고 정확한 풍향/풍속 단위만 깔끔하게 표기.
-- **지그헤드 + 2인치 쉐드 웜 & 합사 방출 길이/호수 연동 오렌지 편류 라인 (`orangeArcPts`)**:
-  - 원래 캐스팅 목표 방향 직선상이 아닌, **바람(풍향·풍속)에 의해 채비(지그헤드+2인치 웜)와 공중에 방출된 합사 줄(PE 라인)이 풍하측(바람 불어가는 쪽)으로 밀려난 실제 착수 지점**을 연결하여 오렌지색 실선 폴리라인(stroke 3.5px, #f97316)으로 실시간 렌더링.
-  - **공략각 3대 기준 포인트 (시점, 중간, 종점)**:
-    - 바람에 밀려 떨어진 실제 착수 위치에 각각 오렌지색 뱃지 표출: `{실제비거리}m ({우/좌} {밀림거리}m)` (예: `65m (우 4.2m)`).
-    - 밀림 거리($S_{\text{drift}}$)가 1.0m 이상일 경우, 원래 목표 착수점과 실제 착수점 사이에 앰버 점선 가이드 라인을 표출하여 밀림 궤적을 직관적으로 시각화.
-  - **무풍 기준 목표 호선**: 바람에 의해 밀리기 전 원래 목표 호선을 은은한 그레이 점선(dash 3, 3)으로 대조 표출하여 바람에 의한 라인 휨(Line Belly)과 편류량을 한눈에 비교 가능.
-- **실시간 조류 흘림선 (Drift Path)**: 착수 지점으로부터 실시간 유속($V_{\text{current}}$)과 유향에 따른 수중 채비 흘림 궤적을 점선 화살표로 투영.
+### 2.2 국립해양조사원·해양경찰청 연안안전사고 위험예보제 위젯
+`isHazardTerrain === true`인 지형에서만 렌더링되며, 조석 주기(물때)와 파고·풍속을 결합하여 위험 단계를 자동 발령합니다:
+1. **관심 (Blue/Amber)**: 소조기/중조기 평온 상태, 만조 접근 중.
+2. **주의보 (Amber/Orange)**: 대조기(사리, 6~10물) 만조 전후 2시간대 진입 시 (`isNearHighTide === true`) 발령.
+3. **경보 (Rose/Red)**: 대조기 만조 + 유의파고 $1.5\text{m}$ 이상 또는 풍속 $8.0\text{m/s}$ 이상 중첩 시 자동 발령.
+
+### 2.3 들물 고립 카운트다운 타이머 & 3단계 상태 전이
+가장 인접한 간조(들물 시작점)를 기준으로 경과 시간과 잔여 안전 시간을 실시간 계산합니다:
+- **기준 안전 윈도우**: 간조 후 90분 ($T_{\text{escape}} = 90\text{분}$)
+- **상태 전이**:
+  - **`SAFE` (안전, 잔여 $> 30\text{분}$)**: `⏱️ 갯바위 들물 탈출 골든타임 카운트다운` 표출.
+  - **`CAUTION` (주의, $0 < \text{잔여} \le 30\text{분}$)**: `⚠️ [들물 탈출 골든타임 임박] 안전 철수 준비` (주황색 테두리 및 경고 뱃지).
+  - **`DANGER` (위험, 잔여 $\le 0\text{분}$)**: `🚨 [갯바위 침수 고립 위험] 즉시 철수하십시오!` (장미색 펄스 애니메이션 + 비프 경보 가동).
+
+### 2.4 Web Audio API 무의존 듀얼톤 비프 사운드 엔진
+외부 MP3/WAV 음원 파일 네트워크 로딩 실패나 브라우저 자동 재생 정책 차단을 방지하기 위해 순수 자바스크립트 오디오 컨텍스트(`AudioContext`)로 실시간 주파수를 합성합니다:
+- **주파수 변조**: $880\text{Hz} \rightarrow 440\text{Hz}$ (하강 듀얼톤 사이렌 효과)
+- **주기 알람**: 위험 상태 지속 시 25초 간격 자동 비프 발생
+- **현장 테스트 스위치**: 앵글러가 출조 전 음량과 이어폰 연결을 확인할 수 있는 `[소리 테스트]` 토글 버튼 기본 탑재.
 
 ---
 
-## 3. 공기역학 채비 및 로드 탄성 비거리 & 바람 편류(Drift) 물리 엔진
+## 3. 캐스팅 공략 각도 (원형 레이더뷰) UI/UX 명세
+
+과거 v3.x의 난해한 방위각(Azimuth) 문자열 방식과 비직관적인 UI 명칭을 현장 앵글러의 언어로 전면 개편하였습니다.
+
+```
+[원형 레이더뷰 통합 인터페이스 레이아웃]
+┌────────────────────────────────────────────────────────┐
+│ 🎯 캐스팅 방향                                [✓ 사용]  │
+├────────────────────────────────────────────────────────┤
+│                     [ N (360°) ]                       │
+│                         │                              │
+│       W (270°) ─────────┼───────── E (90°)             │
+│                      45°│                              │
+│                         │~ 135°                        │
+│                     [ S (180°) ]                       │
+│                                                        │
+│   [시작 45°] ──────────●───────────── [종료 135°]      │
+├────────────────────────────────────────────────────────┤
+│ ⚡ 빠른 프리셋                                          │
+│ [동(E)] [서(W)] [남(S)] [북(N)]  |  [60°] [90°] [120°]  │
+└────────────────────────────────────────────────────────┘
+```
+
+### 3.1 레이블 및 토글 버튼 표준화
+- **헤더 타이틀**: `🎯 캐스팅 방향`으로 통일 (초보자도 단번에 의도를 파악).
+- **사용 여부 스위치**:
+  - 활성화 시: **`✓ 사용`** (에메랄드/시안 하이라이트 배경).
+  - 비활성화 시: **`미사용`** (슬레이트 배경).
+
+### 3.2 SVG 원형 레이더 통합 뷰 (Internal Angle Labeling)
+1. **내부 각도 통합 렌더링**:
+   - 레이더 뷰 외부의 번잡한 텍스트를 제거하고, SVG 원형 캔버스 내부 중심부에 `45°` (에메랄드, 시작각) 및 `~ 135°` (시안, 종료각)를 대형 폰트로 직접 렌더링.
+2. **원클릭 각도 지정 (Interactive Click Listener)**:
+   - 레이더 원형 뷰의 임의 지점을 터치/클릭하면 중심점$(cx, cy)$ 기준 각도를 즉각 역산($\text{atan2}$)하여 가장 가까운 핸들(시작각 또는 끝각)로 자동 스냅.
+3. **듀얼 슬라이더 ($0^\circ \sim 359^\circ$)**:
+   - 시작각(에메랄드 액센트)과 종료각(시안 액센트)을 1도 단위로 정밀 조작 가능.
+
+### 3.3 2계층 원터치 빠른 프리셋 (Cardinal & Aperture Presets)
+현장에서 장갑을 끼거나 젖은 손으로 슬라이더를 섬세하게 움직이기 어려운 상황을 위해 원터치 버튼을 지원합니다:
+1. **4대 방위 프리셋 (주 공략면 90° 부채꼴)**:
+   - **동(E)**: 시작 $45^\circ$ ~ 종료 $135^\circ$
+   - **서(W)**: 시작 $225^\circ$ ~ 종료 $315^\circ$
+   - **남(S)**: 시작 $135^\circ$ ~ 종료 $225^\circ$
+   - **북(N)**: 시작 $315^\circ$ ~ 종료 $45^\circ$
+2. **화각(Aperture) 프리셋**:
+   - 현재 바라보는 중심각을 기준으로 **`60°` (집중 투구)**, **`90°` (표준 탐색)**, **`120°` (광각 원투)**을 즉시 확장/축소.
+
+---
+
+## 4. 지도 엔진 및 HUD 시각화 명세
+
+### 4.1 3대 지도 모드 전환
+1. **🗺️ 일반 지도 (`ROADMAP`)**: 도심 및 항만 접근로, 주차장, 편의시설 탐색.
+2. **🛰️ 고해상도 스카이뷰 (`HYBRID`)**: 50cm급 실사 항공사진으로 간출암, 수중여밭, 테트라포드 발판 배열 육안 식별.
+3. **🌙 야간 다크 모드 (`DARK`)**: 캔버스 톤 반전 및 눈부심 방지 저조도 필터 적용 (`localStorage` 및 HTML data-attribute 영구 보존).
+
+### 4.2 가상 십자선 조준경 & 1m D-Pad 정밀 조준
+- **원격 타깃팅 개념**: 스마트폰 GPS의 $5 \sim 15\text{m}$ 수평 오차(CEP)를 극복하기 위해, 1m D-Pad는 발밑 GPS를 수정하는 것이 아니라 **"위성 영상에서 식별되는 전방 수중여나 간출암을 조준경처럼 미세 타깃팅"**합니다.
+- **타깃팅 벡터 지향선 (Targeting Line)**:
+  - 앵글러의 현재 GPS 수신 좌표와 가상 조준경 핀 사이에 황금색 점선 지향선 연결.
+  - 지향선 중앙에 **`내 위치로부터 거리: XX.X m | 방위각: XXX°`** 플로팅 뱃지 표시.
+- **모바일 경량화 D-Pad**: 40×40px 규격, 좌측 에메랄드 `[저장]`, 우측 슬레이트 `[취소]` 배치로 엄지 조작 최적화.
+
+### 4.3 공기역학 채비 편류 오렌지 라인 (`orangeArcPts`)
+- **수풍 면적 불균형 원리**: 60m 원투 시 합사 1.0호의 공중 노출 수풍 면적($\approx 107\text{ cm}^2$)은 2인치 웜 채비 자체 투영면적($\approx 5.5\text{ cm}^2$)의 **약 20배**에 달합니다. 캐스팅 시 줄이 옆으로 밀리는 현상의 90% 이상은 공중 합사 라인의 풍압력(Line Belly)에 기인합니다.
+- **시각화 레이어**:
+  1. 무풍 기준 목표 호선: 은은한 회색 점선.
+  2. 실제 착수 호선: 오렌지색 실선 폴리라인 (stroke 3.5px, `#f97316`).
+  3. 3대 착수 뱃지: 시점, 중간, 종점에 `{실제비거리}m ({우/좌} {밀림}m)` 실시간 표출.
+
+### 4.4 KHOA 수심 등심선 연동 침강 속도 및 바닥 안착 HUD
+- 착수 위치의 KHOA 국가해양격자 수심($-H\text{ m}$)을 자동 보간하여 HUD에 표출:
+  - `🌊 착수수심: -12m | ⏱️ 바닥 안착: 약 14초 | 조류 흘림 +5.8m`
+
+---
+
+## 5. 공기역학 채비 및 로드 탄성 비거리 & 바람 편류(Drift) 물리 엔진
 
 ExFish는 단순 추정이 아닌, 낚싯대의 블랭크 탄성 에너지 축적과 공기역학 항력 역학에 기반한 통합 비거리 공식과 횡방향 수풍 편류 모델을 적용합니다.
 
-### 3.1 통합 캐스팅 비거리 공식
+### 5.1 통합 캐스팅 비거리 공식
 $$D_{\text{cast}} = 55\text{ m} \times K_{\text{length}} \times \eta_{\text{power}}(W) \times K_{\text{line}}(\text{PE}) \times K_{\text{wind}}$$
 
 ```
@@ -148,81 +241,44 @@ $$D_{\text{cast}} = 55\text{ m} \times K_{\text{length}} \times \eta_{\text{powe
   풍향/풍속 벡터 보정:   K_wind (가벼운 채비 + 굵은 합사 맞바람 패널티 가중)
 ```
 
-### 3.2 지그헤드 + 2인치 쉐드 웜 및 합사 방출 길이/두께 연동 바람 편류(Crosswind Drift) 산식
+### 5.2 지그헤드 + 2인치 쉐드 웜 및 합사 방출 길이/두께 연동 바람 편류(Crosswind Drift) 산식
 $$S_{\text{drift}} = \frac{1}{2} a_{\perp} (t_{\text{flight}})^2 \times \text{damp} + |V_{\perp}| \cdot t_{\text{flight}} \cdot 0.06\sqrt{\text{PE}}$$
 
 1. **채비 및 합사 유효 투영 측면적**:
    - $A_{\text{rig}} = (L_{\text{worm}} \times H_{\text{worm}}) + A_{\text{jighead}} \approx (2.0 \times 0.0254 \times 0.008) + 0.00015 \approx 0.00055\text{ m}^2$ ($C_{d,\text{rig}} \approx 0.70$)
    - $A_{\text{line}} = L_{\text{line}} \times d_{\text{line}} = (D_{\text{eff}} \times 1.08) \times (0.000165\text{m} \times \sqrt{\text{PE}})$ ($C_{d,\text{line}} \approx 1.15$)
-   > **핵심 물리 사실**: 60m 캐스팅 시 1.0호 합사의 공중 수풍 면적($\approx 107\text{ cm}^2$)은 2인치 웜 채비 자체 투영면적($\approx 5.5\text{ cm}^2$)의 **약 20배**에 달하며, 캐스팅 편류의 주원인은 공중에 방출된 합사 라인의 풍압력(Line Belly)에 기인함.
 2. **횡방향 풍압력 및 가속도**:
    $$F_{\perp} = \frac{1}{2} \rho_{\text{air}} |V_{\perp}|^2 \left( 0.65 C_{d,\text{rig}} A_{\text{rig}} + 0.35 C_{d,\text{line}} A_{\text{line}} \right)$$
    $$a_{\perp} = \frac{F_{\perp}}{M_{\text{rig}}} \quad \left(M_{\text{rig}} = \frac{W}{1000}\text{ kg}\right)$$
 3. **체공 시간 및 라인 텐션 감쇄**:
-   - $t_{\text{flight}} \approx 0.38 \sqrt{D_{\text{eff}}}$ (초)
-   - 스풀 방출 텐션 및 로드 팁 앵커링 감쇄 계수: $\text{damp} = 0.38$
-4. **실제 착수 벡터 합성 ($P_{\text{actual}}$)**:
-   - 목표 지점 $(x_{\text{target}}, y_{\text{target}}) = (D_{\text{eff}} \sin\theta_{\text{cast}}, D_{\text{eff}} \cos\theta_{\text{cast}})$
-   - 횡방향 오프셋 벡터: $\theta_{\text{norm}} = \theta_{\text{cast}} + 90^\circ$, 변위 $S_{\text{signed}} = \text{sign}(V_{\perp}) \cdot S_{\text{drift}}$
-   - $(x_{\text{actual}}, y_{\text{actual}}) = (x_{\text{target}} + S_{\text{signed}} \sin\theta_{\text{norm}}, y_{\text{target}} + S_{\text{signed}} \cos\theta_{\text{norm}})$
-   - $D_{\text{actual}} = \sqrt{x_{\text{actual}}^2 + y_{\text{actual}}^2}, \quad \theta_{\text{actual}} = \text{atan2}(x_{\text{actual}}, y_{\text{actual}})$
-5. **강풍 시 엣지 케이스 안전 가이드라인**:
-   - 풍속 $12\text{m/s}$ 이상의 강풍/돌풍 감지 시 최대 편류량은 $D_{\text{eff}} \times 0.35$로 물리적 상한 클램핑되며, 캘리브레이터에 경고 표출.
+   - $t_{\text{flight}} \approx 0.38 \sqrt{D_{\text{eff}}}$ (초), $\text{damp} = 0.38$
+4. **강풍 시 엣지 케이스 안전 가이드라인**:
+   - 풍속 $12\text{m/s}$ 이상의 강풍/돌풍 감지 시 최대 편류량은 $D_{\text{eff}} \times 0.35$로 물리적 상한 클램핑.
 
-### 3.2 로드 파워별 최적 스위트스팟 ($W_{\text{opt}}$) 규격표
+### 5.3 로드 파워별 최적 스위트스팟 ($W_{\text{opt}}$) 규격표
 | 로드 파워 (Power) | 최적 무게 ($W_{\text{opt}}$) | 권장 허용 무게 | 주요 대상 장르 |
 | :--- | :---: | :---: | :--- |
 | **UL (울트라라이트)** | **3 g** | 1 ~ 7 g | 볼락, 아징(전갱이) 지그헤드 |
 | **L (라이트)** | **7 g** | 3 ~ 12 g | 호래기, 우럭 라이트 다운샷 |
-| **ML (미디엄라이트)** | **14 g** | 7 ~ 21 g | 주꾸미, 갑오징어 소형 에기 |
+| **ML (미디엄라이트)** | **18 g** | 7 ~ 30 g | 주꾸미, 에기, 라이트루어 |
 | **M (미디엄 표준)** | **22 g** | 10 ~ 35 g | 무늬오징어 에깅 3.5호, 광어 다운샷 |
-| **MH (미디엄헤비)** | **35 g** | 18 ~ 50 g | 농어 미노우, 중형 삼치 스푼 |
-| **H (헤비)** | **60 g** | 30 ~ 90 g | 쇼어지깅(방어/부시리 메탈지그) |
-| **XH (엑스트라헤비)** | **100 g** | 50 ~ 150 g+ | 서프 원투 낚시, 헤비 플러깅 |
+| **MH (미디엄헤비)** | **35 g** | 14 ~ 50 g | 농어 미노우, 중형 삼치 스푼 |
+| **H (헤비)** | **48 g** | 25 ~ 60 g | 쇼어지깅(방어/부시리 메탈지그) |
+| **SURF (원투대)** | **95 g** | 30 ~ 150 g | 원투 낚시 (봉돌 8~40호) |
 
-### 3.3 로드 길이 계수 ($K_{\text{length}}$)
-$$K_{\text{length}} = \left(\frac{L_{\text{feet}}}{8.6}\right)^{0.65}$$
-- $6.6\text{ft}$: $\times 0.84$ (선상/내항)
-- $8.6\text{ft}$: $\times 1.00$ (에깅/워킹 표준)
-- $10.6\text{ft}$: $\times 1.15$ (서프 장타)
-- $14.8\text{ft}$ (4.5m 서프): $\times 1.42$ (원투대)
-
-### 3.4 비대칭 스플릿 로그-가우시안 로드 탄성 효율 곡선 ($\eta_{\text{power}}$)
-기존의 대칭 정규분포 가우시안 모델은 과부하 시 로드가 버티지 못하고 탄성이 붕괴하는 현상을 설명하지 못했습니다. 실제 카본 블랭크의 비대칭 물리 특성을 반영한 **스플릿 로그-가우시안(Split Log-Gaussian) 모델**을 도입합니다.
-
+### 5.4 비대칭 스플릿 로그-가우시안 로드 탄성 효율 곡선 ($\eta_{\text{power}}$)
 $$\eta_{\text{power}}(W) = \begin{cases}
 \exp\left( - \frac{(\ln W - \ln W_{\text{opt}})^2}{2 \sigma_{\text{under}}^2} \right), & W < W_{\text{opt}} \quad (\sigma_{\text{under}} = 0.60, \text{ 저부하 탄성 미달}) \\
 \exp\left( - \frac{(\ln W - \ln W_{\text{opt}})^2}{2 \sigma_{\text{over}}^2} \right), & W \ge W_{\text{opt}} \quad (\sigma_{\text{over}} = 0.38, \text{ 과부하 탄성 붕괴})
 \end{cases}$$
 
-#### 안전 가드레일 및 한계 클램핑:
-1. **극소 자중 하한 클램핑 ($W < 0.5\text{g}$)**: 관성 모멘트 부재로 인한 비행 불가 판정, $\eta_{\text{power}} = 0.05$ 강제 클램핑.
-2. **블랭크 파손 경고 가드레일 ($W > 2.0 \times W_{\text{opt}}$)**:
-   - 로드 허용 한계 초과로 블랭크 팁 파손(Blank Fracture Risk) 위험 감지.
-   - HUD 및 상세 패널에 `[⚠️ OVERLOAD 로드 파손 주의]` 플래싱 경고 표출 및 탄성 효율 $\eta_{\text{power}} \le 0.15$ 급락 반영.
-
 ---
 
-## 4. 수중 침강(폴링) 및 조류 흘림 물리 엔진
+## 6. 수중 침강(폴링) 및 조류 흘림 물리 엔진
 
-루어가 수면에 착수한 직후 바닥(해저면)까지 도달하는 시간과 조류 밀림을 유체역학 종단 속도와 원줄 양력 감쇄 모델로 계산합니다.
-
-```
-착수 지점 (수면)
-    │  \
-    │   \  조류에 밀리는 실제 궤적
- 수심(H)  \  유효 침강 속도 (veff)
-    │      \
-    ↓        ↘
-해저 바닥 ─────→ [착저 지점: 조류 방향으로 Ddrift 만큼 밀림]
-```
-
-### 4.1 루어 유체역학 형상 계수 ($C_{\text{lure}}$) 도입 수중 종단 속도 ($v_{\text{sink}}$)
-동일한 무게라도 텅스텐 지그와 오징어 에기의 침강 속도는 최대 5배 차이가 납니다. 루어 형상에 따른 항력 계수를 반영합니다:
-
+### 6.1 루어 유체역학 형상 계수 ($C_{\text{lure}}$) 도입 수중 종단 속도 ($v_{\text{sink}}$)
 $$v_{\text{sink}} \approx C_{\text{lure}} \times 0.28 \times \sqrt{W\text{ (g)}} \quad (\text{m/s}) \quad [0.15\text{ m/s} \le v_{\text{sink}} \le 2.80\text{ m/s} \text{ 클램핑}]$$
 
-#### 루어 유체역학 형상 계수 ($C_{\text{lure}}$) 규격표
 | 루어 카테고리 (Lure Type) | 형상 계수 ($C_{\text{lure}}$) | 침강 특성 및 유체역학적 근거 | 대표 사용 장르 |
 | :--- | :---: | :--- | :--- |
 | **텅스텐 마이크로 지그** | **1.25** | 초고밀도(납 대비 1.7배), 최소 투영 단면적으로 물 저항 최소화 | 아징, 락피시 초원투 |
@@ -232,379 +288,185 @@ $$v_{\text{sink}} \approx C_{\text{lure}} \times 0.28 \times \sqrt{W\text{ (g)}}
 | **슬로우 피치 지그 / 플랫 메탈** | **0.50** | 비대칭 바디의 슬라이드 및 플러터링 폴링 액션 | 바닥층 락피시, 넙치 |
 | **오징어 에기 3.5호 (Egi)** | **0.25** | 침강률 표준 $3.0 \sim 3.5\text{s/m}$, 깃털 날개/싱커 밸런스 저항 | 무늬오징어, 한치 |
 
-### 4.2 조류에 의한 원줄 양력 감쇄 및 유효 침강 속도 ($v_{\text{eff}}$)
-조류가 흐르면 원줄(합사)에 수압 저항(Line Drag)이 생겨 루어의 침강을 방해합니다:
+### 6.2 조류에 의한 원줄 양력 감쇄 및 바닥 안착 시간
 $$v_{\text{eff}} = \frac{v_{\text{sink}}}{\sqrt{1 + \left(\frac{V_{\text{current}}}{0.6 \cdot v_{\text{sink}}}\right)^2}}$$
-
-### 4.3 바닥 안착 시간 ($T_{\text{bottom}}$) 및 조류 흘림 거리 ($D_{\text{drift}}$)
-- **바닥 안착 소요 시간**:
-  $$T_{\text{bottom}} = \frac{H}{v_{\text{eff}}} \quad (\text{초})$$
-- **침강 중 조류 흘림 거리**:
-  $$D_{\text{drift}} = V_{\text{current}} \times T_{\text{bottom}} \quad (\text{m})$$
-
-### 4.4 HUD 표기 형태
-- **지도 착수 뱃지**: `🎯 공략각 65° | 사거리 62m` / `🌊 착수수심 -12m | ⏱️ 바닥 안착: 약 14초 (조류 흘림 +5.8m)` / `로드 8.6ft M (탄성효율 96%) · 에기 3.5호(21g)/PE 0.8호`
-- **상세 패널 가이드 표**: 현재 조류 유속을 반영하여 수심 $3\text{m}, 5\text{m}, 8\text{m}, 12\text{m}, 18\text{m}$에서 몇 초를 세고 액션을 시작해야 하는지 실시간 폴링 카운트다운 표 제공.
+$$T_{\text{bottom}} = \frac{H}{v_{\text{eff}}} \quad (\text{초}), \quad D_{\text{drift,tide}} = V_{\text{current}} \times T_{\text{bottom}} \quad (\text{m})$$
 
 ---
 
-## 5. KHOA 수심 등심선 & 시공간 하이브리드 조위 엔진
+## 7. 현장 최적화 상세 보기 패널 & 캘리브레이터
 
-### 5.1 KHOA 국가해양격자 벡터 수심 등심선 오버레이 (Dual-Stroke 고대비 규격)
-위성 실사 영상의 복잡한 텍스처 위에서 완벽한 시인성을 확보하기 위해 **2중 외곽선(Dual Stroke)** 렌더링 규격을 적용합니다.
+### 7.1 상단 일체형 히어로 패널 (Noise Removal)
+필드 앵글러가 가장 필요로 하는 정보에 즉시 도달할 수 있도록 불필요한 시각적 잡음(Noise)을 완전히 제거했습니다:
+1. **제거된 노이즈**:
+   - `KHOA 수심 등심선 표시중` 사족 배너 삭제.
+   - `조위관측소 거리 및 잔차 가중치` 디버깅용 텍스트 제거.
+   - `파도 높이/너울 텍스트` 중복 문구 제거.
+2. **Superimpose 히어로 구조**:
+   - 사진 위에 **[지형 뱃지]**, **[포인트명]**, **[대상 어종]**을 오버레이하고, 그 바로 아래에 **`[날씨] · [기온] · [수온]`**을 단일 캡슐 인라인으로 통합 배치하여 첫 화면 높이를 획기적으로 압축.
 
-```
-[2중 외곽선 단면 구조]
-  외부 쉴드 스트로크: 5.0px (Deep Black #000000, 불투명도 0.8) ─── 배경 파도 텍스처 차단
-    내부 코어 라인:   2.5px (고시인성 네온 컬러) ─────────────── 수심대 식별
-```
+### 7.2 카카오맵 및 360° 로드뷰 딥링크
+- **길찾기 연동**: 포인트에 등록된 네비 검색명(`navi_name`) 및 URL 연동.
+- **카카오 로드뷰 360° 원클릭 미리보기**:
+  - `https://map.kakao.com/link/roadview/${spot.lat},${spot.lng}` 딥링크 버튼 탑재.
+  - 출조 전 진입로의 테트라포드 높이, 주차 공간, 갯바위 갯벌 여부를 로드뷰로 사전 확인 가능.
 
-#### 수심대별 네온 컬러 사양
-- **-5 m (간출여/암초 경계)**: **네온 시안 (`#00F0FF`, Neon Cyan)** — 밑걸림 주의 및 여밭 엣지
-- **-10 m (브레이크라인/급경사)**: **세이프티 옐로우 (`#FFE600`, Safety Yellow)** — 1차 급심 드롭오프존
-- **-20 m (주류대 물골/갯골)**: **네온 마젠타 (`#FF007A`, Neon Magenta)** — 회유성 대형 어종 유영로
-- **-50 m (외해 심해선)**: **퓨어 화이트 (`#FFFFFF`, Pure White)** — 외해 심도 경계선
+### 7.3 4대 실전 무게 카테고리 프리셋 캘리브레이터
+전통적인 슬라이더 단일 조작 방식에서 탈피하여, 대한민국 루어/원투 낚시인이 실전에서 사용하는 4대 규격 탭과 프리셋을 제공합니다:
 
-- **지도 컨트롤**: 우상단 **`[🌊 수심선]`** 토글 버튼 탑재.
-- **착수 지점 예상 수심 자동 계산 (`estimateDepthAtPoint`)**: 발판 종류(갯바위 급심, 방파제, 백사장 완경사)와 비거리에 따른 수심 경사도 모델로 캐스팅 착수점의 예상 수심을 $-X.X\text{m}$로 자동 보간.
-
----
-
-### 5.2 KHOA 실측 잔차의 시공간 복합 감쇄 하이브리드 조위 엔진
-기존의 시간 감쇄 모델에 공간 상관 거리($R_0 = 35\text{ km}$)를 결합한 **시공간 하이브리드 수식**을 도입합니다.
-
-$$\hat{H}(t, \mathbf{x}) = H_{\text{harmonic}}(t, \mathbf{x}) + \Delta H_{\text{obs}}(t_0, \mathbf{x}_0) \cdot \exp\left(-\lambda (t - t_0)\right) \cdot \exp\left(-\left(\frac{R}{R_0}\right)^2\right) + \Delta H_{\text{meteo}}(t, \mathbf{x})$$
-
-- **$\Delta H_{\text{obs}}(t_0, \mathbf{x}_0) = H_{\text{obs}}(t_0, \mathbf{x}_0) - H_{\text{harmonic}}(t_0, \mathbf{x}_0)$**: 기준 시각 $t_0$에서 Haversine 공식으로 탐색한 가장 가까운 KHOA 조위관측소($\mathbf{x}_0$)의 실시간 실측 잔차.
-- **$\exp(-\lambda (t - t_0))$**: 잔차의 시간 감쇄 함수 (반감기 6시간, $\lambda \approx 0.1155\text{ h}^{-1}$).
-- **$\exp(-(R / R_0)^2)$**: 공간 가우스 상관 감쇄 함수 ($R_0 = 35.0\text{ km}$).
-  - $R \le 10\text{ km}$: 가중치 $\ge 0.92$ (실측 잔차 적극 반영)
-  - $R = 35\text{ km}$: 가중치 $0.368$ (완만한 반영)
-  - $R \ge 70\text{ km}$: 가중치 $\le 0.018$ (천문조위 및 기상조위로 안전하게 수렴)
-- **$\Delta H_{\text{meteo}}(t, \mathbf{x})$**: 역기압 효과 보정 ($(1013.25 - P_t) \times 1.01\text{ cm}$).
-- **상세 패널 표시**: 36시간 조위 그래프 상단에 `📍 KHOA [관측소명] (거리 8.4km | 잔차가중 94%) | 시공간 하이브리드 조위 가동중` 실시간 뱃지 표출.
+1. **지그헤드 (g)**: 1g, 2g, 3g, 5g
+2. **온스 루어 (oz)**: 1/32, 1/16, 3/32, 1/8, 3/16, 1/4, 3/8, 1/2, 3/4, 1oz
+3. **주꾸미 봉돌 (호, 1호=3.75g)**: 3호, 4호, 5호, 6호, 7호
+4. **원투 봉돌 (호)**: 8호, 10호, 12호, 15호, 18호, 20호, 25호, 30호, 35호, 40호 ($30\text{g} \sim 150\text{g}$)
 
 ---
 
-## 6. 해양 안전 및 조석 타임라인 명세
+## 8. 2계층 지능형 검색 & 모바일 IME 최적화
 
-### 6.1 갯바위 들물 탈출 골든타임 동적 가변 공식 및 백그라운드 안전장치
-고정 90분은 서해 대조기(사리, 조차 8m+) 시 급격한 수위 상승으로 인해 징검다리가 순식간에 침수되어 치명적 고립 사고를 유발합니다. 조차에 연동되는 동적 가변 탈출 공식을 적용합니다.
-
-#### 조차 연동 동적 탈출 골든타임 공식
-$$T_{\text{escape}}(\Delta H_{\text{tide}}) = \max\left(45, \; 120 - 70 \times \left(\frac{\Delta H_{\text{tide}} - 2.0}{6.5}\right)\right) \quad (\text{분, min})$$
-
-- **소조기/조금 ($\Delta H_{\text{tide}} \le 2.0\text{m}$)**: $T_{\text{escape}} = 120\text{분}$ (완만한 들물)
-- **중조기 ($\Delta H_{\text{tide}} \approx 5.0\text{m}$)**: $T_{\text{escape}} \approx 88\text{분}$
-- **대조기/사리 ($\Delta H_{\text{tide}} \ge 8.5\text{m}$ 서해 사리)**: **최소 안전 마진 $50\text{분}$으로 자동 단축** (급격한 유속 및 퇴로 차단 원천 방어)
-
-#### 무중단 백그라운드 안전장치 명세
-1. **Screen Wake Lock API (`navigator.wakeLock.request('screen')`)**:
-   - 갯바위 진입 모드 및 탈출 타이머 활성화 시 화면 자동 꺼짐을 방지하여 상시 타이머 주시 보장.
-2. **Web Notifications API (헤드업 시스템 푸시)**:
-   - 스마트폰 화면이 꺼지거나 브라우저가 백그라운드로 전환되어 주머니에 보관된 상태에서도 잔여 시간 30분, 15분, 5분, 0분 시점에 시스템 레벨 진동 및 긴급 철수 푸시 알림 발령.
-3. **Web Audio API 합성 비프 경보**:
-   - 외부 음원 파일 없이 $880\text{Hz} \rightarrow 440\text{Hz}$ 듀얼톤 비프 경보음 발생(`playEvacuationBeep()`), 원클릭 소리 테스트 및 25초 주기 비프 알람 스위치 지원.
-
-### 6.2 너울(Swell) 위험도 3단계 지수 & 해경 위험예보 자동 감지
-- **너울 파괴 에너지 지수**: $\text{Energy} = H_{\text{wave}} \times T_{\text{period}}$
-  - $\text{Energy} \ge 12.0$ or $H \ge 2.0\text{m}$: `[🚨 DANGER 진입금지]`
-  - $\text{Energy} \ge 7.0$ or $H \ge 1.3\text{m}$: `[⚡ CAUTION 주의요망]`
-  - 그 외: `[✅ SAFE 양호]`
-- **연안사고 위험예보 자동 감지**: 대조기(사리) 만조 전후 2시간대이거나 너울 파고 위험 시 플래싱 경보 배너 자동 활성화.
-
-### 6.3 -6h ~ +36h (총 42시간) 연속 조위 곡선 & 피딩 타임
-- 현재 시각 기준 과거 6시간부터 미래 36시간까지의 연속 조위 곡선을 가로 스크롤 없이 한 화면에 100% 반응형으로 렌더링.
-- 조위 그래프 내에 **중들물 피딩 타임**, **일출 해창**, **일몰 피딩** 구간을 하이라이트 면적으로 직접 오버레이.
-
----
-
-## 7. 어종 생태 입질 지수 & AI 꽝 사후 복기 리포트
-
-### 7.1 어종별 생태학적 입질 지수 연산 (`biteScore.ts`, `speciesDatabase.ts`)
-- **한국 연안 20대 인기 어종 생태 DB**:
-  - 우럭(조피볼락): 야행성 락피시, 야간 최고배점, 주간 감점, 적정 수온 10~17°C.
-  - 주꾸미/갑오징어: 주행성 모래/뻘 서식, 사리 유속 감점, 조금~완류 고배점.
-  - 무늬오징어/풀치: 여명/박명/야간 피딩, 집어등 반응, 조류 소통 우수 구간.
-  - 감성돔/참돔: 여명/해질녘 피딩, 7~10물 사리 전후 조류 소통 구간 고배점.
-- **개인화 맞춤형 배점**: 로그인 유저의 관심 어종(`favoriteSpecies`)을 1순위로 가중 반영하여 종합 입질 지수 및 1순위 추천 어종 실시간 도출.
-
-### 7.2 7대 환경 특성 벡터 기반 로지스틱 회귀 & SHAP 실패 기여도(%) 복기 엔진
-마릿수 0으로 '꽝'이 등록되었을 때, 7대 환경 특성 벡터를 기반으로 로지스틱 회귀 및 Shapley Value를 연산하여 퍼센트(%) 기여도를 자동 도출합니다.
-
-#### 1) 7대 입력 환경 벡터 ($\mathbf{x}$)
-$$\mathbf{x} = \begin{bmatrix}
-x_1: \Delta T_{\text{sst}} & (\text{적정 활성 수온과의 괴리, } |T_{\text{sst}} - T_{\text{opt}}|) \\
-x_2: \nabla T_{3\text{h}} & (\text{최근 3시간 수온 급강하율, } ^\circ\text{C}/3\text{h}) \\
-x_3: V_{\text{cur}} & (\text{조류 유속 정체도, } |V_{\text{cur}} - V_{\text{opt}}|) \\
-x_4: W_{\text{head}} & (\text{맞바람 세기, } W_{\text{speed}} \cdot \max(0, -\cos(\Delta\theta))) \\
-x_5: P_{\text{tide}} & (\text{정체 물때 페널티, 조금/1물/15물 여부}) \\
-x_6: S_{\text{swell}} & (\text{너울 파고 에너지 계수, } H_{\text{wave}} \cdot T_{\text{period}}) \\
-x_7: L_{\text{time}} & (\text{대상 어종 주야/피딩 타임 불일치 페널티})
-\end{bmatrix}$$
-
-#### 2) 로지스틱 회귀 모델
-$$P(\text{Skunk}) = \sigma(\mathbf{w}^T \mathbf{x} + b) = \frac{1}{1 + \exp\left(-(\sum_{j=1}^7 w_j x_j + b)\right)}$$
-
-#### 3) SHAP 기반 실패 기여도(%) 백분율 정규화 공식
-각 특성의 한계 기여분 $\phi_j = w_j (x_j - E[x_j])$에 대해 실패를 유발한 양(+)의 기여분을 정규화합니다:
-
-$$\text{Contribution}_j (\%) = \begin{cases}
-\frac{\max(0, \phi_j)}{\sum_{k=1}^7 \max(0, \phi_k)} \times 100, & \text{if } \sum_{k=1}^7 \max(0, \phi_k) > 0 \\
-\frac{100}{7}\%, & \text{otherwise (균등 베이스라인)}
-\end{cases}$$
-
-#### [출력 예시]
-> **📋 2026-10-21 시화방조제 우럭 루어 출조 꽝 복기 결과:**  
-> - **1위 실패 원인**: 최근 3시간 내 수온 급강하(-1.9°C) 영향 **42%** (찬물 유입 은신)  
-> - **2위 실패 원인**: 중들물 조류 유속 정체(0.08 m/s) **31%** (베이트피시 활성 저하)  
-> - **3위 실패 원인**: 7.2 m/s 맞바람으로 인한 채비 안착 실패 **18%**  
-> - **기타**: 물때 영향 **9%**  
-> 💡 **차기 공략 조언**: 수온이 안정되는 내일 간조 후 2시간 시점에 1/2oz 이상 무거운 싱커로 전방 35m 갯골을 공략하십시오.
-
----
-
-## 8. 계정, 데이터베이스 및 현장 UX 최적화
-
-### 8.1 Email & 닉네임 기반 무암호 간편 인증 및 30일 세션 관리
-- 복잡한 패스워드나 외부 서드파티(카카오/네이버 등) OAuth 연동 이슈를 배제하고, 필드 앵글러가 가장 신속하게 접근할 수 있도록 **Email과 닉네임(ID)**만으로 즉시 인증하는 무암호 단일 인증(Passwordless Single Auth) 체계 도입.
-- **30일 유효 세션 관리 (`localStorage`)**: 브라우저 로컬 스토리지(`exfish_auth_user_v2`)에 타임스탬프와 함께 보관되며, 30일간 재로그인 없이 포인트 생성 및 조과 등록 시 본인 계정(`user_id`, `author_name`)으로 영속 연동.
-- **프로필 모달 내 환경 단위 및 관심 어종 영속화**:
-  - 풍속 단위: `m/s`, `knot`, `km/h`
-  - 조류 단위: `knot`, `m/s`, `cm/s`
-  - 관심 대상어종(우럭, 광어, 감성돔, 농어 등) 다중 선택 상태를 유저 프로필과 결합하여 실시간 입질 지수 계산에 1순위 반영.
-
-### 8.2 아웃도어 초고대비 썬 모드 & 48px 터치 타깃
-- **아웃도어 썬 모드 (High-Contrast Sun Mode)**: 강한 햇빛 반사광(Glare) 아래에서 WCAG AAA 규격(대비율 7:1 이상)을 충족하는 블랙 배경(`#000000`) & 세이프티 옐로우(`#FFE600`) 테마 토글 제공.
-- **48×48px 최소 터치 영역**: 염수/바닷물이 묻은 손이나 장갑 착용 상태에서도 오작동이 없도록 모든 조작 버튼의 유효 탭 영역을 `min-w-[48px] min-h-[48px]`로 보장.
-- **하드웨어 볼륨 버튼 줌 제어 (Hardware Volume Listener)**: 젖은 손 터치 불가 상황을 위해 볼륨 Up(줌인), 볼륨 Down(줌아웃) 키 바인딩 옵션 제공.
-
-### 8.3 초경량 JSON 메타데이터 오프라인 캐싱 (IndexedDB)
-- 카카오 지도 ToS 규정을 준수하기 위해 불법 타일 캐싱을 영구 폐기하고, 등록 포인트 좌표, 조석표, 기상 벡터, 꽝 복기 로그 스키마를 IndexedDB에 JSON으로 로컬 캐싱.
-- LTE 음영지역에서도 이전에 열람한 포인트 정보 및 조석 곡선이 끊김 없이 동작하며, 오프라인 상태에서 작성한 조과는 네트워크 재연결 시 Supabase로 자동 동기화.
-
----
-
-## 9. 데이터베이스 스키마 명세 (Supabase PostgreSQL 15 + PostGIS)
+### 8.1 2계층 검색 아키텍처 (Hierarchical Search)
+검색어 입력 시 낚시 전용 데이터와 일반 지리 데이터를 엄격히 분리하여 2계층으로 표출합니다:
 
 ```mermaid
-erDiagram
-    FISHING_SPOTS ||--o{ CATCH_LOGS : "has"
-    FISHING_SPOTS ||--o{ SPOT_MEMOS : "has"
-
-    FISHING_SPOTS {
-        uuid id PK
-        uuid user_id FK
-        text author_name
-        boolean is_public
-        text name
-        text spot_type "ROCK, BREAKWATER, BEACH, PIER"
-        geography location "Point, 4326"
-        float8 lat
-        float8 lng
-        text navi_name
-        text navi_url
-        text directions
-        jsonb photo_urls
-        text_array fishing_methods
-        text_array target_species
-        text_array best_tides
-        int4 casting_start_deg
-        int4 casting_end_deg
-        text description
-        timestamptz created_at
-    }
-
-    CATCH_LOGS {
-        uuid id PK
-        uuid spot_id FK
-        uuid user_id FK
-        date catch_date
-        text catch_time
-        text start_time
-        text end_time
-        int4 duration_minutes
-        text fish_species
-        int4 fish_count "0=꽝(No-Fish)"
-        boolean is_hitless
-        float8 fish_size_cm
-        text catch_method
-        text lure_bait
-        jsonb photo_urls
-        text memo
-        float8 water_temp
-        float8 wind_speed
-        float8 wind_direction
-        float8 current_velocity
-        float8 wave_height
-        text tide_state
-        text catch_mul
-        jsonb environment_snapshot
-        jsonb post_mortem_data
-        timestamptz created_at
-    }
-
-    SPOT_MEMOS {
-        uuid id PK
-        uuid spot_id FK
-        uuid user_id FK
-        text user_name
-        text content
-        text tag "SAFETY, PARKING, SEA, GENERAL"
-        timestamptz created_at
-    }
+flowchart TD
+    Input["검색어 입력 (예: '우럭', '강릉시청')"] --> Layer1["1순위: ExFish 등록 포인트 DB 탐색"]
+    Layer1 --> MatchCheck{"포인트명 OR 대상어종 일치?"}
+    
+    MatchCheck -- 일치 --> P1["🎣 등록된 포인트 드롭다운 상단 배치<br/>(어종 일치 뱃지, 즉시 포인트 열람)"]
+    MatchCheck -- 불일치/추가 --> Layer2["2순위: 카카오 전국 지명·항구 POI 검색"]
+    
+    Layer2 --> P2["🌐 카카오 장소(keywordSearch) & 주소(addressSearch)<br/>(해당 좌표로 지도 카메라 이동)"]
 ```
 
-### 9.1 프로덕션 DDL (PostGIS, 복합 인덱스, RLS 정책)
+1. **1순위 (등록 포인트 & 대상 어종)**:
+   - 포인트명뿐만 아니라 **대상 어종(`target_species`)** 배열을 실시간 스캔.
+   - 예: '우럭' 검색 시 우럭이 서식하는 등록 포인트 목록이 상단에 추출되며, `[어종 일치]` 뱃지와 함께 클릭 시 해당 포인트의 상세 조석/입질 패널이 즉시 오픈.
+2. **2순위 (카카오 전국 POI & 지명)**:
+   - 등록되지 않은 신규 출조지(예: '강릉시청', '삼척항 방파제') 입력 시 카카오 키워드/주소 검색 API를 연동하여 지도 좌표 중심 이동.
 
-```sql
--- 1. PostGIS 확장 활성화
-CREATE EXTENSION IF NOT EXISTS postgis;
+### 8.2 모바일 한글 IME 자모 분리 방지 (IME Composition State)
+모바일 브라우저 및 안드로이드 웹뷰에서 한글 입력 시 발생하는 자모 씹힘(예: 'ㅇㅜㄹㅓㄱ') 및 조합 미완료 중복 검색 문제를 방지하기 위해 `isComposing` 상태를 분리 제어합니다:
+- `onCompositionStart` 및 `onCompositionEnd` 핸들러 바인딩.
+- 엔터키(`Enter`) 입력 시 조합 중인 상태를 안전하게 확정한 후 검색 트리거.
 
--- 2. 낚시 포인트 테이블 (fishing_spots)
-CREATE TABLE IF NOT EXISTS public.fishing_spots (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-    author_name TEXT NOT NULL,
-    is_public BOOLEAN DEFAULT true,
-    name TEXT NOT NULL,
-    spot_type TEXT NOT NULL CHECK (spot_type IN ('ROCK', 'BREAKWATER', 'BEACH', 'PIER')),
-    lat FLOAT8 NOT NULL,
-    lng FLOAT8 NOT NULL,
-    location GEOGRAPHY(Point, 4326) GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint(lng, lat), 4326)) STORED,
-    navi_name TEXT,
-    navi_url TEXT,
-    directions TEXT DEFAULT '',
-    photo_urls JSONB DEFAULT '[]'::jsonb,
-    fishing_methods TEXT[] DEFAULT ARRAY[]::TEXT[],
-    target_species TEXT[] DEFAULT ARRAY[]::TEXT[],
-    best_tides TEXT[] DEFAULT ARRAY[]::TEXT[],
-    best_times TEXT[] DEFAULT ARRAY[]::TEXT[],
-    best_seasons INT[] DEFAULT ARRAY[]::INT[],
-    casting_start_deg INT CHECK (casting_start_deg >= 0 AND casting_start_deg <= 359),
-    casting_end_deg INT CHECK (casting_end_deg >= 0 AND casting_end_deg <= 359),
-    description TEXT DEFAULT '',
-    created_at TIMESTAMPTZ DEFAULT now()
-);
+---
 
--- 공간 인덱스 및 복합 인덱스
-CREATE INDEX IF NOT EXISTS idx_spots_location ON public.fishing_spots USING GIST (location);
-CREATE INDEX IF NOT EXISTS idx_spots_user_public ON public.fishing_spots (user_id, is_public);
+## 9. 모바일 앱 환경 및 오프라인 정책
 
--- 3. 조과 및 꽝 복기 로그 테이블 (catch_logs)
-CREATE TABLE IF NOT EXISTS public.catch_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    spot_id UUID REFERENCES public.fishing_spots(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-    user_name TEXT NOT NULL,
-    catch_date DATE NOT NULL,
-    catch_time TEXT NOT NULL,
-    start_time TEXT,
-    end_time TEXT,
-    duration_minutes INT,
-    fish_species TEXT NOT NULL,
-    fish_count INT DEFAULT 1,
-    is_hitless BOOLEAN GENERATED ALWAYS AS (fish_count = 0) STORED,
-    fish_size_cm FLOAT8,
-    catch_method TEXT NOT NULL,
-    lure_bait TEXT,
-    photo_urls JSONB DEFAULT '[]'::jsonb,
-    memo TEXT,
-    water_temp FLOAT8,
-    wind_speed FLOAT8,
-    wind_direction FLOAT8,
-    current_velocity FLOAT8,
-    current_direction FLOAT8,
-    wave_height FLOAT8,
-    tide_state TEXT,
-    catch_mul TEXT,
-    environment_snapshot JSONB DEFAULT '{}'::jsonb,
-    post_mortem_data JSONB DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
+### 9.1 1.5초 감성 스플래시 스크린 & 벡터 SVG 아이콘
+- **스플래시 스크린**:
+  - 앱 구동 시 갯바위 실사 풍경과 함께 단 한 줄의 슬로건 **"떠난 물고기를 기리며..."**가 은은한 비네팅과 함께 노출.
+  - 정확히 **1.15초에 부드러운 페이드아웃**, **1.5초 정각에 언마운트**되어 앵글러의 현장 조작 대기 시간을 제로화.
+- **네이티브 벡터 SVG 런처 아이콘**:
+  - 해상도 깨짐 없는 미니멀 네이티브 벡터 아이콘 적용 (`res/mipmap` 5개 밀도 HDPI~XXHDPI 지원).
 
--- 복합 조회 인덱스
-CREATE INDEX IF NOT EXISTS idx_catch_spot_created ON public.catch_logs (spot_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_catch_user_date ON public.catch_logs (user_id, catch_date DESC);
-CREATE INDEX IF NOT EXISTS idx_catch_hitless ON public.catch_logs (is_hitless, catch_date DESC);
+### 9.2 카카오 규정 준수 초경량 JSON 오프라인 캐싱 (IndexedDB)
+- **법적 규정 준수**: 카카오 맵 이용약관(ToS)을 위반하는 지도 타일 이미지의 불법 로컬 저장을 일체 배제.
+- **초경량 JSON 캐싱**:
+  - 등록된 포인트 메타데이터, 42시간 조석표, 최근 기상 관측 벡터, 꽝 복기 로그 스키마만을 IndexedDB에 암호화 저장.
+  - 서해/남해안 갯바위 등 LTE/5G 음영 지역에 진입하더라도 기 다운로드된 포인트 제원과 조석 피딩 타임라인을 100% 정상 열람 가능.
 
--- 4. 현장 메모 테이블 (spot_memos)
-CREATE TABLE IF NOT EXISTS public.spot_memos (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    spot_id UUID REFERENCES public.fishing_spots(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-    user_name TEXT NOT NULL,
-    content TEXT NOT NULL,
-    tag TEXT DEFAULT 'GENERAL' CHECK (tag IN ('SAFETY', 'PARKING', 'SEA', 'GENERAL')),
-    created_at TIMESTAMPTZ DEFAULT now()
-);
+### 9.3 Capacitor Android 하이브리드 아키텍처
+- `capacitor.config.ts`:
+  - `appId`: `com.tlogger.exfish`
+  - `appName`: `ExFish`
+  - `allowMixedContent: true` (해양 기상 공공 API 호환성 보장)
+  - `webContentsDebuggingEnabled: true`
 
-CREATE INDEX IF NOT EXISTS idx_memos_spot_created ON public.spot_memos (spot_id, created_at DESC);
+---
 
--- 5. Row Level Security (RLS) 정책
-ALTER TABLE public.fishing_spots ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.catch_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.spot_memos ENABLE ROW LEVEL SECURITY;
+## 10. 시스템 컴포넌트 아키텍처 매핑 및 데이터 모델
 
--- fishing_spots RLS: 공개 포인트는 누구나 조회, 생성/수정/삭제는 작성자 본인만
-CREATE POLICY "Public spots are viewable by everyone" ON public.fishing_spots
-    FOR SELECT USING (is_public = true OR auth.uid() = user_id);
+### 10.1 TypeScript 핵심 인터페이스 (`src/types/index.ts`)
 
-CREATE POLICY "Users can insert their own spots" ON public.fishing_spots
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
+```typescript
+export type SpotType = 'ROCK' | 'SEAWALL' | 'BREAKWATER' | 'BEACH' | 'PIER';
+export type FishingMethod = 'SURF' | 'LURE' | 'FLOAT';
 
-CREATE POLICY "Users can update their own spots" ON public.fishing_spots
-    FOR UPDATE USING (auth.uid() = user_id);
+export interface FishingSpot {
+  id: string;
+  user_id: string;
+  author_name: string;
+  is_public: boolean;
+  name: string;
+  spot_type: SpotType;
+  lat: number;
+  lng: number;
+  navi_name?: string;
+  navi_url?: string;
+  directions: string;
+  photo_urls: string[];
+  fishing_methods: FishingMethod[];
+  target_species: string[];
+  best_tides?: string[];
+  best_times?: string[];
+  best_seasons?: number[];
+  description?: string;
+  casting_start_deg?: number; // 0~359° (북쪽 0° 기준 시계방향)
+  casting_end_deg?: number;   // 0~359°
+  created_at: string;
+}
 
-CREATE POLICY "Users can delete their own spots" ON public.fishing_spots
-    FOR DELETE USING (auth.uid() = user_id);
+export interface CatchLog {
+  id: string;
+  spot_id: string;
+  user_id: string;
+  user_name: string;
+  catch_date: string; // YYYY-MM-DD
+  catch_time: string; // HH:mm
+  fish_species: string;
+  fish_count: number; // 0 = 꽝 (No-Fish)
+  is_hitless?: boolean;
+  fish_size_cm?: number;
+  catch_method: FishingMethod;
+  lure_bait?: string;
+  catch_mul: string;
+  tide_state: string;
+  water_temp: number;
+  wind_speed: number;
+  wind_direction?: number;
+  current_velocity?: number;
+  wave_height?: number;
+  environment_snapshot?: Record<string, any>;
+  post_mortem_data?: Record<string, any>; // SHAP 꽝 복기 기여도
+  created_at: string;
+}
+```
 
--- catch_logs RLS: 본인 로그만 조회 및 관리 (프라이버시 보호)
-CREATE POLICY "Users can view their own catch logs" ON public.catch_logs
-    FOR SELECT USING (auth.uid() = user_id);
+### 10.2 프론트엔드 컴포넌트 계층도
 
-CREATE POLICY "Users can insert their own catch logs" ON public.catch_logs
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
+```mermaid
+graph TD
+    App["App.tsx (글로벌 상태 & 2계층 검색 엔진)"] --> Splash["SplashScreen.tsx (1.5초 감성 인트로)"]
+    App --> Header["Header (ExFish 로고, 2계층 검색바, 프로필)"]
+    App --> MapView["MapView.tsx (카카오맵 엔진 & 가상 조준경 HUD)"]
+    App --> SpotDetail["SpotDetailPanel.tsx (상세 보기 & 안전 엔진)"]
+    App --> SpotForm["SpotFormModal.tsx (포인트 등록 & 레이더뷰)"]
+    App --> CatchModal["CatchLogModal.tsx (조과 & 꽝 사후 복기 등록)"]
 
-CREATE POLICY "Users can update their own catch logs" ON public.catch_logs
-    FOR UPDATE USING (auth.uid() = user_id);
+    MapView --> CrosshairHUD["가상 십자선 & 1m D-Pad 미세조정"]
+    MapView --> OrangeArcHUD["공기역학 채비 편류 오렌지 라인"]
+    MapView --> BathymetryOverlay["KHOA 수심 등심선 오버레이"]
 
-CREATE POLICY "Users can delete their own catch logs" ON public.catch_logs
-    FOR DELETE USING (auth.uid() = user_id);
+    SpotDetail --> SuperimposeHero["사진 일체형 히어로 (노이즈 제거)"]
+    SpotDetail --> HazardAlertBanner["조건부 안전 경보 (3대 위험 지형 전용)"]
+    SpotDetail --> GoldenTimeTimer["들물 고립 타이머 & Web Audio 비프음"]
+    SpotDetail --> Calibrator4Way["4대 실전 무게 프리셋 캘리브레이터"]
+    SpotDetail --> RoadviewDeepLink["카카오 로드뷰 360° 현장 미리보기"]
 
--- spot_memos RLS: 메모는 누구나 조회, 작성/삭제는 본인만
-CREATE POLICY "Memos are viewable by everyone" ON public.spot_memos
-    FOR SELECT USING (true);
-
-CREATE POLICY "Users can insert their own memos" ON public.spot_memos
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete their own memos" ON public.spot_memos
-    FOR DELETE USING (auth.uid() = user_id);
+    SpotForm --> RadarViewSVG["원형 레이더뷰 SVG (내부 각도 통합)"]
+    SpotForm --> CardinalPresets["원터치 빠른 프리셋 (동서남북 & 60/90/120)"]
 ```
 
 ---
 
-## 10. 버전 변경 이력 (Changelog)
+## 11. 버전 변경 이력 (Changelog)
 
-- **v1.0 ~ v2.3**: Leaflet/OSM 기반 초기 프로토타입, 24시간 환경 시뮬레이터, EXIF 연동 구축.
-- **v2.5 ~ v2.9**: 모바일 드로어 최적화, m/s 단위 통일, Supabase RLS 스키마 어댑터 도입.
-- **v3.0 ~ v3.2**: ExFish 브랜드 리브랜딩, 20대 어종 생태 DB 구축, 카카오 맵 JS SDK 전면 전환 (일반/스카이뷰/야간다크 3모드), 카카오 네이티브 캐스팅 화살표 도입.
-- **v3.4**: 꽝(노피시) 빅데이터 자산화, 실시간 방명록 커뮤니티 현장 메모(Spot Memos), 실수 터치 방지 미니 팝업, 카카오 로드뷰 360° 연동.
-- **v3.8**: 원형 레이더뷰 시작/종료각 유효 부채꼴 섹터, 바람 상호작용 HUD (등바람 +35% / 맞바람 -35%), 위성 스카이뷰 마커 2D 드래깅 및 1m D-Pad 넛지 조준경, -6h ~ +36h(42시간) 연속 조위 곡선 & 피딩 타임 시각화.
-- **v4.0**:
-  - 갯바위 들물 고립 방지 90분 탈출 골든타임 카운트다운 및 Web Audio API 듀얼톤 비프 경보.
-  - KHOA 4대 권역 벡터 수심 등심선(5m/10m/20m/50m) 오버레이 및 착수 수심 선형 추정 툴팁.
-  - 로드 탄성 효율 곡선($\eta$) 및 전장(ft) 레버 암 계수 연동 비거리 산식.
-  - KHOA 53개 조위관측소 실시간 API 및 잔차 지수감쇄 하이브리드 조위 보정 엔진.
-  - 7대 환경 특성 벡터 기반 꽝 원인 SHAP 분해 AI 사후 복기 리포트.
-- **v4.1 (현재 개정판 - @reviewer 감사 100% 반영)**:
-  - **공학 표준 기호 정의표 (Nomenclature Table)** 문서 초두 신설.
-  - **비대칭 스플릿 로그-가우시안 로드 탄성 효율 모델**: 저부하($\sigma_{\text{under}}=0.60$) vs 과부하($\sigma_{\text{over}}=0.38$) 비대칭 감쇄 수식 개정 및 $W<0.5\text{g}$ 클램핑, $W>2.0 W_{\text{opt}}$ 블랭크 파손 경고 가드레일 탑재.
-  - **루어 유체역학 형상 계수 ($C_{\text{lure}}$) 도입**: 텅스텐(1.25), 납 메탈(1.00), 바이브(0.85), 지그헤드+웜(0.65), 슬로우지그(0.50), 에기 3.5호(0.25) 규격표 수록.
-  - **조차($\Delta H_{\text{tide}}$) 연동 갯바위 탈출 골든타임 가변 수식**: 사리(조차 8.5m) 시 최소 안전 마진 50분으로 단축, Screen Wake Lock API 및 Web Notifications 백그라운드 푸시 명세.
-  - **KHOA 실측 잔차의 시공간 복합 감쇄 모델**: 시간 감쇄($e^{-\lambda t}$) $\times$ 공간 가우스 상관 감쇄($\exp(-(R/35)^2)$) 결합 수식화.
-  - **KHOA 수심 등심선 Dual Stroke 규격**: 5m 시안, 10m 옐로우, 20m 마젠타, 50m 화이트 코어(2.5px) + 딥 블랙 쉴드(5.0px) 2중 외곽선.
-  - **SHAP 실패 기여도(%) 정규화 공식** 명시.
-  - **발밑 GPS ↔ 가상 조준경 타깃팅 벡터 지향선 (Targeting Line)** UX 명세.
-  - **Supabase PostgreSQL 15 + PostGIS DDL**: 공간 인덱스(GIST), 복합 인덱스, 엄격한 RLS 정책 수록.
+- **v1.0 ~ v3.8**: Leaflet 프로토타입에서 카카오맵 JS SDK 전면 전환, 20대 어종 생태 DB 구축, 조석 곡선 및 가상 조준경 HUD 구현.
+- **v4.0 ~ v4.2**: 비대칭 스플릿 로그-가우시안 로드 탄성 효율 모델, 루어 유체역학 형상 계수($C_{\text{lure}}$), KHOA 실측 잔차 시공간 하이브리드 감쇄 모델, 지그헤드+2인치 웜 바람 편류 오렌지 아크 적용.
+- **v5.0 (현재 개정판 - Field Ergonomics & Selective Safety Edition)**:
+  - **지형 분류 체계 및 조건부 안전 경보 엔진 확립**: 방파제/선착장의 경보 피로를 해소하고, 석축/갯바위/해변 3대 위험 지형에만 고립 타이머 및 연안안전위험예보 선택적 가동.
+  - **원형 레이더뷰 UX 혁신**: 직관적인 '🎯 캐스팅 방향' 명칭, 레이더 내부 각도 직접 표기, 원터치 빠른 프리셋(동/서/남/북 및 60°/90°/120°), '✓ 사용' 스위치 확정.
+  - **상세 보기 패널 노이즈 제거**: 관측소 거리, 중복 파도 문구 등 개발용 사족을 전면 제거하고 사진 일체형 Superimpose 히어로로 시인성 극대화.
+  - **4대 실전 무게 프리셋 캘리브레이터**: 지그헤드(g), 온스 루어(oz), 주꾸미 봉돌(호), 원투 봉돌(호) 실전 규격 탑재.
+  - **2계층 지능형 검색 & 모바일 IME 최적화**: 1순위 등록 포인트 및 대상 어종 매칭, 2순위 카카오 POI 분리 및 한글 자모 씹힘 방지.
+  - **모바일 앱 & 오프라인 정책**: 1.5초 감성 스플래시 스크린, 벡터 SVG 런처 아이콘, 카카오 ToS 준수 초경량 JSON IndexedDB 오프라인 캐시 확립.

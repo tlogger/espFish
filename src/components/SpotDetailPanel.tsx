@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   CheckSquare,
   ChevronDown,
-  ChevronUp,
   Clock,
   Compass,
   Crosshair,
@@ -21,9 +20,7 @@ import {
   RotateCcw,
   Send,
   Share2,
-  Shield,
   ShieldAlert,
-  ShieldCheck,
   Star,
   Thermometer,
   Trash2,
@@ -31,8 +28,7 @@ import {
   Wind,
   Volume2,
   Sliders,
-  Bell,
-  Camera
+  Bell
 } from 'lucide-react';
 import { Area, AreaChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type {
@@ -54,20 +50,17 @@ import { BiteScoreHelpModal } from './BiteScoreHelpModal';
 import { deleteCloudMemo, fetchCloudMemos, saveCloudMemo } from '../utils/cloudDb';
 import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 import { getSpeciesRigInfo } from '../utils/speciesRigs';
-import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeatherText, getWindyWebUrl, calculateSwellRisk } from '../utils/weatherApi';
+import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeatherText, getWindyWebUrl } from '../utils/weatherApi';
 import { generatePostMortemReport } from '../utils/postMortemEngine';
-import { findNearestKhoaStation } from '../utils/khoaTideEngine';
-import { playEvacuationBeep, playEvacuationSiren } from '../utils/tideAlertSound';
-import { sendEmergencyEvacuationNotification, requestNotificationPermission, isNativePlatform } from '../utils/nativeBridge';
+import { playEvacuationBeep } from '../utils/tideAlertSound';
+import { sendEmergencyEvacuationNotification, requestNotificationPermission } from '../utils/nativeBridge';
 import {
   getSavedTackleConfig,
   saveTackleConfig,
   calculateSinkingPhysics,
   ROD_POWER_SPECS,
   RodPower,
-  RodType,
   TackleRigConfig,
-  SURF_ROD_LENGTHS_M,
   WEIGHT_PRESETS,
   WeightCategory,
   getWeightDescription,
@@ -108,8 +101,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   onToggleFavorite,
   windUnit,
   currentUnit,
-  currentUser,
-  onStartMicroAdjust,
+  currentUser: _currentUser,
+  onStartMicroAdjust: _onStartMicroAdjust,
   onOpenCatchLogModal,
   onEditLog,
   onDeleteLog,
@@ -260,13 +253,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
     ? spot.navi_url
     : `https://map.kakao.com/link/to/${encodeURIComponent(destinationName)},${spot.lat},${spot.lng}`;
 
-  // 네이버 지도 길찾기 URL (네이버 지도 공식 웹 URL 규격: lat,lng,title)
-  const naverNaviUrl = `https://map.naver.com/v5/search/${encodeURIComponent(destinationName)}?c=${spot.lng},${spot.lat},15,0,0,0,dh`;
-
   // 현재 시각 및 시뮬레이션 대상 시각 Date 객체
   const now = new Date();
   const currentHour = now.getHours();
-  const currentHourStr = `${currentHour < 10 ? '0' : ''}${currentHour}:00`;
   const currentTidePoint = tide?.hourlyCurve.find((c) => c.hour === currentHour);
 
   const targetTime = new Date(now.getTime() + timelineOffsetHours * 3600 * 1000);
@@ -362,7 +351,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                 <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-600/90 text-white shadow-sm backdrop-blur-sm">
-                  {spot.spot_type === 'ROCK' ? '갯바위' : spot.spot_type === 'BREAKWATER' ? '방파제/석축' : '해변/선착장'}
+                  {spot.spot_type === 'ROCK' ? '갯바위' : spot.spot_type === 'SEAWALL' ? '석축' : spot.spot_type === 'BREAKWATER' ? '방파제' : spot.spot_type === 'BEACH' ? '해변/백사장' : '선착장'}
                 </span>
                 <span className="text-[10px] text-slate-300 drop-shadow">작성: {spot.author_name}</span>
                 {spot.photo_urls && spot.photo_urls.length > 1 && (
@@ -473,14 +462,15 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             if (marine && marine.waveHeight >= 1.5) {
               warnings.push(`높은 파고/너울 주의 (${marine.waveHeight}m)`);
             }
-            if (spot.spot_type === 'ROCK' && tide?.highTides && tide.highTides.length > 0) {
+            const isHazardTerrain = spot.spot_type === 'ROCK' || spot.spot_type === 'SEAWALL' || spot.spot_type === 'BEACH';
+            if (isHazardTerrain && tide?.highTides && tide.highTides.length > 0) {
               const nowMinutes = now.getHours() * 60 + now.getMinutes();
               for (const ht of tide.highTides) {
                 const [h, m] = ht.time.split(':').map(Number);
                 const htMinutes = h * 60 + m;
                 const diff = htMinutes - nowMinutes;
                 if (diff > 0 && diff <= 120) {
-                  warnings.push(`만조(${ht.time}) ${diff}분 전! 갯바위 퇴로 확보 필수`);
+                  warnings.push(`만조(${ht.time}) ${diff}분 전! 퇴로 확보 필수`);
                   break;
                 }
               }
@@ -599,10 +589,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {activeTab === 'WEATHER_TIDE' && (
           <div className="space-y-4">
-            {/* [제안 2] 국립해양조사원·해양경찰청 연안안전사고 위험예보제 위젯 (갯바위/해변에만 적용) */}
+            {/* [제안 2] 국립해양조사원·해양경찰청 연안안전사고 위험예보제 위젯 (석축, 갯바위, 해변, 백사장에만 적용) */}
             {(() => {
-              const isRockOrBeach = spot.spot_type === 'ROCK' || spot.spot_type === 'BEACH';
-              if (!isRockOrBeach) return null;
+              const isHazardTerrain = spot.spot_type === 'ROCK' || spot.spot_type === 'SEAWALL' || spot.spot_type === 'BEACH';
+              if (!isHazardTerrain) return null;
 
               const isSpringTide = tide ? (tide.mulNumber >= 6 && tide.mulNumber <= 10) : false;
               const now = new Date();
@@ -682,10 +672,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               );
             })()}
 
-            {/* [항목 1] 갯바위 들물 고립 방지 탈출 골든타임 카운트다운 타이머 & 비프 경보 (갯바위/해변에만 적용) */}
+            {/* [항목 1] 갯바위/석축 들물 고립 방지 탈출 골든타임 카운트다운 타이머 & 비프 경보 (석축, 갯바위, 해변, 백사장에만 적용) */}
             {tide && (() => {
-              const isRockOrBeach = spot.spot_type === 'ROCK' || spot.spot_type === 'BEACH';
-              if (!isRockOrBeach || !tide.lowTides || tide.lowTides.length === 0) return null;
+              const isHazardTerrain = spot.spot_type === 'ROCK' || spot.spot_type === 'SEAWALL' || spot.spot_type === 'BEACH';
+              if (!isHazardTerrain || !tide.lowTides || tide.lowTides.length === 0) return null;
               const now = new Date();
               const curMins = now.getHours() * 60 + now.getMinutes();
 

@@ -112,7 +112,7 @@ export function calculateSingleSpeciesScore(
   let spotSeasonScore = 12;
   // 지형 매칭
   if (
-    (species.bottomType === 'ROCK_REEF' && (spot.spot_type === 'ROCK' || spot.spot_type === 'BREAKWATER')) ||
+    (species.bottomType === 'ROCK_REEF' && (spot.spot_type === 'ROCK' || spot.spot_type === 'SEAWALL' || spot.spot_type === 'BREAKWATER')) ||
     (species.bottomType === 'SAND_FLAT' && spot.spot_type === 'BEACH') ||
     (species.bottomType === 'MUD_FLAT' && spot.spot_type === 'PIER') ||
     species.bottomType === 'OPEN_WATER'

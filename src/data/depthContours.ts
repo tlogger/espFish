@@ -231,6 +231,9 @@ export function estimateDepthAtPoint(
   if (spotType === 'ROCK') {
     baseDepth = 3.5;
     slope = 0.12; // 갯바위는 급심 (10m당 1.2m)
+  } else if (spotType === 'SEAWALL') {
+    baseDepth = 3.0;
+    slope = 0.10; // 석축 경사면
   } else if (spotType === 'BREAKWATER') {
     baseDepth = 4.0;
     slope = 0.09; // 방파제 테트라포드 외항

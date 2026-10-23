@@ -330,7 +330,8 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                 className="w-full bg-slate-800/90 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400"
               >
                 <option value="ROCK">갯바위 (Rock)</option>
-                <option value="BREAKWATER">방파제 / 석축 (Breakwater)</option>
+                <option value="SEAWALL">석축 (Seawall)</option>
+                <option value="BREAKWATER">방파제 (Breakwater)</option>
                 <option value="BEACH">해변 / 백사장 (Beach)</option>
                 <option value="PIER">선착장 / 기타 (Pier)</option>
               </select>

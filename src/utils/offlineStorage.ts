@@ -4,8 +4,6 @@
 import type { FishingSpot, TideDayInfo, WeatherData, MarineData } from '../types';
 
 const STORAGE_KEY_OFFLINE_SPOTS = 'exfish_offline_spots';
-const STORAGE_KEY_OFFLINE_TIDES = 'exfish_offline_tides';
-const STORAGE_KEY_OFFLINE_WEATHER = 'exfish_offline_weather';
 
 export interface CachedSpotMeta {
   spot: FishingSpot;

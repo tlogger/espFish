@@ -248,7 +248,7 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap mb-1">
                         <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-cyan-600/30 text-cyan-300 border border-cyan-500/40">
-                          {spot.spot_type === 'ROCK' ? '갯바위' : spot.spot_type === 'BREAKWATER' ? '방파제/석축' : '해변/선착장'}
+                          {spot.spot_type === 'ROCK' ? '갯바위' : spot.spot_type === 'SEAWALL' ? '석축' : spot.spot_type === 'BREAKWATER' ? '방파제' : spot.spot_type === 'BEACH' ? '해변/백사장' : '선착장'}
                         </span>
                         <h3 className="font-bold text-sm sm:text-base text-white group-hover:text-cyan-300 transition truncate">
                           {spot.name}

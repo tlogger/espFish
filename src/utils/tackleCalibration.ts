@@ -233,12 +233,6 @@ export function calculateCalibratedDistance(
     elasticityEfficiency: Math.round(elasticityEfficiency * 100) / 100,
     lengthFactor: Math.round(lengthFactor * 100) / 100,
   };
-
-  return {
-    distanceMeters,
-    elasticityEfficiency: Math.round(elasticityEfficiency * 100) / 100,
-    lengthFactor: Math.round(lengthFactor * 100) / 100,
-  };
 }
 
 export interface CastingDriftResult {

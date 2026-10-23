@@ -1,5 +1,5 @@
 import React from 'react';
-import { HelpCircle, X, Check, Flame, Thermometer, Wind, Waves, Moon, Sun, Clock } from 'lucide-react';
+import { X } from 'lucide-react';
 
 interface BiteScoreHelpModalProps {
   isOpen: boolean;

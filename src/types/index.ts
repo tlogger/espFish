@@ -1,4 +1,4 @@
-export type SpotType = 'ROCK' | 'BREAKWATER' | 'BEACH' | 'PIER';
+export type SpotType = 'ROCK' | 'SEAWALL' | 'BREAKWATER' | 'BEACH' | 'PIER';
 export type FishingMethod = 'SURF' | 'LURE' | 'FLOAT';
 export type WindUnit = 'ms' | 'knot' | 'kmh';
 export type CurrentUnit = 'knot' | 'ms' | 'cms';

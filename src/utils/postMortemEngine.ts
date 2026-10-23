@@ -53,7 +53,7 @@ const SPECIES_TEMP_MAP: Record<string, { min: number; max: number; opt: number }
  * 7대 환경 특성 벡터 기반 꽝 원인 분해 및 사후 복기 리포트 생성
  */
 export function generatePostMortemReport(input: PostMortemInput): PostMortemReport {
-  const { targetSpecies, weather, marine, tide, biteScore, castingBearingDeg = 180 } = input;
+  const { targetSpecies, weather, marine, tide, biteScore: _biteScore, castingBearingDeg = 180 } = input;
 
   const tempSpec = SPECIES_TEMP_MAP[targetSpecies] || { min: 12, max: 22, opt: 17.0 };
   const currentTemp = marine?.seaSurfaceTemp ?? 16.0;
