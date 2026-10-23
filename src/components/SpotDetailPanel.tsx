@@ -252,6 +252,18 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   // 네비 목적지 명칭: 사용자가 지정한 navi_name이 있으면 그것을 우선 사용, 없으면 spot.name
   const destinationName = spot.navi_name && spot.navi_name.trim().length > 0 ? spot.navi_name.trim() : spot.name;
 
+  // 모바일 웹뷰 및 시스템 브라우저/카카오맵 앱 외부 링크 안전 오픈 헬퍼
+  const openExternalUrl = (url: string) => {
+    try {
+      const win = window.open(url, '_system');
+      if (!win || win.closed) {
+        window.location.href = url;
+      }
+    } catch {
+      window.location.href = url;
+    }
+  };
+
   // 카카오맵 길찾기 URL (커스텀 navi_url이 있으면 우선 사용)
   const kakaoNaviUrl = spot.navi_url && spot.navi_url.trim().length > 0
     ? spot.navi_url
@@ -431,47 +443,13 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             </div>
 
-            {/* 하단 행: 포인트 이름 + 대상어종 + 그 바로 아래 날씨/기온/수온 (요구사항 7) */}
+            {/* 하단 행: 포인트 이름 + 실시간 최고 타깃 + 날씨/기온/수온 */}
             <div className="space-y-1">
               <h1 className="text-base sm:text-lg font-black text-white truncate drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
                 {spot.name}
               </h1>
 
-              {/* 대상 어종 (탭 시 3초 퀵 카드 팝업 연결) */}
-              {spot.target_species && spot.target_species.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                  <span className="text-[11px] text-cyan-400 font-bold drop-shadow flex items-center gap-1">
-                    🎯 대상어:
-                  </span>
-                  {spot.target_species.slice(0, 5).map((sp, idx) => {
-                    const eco = SPECIES_ENCYCLOPEDIA[sp] || Object.values(SPECIES_ENCYCLOPEDIA).find(e => e.name.includes(sp) || sp.includes(e.name));
-                    const isTastiest = eco?.tastiestMonths?.includes(new Date().getMonth() + 1);
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setQuickModalSpecies(sp)}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900/90 hover:bg-cyan-950/80 border border-slate-700/80 hover:border-cyan-400 text-[10.5px] font-bold text-slate-200 transition active:scale-95 shadow-sm"
-                        title="클릭하여 3초 어종 요약 카드 보기"
-                      >
-                        <span>{sp}</span>
-                        {eco?.minLengthCm && (
-                          <span className="text-[9px] px-1 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-600/30">
-                            {eco.minLengthCm}↓방생
-                          </span>
-                        )}
-                        {isTastiest && (
-                          <span className="text-[9px] px-1 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-500/40 font-bold" title="지금 제철 꿀맛">
-                            🍽️제철
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* [신규 고도화: 제안 2] 지금 이 포인트에서 가장 입질 확률 높은 추천 타깃 1줄 하이라이트 */}
+              {/* [요구사항 1] 실시간 최고 타깃만 유지 (상단 지저분함 제거) */}
               {biteScore?.topSpecies && (
                 <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-cyan-950/90 to-blue-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/40 text-[11px] shadow">
                   <span className="text-cyan-400 font-black shrink-0">✨ 실시간 최고 타깃:</span>
@@ -486,7 +464,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 </div>
               )}
 
-              {/* [요구사항 7] 어종 바로 아래에 날씨, 기온, 수온 배치 */}
+              {/* [요구사항 7] 날씨, 기온, 수온 배치 */}
               <div className="inline-flex items-center gap-2 bg-black/75 backdrop-blur-md px-2.5 py-0.5 rounded-lg border border-white/15 text-[11px] font-mono shadow-md">
                 <span className="text-white font-sans font-bold">{simWeatherText}</span>
                 <span className="text-slate-500">·</span>
@@ -562,7 +540,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40 shadow-sm'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
-          title="조과 기록 및 실측 통계"
+          title="어종과 조과"
         >
           <div className="relative">
             <Fish size={20} className={activeTab === 'LOGS' ? 'text-emerald-400 scale-110' : ''} />
@@ -1470,7 +1448,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             {/* 상단 액션 및 요약 */}
             <div className="flex justify-between items-center">
               <span className="text-xs font-semibold text-slate-300">
-                이 포인트의 실측 조과 히스토리 ({catchLogs.length}건)
+                조과 히스토리 ({catchLogs.length}건)
               </span>
               <button
                 onClick={onOpenCatchLogModal}
@@ -1481,7 +1459,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </button>
             </div>
 
-            {/* 1. 이 포인트에서 낚이는 어종별 실시간 입질 지수 & 공략 팁 (내 관심어종 우선 정렬) */}
+            {/* 1. 이 포인트에서 낚이는 어종별 실시간 입질 지수 */}
             {(() => {
               // 해당 포인트의 대표 대상어종 + 실제 조과 로그에 등록된 어종 목록 취합
               const spotTargetSpecies = spot.target_species || [];
@@ -1546,20 +1524,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
               return (
                 <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl shadow-lg space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <Fish size={15} className="text-cyan-400" />
-                      <span className="text-xs font-bold text-slate-100">
-                        포인트 출현 어종별 실시간 입질 지수
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-amber-300 font-semibold bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded-full flex items-center gap-1">
-                      <Star size={10} className="fill-amber-300 text-amber-300" /> 내 관심어종 우선
+                  <div className="flex items-center gap-1.5">
+                    <Fish size={15} className="text-cyan-400" />
+                    <span className="text-xs font-bold text-slate-100">
+                      실시간 어종별 입질 지수
                     </span>
                   </div>
-                  <p className="text-[10px] text-slate-400">
-                    현재 시각({curHour}시) 수온·물때·일출몰 및 어종별 생태 주기를 반영한 실시간 입질 예측입니다.
-                  </p>
 
                   <div className="space-y-2 pt-1">
                     {scoredList.map((item) => {
@@ -1582,12 +1552,11 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       return (
                         <div
                           key={`scored-species-${name}`}
-                          className={`p-2.5 rounded-xl border transition cursor-pointer select-none ${
+                          className={`p-2.5 rounded-xl border transition select-none ${
                             isFavorite
                               ? 'bg-gradient-to-r from-amber-950/20 via-slate-900 to-slate-900/90 border-amber-500/50 shadow-sm'
                               : 'bg-slate-900/70 border-slate-800/80 hover:border-slate-700'
                           }`}
-                          onClick={() => setExpandedSpecies(isExpanded ? null : name)}
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -1596,7 +1565,41 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                   <Star size={9} className="fill-amber-300" /> 관심어종
                                 </span>
                               )}
-                              <span className="font-bold text-sm text-slate-100">{name}</span>
+
+                              {/* 물고기명 클릭 시 3초 어종 백과 팝업 (요구사항 2) */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setQuickModalSpecies(name);
+                                }}
+                                className="font-bold text-sm text-slate-100 hover:text-cyan-300 underline decoration-cyan-500/50 hover:decoration-cyan-300 underline-offset-2 transition"
+                                title="어종 정보 보기"
+                              >
+                                {name}
+                              </button>
+
+                              {/* [요구사항 5] 채비 버튼: 어류 명칭 바로 뒤에 위치 */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedSpecies(isExpanded ? null : name);
+                                }}
+                                className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10.5px] font-bold border transition ${
+                                  isExpanded
+                                    ? 'bg-cyan-500 text-slate-950 border-cyan-400'
+                                    : 'bg-slate-800 text-cyan-300 border-cyan-800/80 hover:bg-slate-750'
+                                }`}
+                                title="추천 채비 보기"
+                              >
+                                <span>채비</span>
+                                <ChevronDown
+                                  size={11}
+                                  className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                                />
+                              </button>
+
                               <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[10px]">
                                 {ecology.categoryName}
                               </span>
@@ -1617,32 +1620,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               <span>{score}점</span>
                               <span className="text-[9px] font-sans font-normal opacity-90">({scoreLabel})</span>
                             </div>
-                          </div>
-
-                          {/* 생태 설명 및 현재 입질 타이밍 */}
-                          <div className="mt-1.5 space-y-1 text-[11px] leading-relaxed">
-                            <div className="text-slate-300 flex items-center gap-1.5 flex-wrap">
-                              <span className="text-cyan-300 font-medium">🕒 {scoreInfo.activityMatch}</span>
-                              <span className="text-slate-500">·</span>
-                              <span className="text-rose-300 font-medium">🌡️ {scoreInfo.tempMatch}</span>
-                              <span className="text-slate-500">·</span>
-                              <span className="text-slate-400">🌊 {ecology.currentPrefName}</span>
-                            </div>
-                            <p className="text-[10px] text-slate-400 line-clamp-2">
-                              💡 {scoreInfo.verdict} {ecology.description}
-                            </p>
-                          </div>
-
-                          {/* 원클릭 추천 채비 토글 버튼 */}
-                          <div className="pt-1.5 flex items-center justify-between text-[10px]">
-                            <span className="text-cyan-400 flex items-center gap-0.5 font-semibold hover:underline">
-                              <span>{isExpanded ? '추천 채비 및 골든타임 접기' : '🎣 추천 채비 & 히트 골든타임 보기'}</span>
-                              <ChevronDown
-                                size={12}
-                                className={`transition-transform duration-200 ${isExpanded ? 'rotate-180 text-cyan-300' : ''}`}
-                              />
-                            </span>
-                            <span className="text-slate-500 text-[9px]">클릭 시 펼침</span>
                           </div>
 
                           {/* [제안 3] 원클릭 추천 채비 & 히트 골든타임 상세 확장 뷰 */}
@@ -1748,15 +1725,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               );
             })()}
 
-            {catchLogs.length === 0 ? (
-              <div className="p-8 text-center bg-slate-950/60 rounded-xl border border-slate-800 text-slate-400 space-y-2">
-                <Fish size={32} className="mx-auto text-slate-600" />
-                <p className="text-sm">아직 등록된 조과 기록이 없습니다.</p>
-                <p className="text-xs text-slate-500">
-                  첫 손맛이나 꽝 경험 당시의 기상·해양 환경을 기록해 보세요!
-                </p>
-              </div>
-            ) : (
+            {catchLogs.length === 0 ? null : (
               catchLogs.map((log) => {
                 const isHitless = (log.fish_count ?? 0) === 0 || log.is_hitless;
 
@@ -1962,7 +1931,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             </div>
 
-            {/* 네비게이션 및 주차 정보 */}
+            {/* 네비게이션 및 주차 정보 (요구사항 8: 모바일 앱 딥링크/외부 브라우저 안전 오픈) */}
             <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
               <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                 🚗 차량 내비게이션 목적지 안내
@@ -1973,8 +1942,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     <strong className="text-slate-400">네비 검색 지명:</strong>{' '}
                     <a
                       href={kakaoNaviUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        openExternalUrl(kakaoNaviUrl);
+                      }}
                       className="text-amber-300 font-bold hover:text-amber-200 underline decoration-amber-500/50 hover:decoration-amber-300 inline-flex items-center gap-1 transition"
                       title="카카오맵 길찾기 바로 연결"
                     >
@@ -1982,22 +1953,23 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       <ExternalLink size={12} className="text-amber-400" />
                     </a>
                   </div>
-                  <a
-                    href={kakaoNaviUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold inline-flex items-center gap-1 shrink-0 transition"
+                  <button
+                    type="button"
+                    onClick={() => openExternalUrl(kakaoNaviUrl)}
+                    className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold inline-flex items-center gap-1 shrink-0 transition"
                   >
                     <span>카카오맵</span>
-                  </a>
+                  </button>
                 </div>
                 {spot.navi_url && (
                   <div className="truncate">
                     <strong className="text-slate-400">현장 네비 URL:</strong>{' '}
                     <a
                       href={spot.navi_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        openExternalUrl(spot.navi_url!);
+                      }}
                       className="text-cyan-400 underline"
                     >
                       {spot.navi_url}
@@ -2005,15 +1977,14 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   </div>
                 )}
                 <div className="pt-1.5 flex">
-                  <a
-                    href={`https://map.kakao.com/link/roadview/${spot.lat},${spot.lng}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => openExternalUrl(`https://map.kakao.com/link/roadview/${spot.lat},${spot.lng}`)}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs border border-amber-500/40 transition shadow"
                   >
                     <span>🚗 카카오 로드뷰로 진입로/주차장 360° 현장 미리보기</span>
                     <ExternalLink size={12} />
-                  </a>
+                  </button>
                 </div>
               </div>
             </div>
@@ -2028,18 +1999,35 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </p>
             </div>
 
-            {/* 추천 대상어 & 낚시 방법 */}
+            {/* 추천 대상어 & 낚시 방법 (요구사항 9: 각 어종별 상태 메시지 및 요약 팝업) */}
             <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
               <span className="text-xs font-bold text-slate-300">주요 대상어종</span>
               <div className="flex flex-wrap gap-1.5">
-                {spot.target_species.map((sp, idx) => (
-                  <span
-                    key={idx}
-                    className="px-2.5 py-1 rounded-lg bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 text-xs font-medium"
-                  >
-                    🐟 {sp}
-                  </span>
-                ))}
+                {spot.target_species.map((sp, idx) => {
+                  const eco = SPECIES_ENCYCLOPEDIA[sp] || Object.values(SPECIES_ENCYCLOPEDIA).find((e) => e.name.includes(sp) || sp.includes(e.name));
+                  const isTastiest = eco?.tastiestMonths?.includes(new Date().getMonth() + 1);
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setQuickModalSpecies(sp)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/90 hover:bg-cyan-950/80 border border-slate-700/80 hover:border-cyan-400 text-xs font-bold text-slate-200 transition active:scale-95 shadow-sm"
+                      title="클릭하여 어종 요약 카드 보기"
+                    >
+                      <span>🐟 {sp}</span>
+                      {eco?.minLengthCm && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-600/30">
+                          {eco.minLengthCm}cm↓방생
+                        </span>
+                      )}
+                      {isTastiest && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-500/40 font-bold" title="지금 제철 꿀맛">
+                          🍽️제철
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="pt-2 border-t border-slate-800 text-xs space-y-1 text-slate-300">
