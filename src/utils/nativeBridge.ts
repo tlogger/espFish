@@ -10,6 +10,7 @@ import { Geolocation } from '@capacitor/geolocation';
 import { KeepAwake } from '@capacitor-community/keep-awake';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { App as CapApp } from '@capacitor/app';
 import { playEvacuationBeep, playEvacuationSiren } from './tideAlertSound';
 
 export interface NativeLocationResult {
@@ -339,5 +340,33 @@ export async function cancelTideEvacuationAlarm(id: number): Promise<void> {
       console.warn('Failed to cancel local notification:', err);
     }
   }
+}
+
+/**
+ * 6. Android 하드웨어 백 버튼 리스너 (요구사항 2: 모바일앱 백버튼 네비게이션)
+ * - 팝업 모달 닫기 -> 미세조정 취소 -> 상세 서랍 닫기 -> 포인트 선택 해제 -> 기본 지도 뷰 순환
+ * - 기본 지도 뷰 상태에서 2초 내에 두 번 누르면 앱 종료
+ */
+export function setupHardwareBackButtonListener(onBack: () => boolean): () => void {
+  if (!isNativePlatform()) return () => {};
+
+  let lastBackPressTime = 0;
+  const listenerPromise = CapApp.addListener('backButton', () => {
+    // onBack()이 true를 반환하면 내부 뷰/팝업을 닫았음을 의미함 (앱 종료 방지)
+    const handled = onBack();
+    if (!handled) {
+      const now = Date.now();
+      if (now - lastBackPressTime < 2000) {
+        CapApp.exitApp();
+      } else {
+        lastBackPressTime = now;
+        triggerHaptic('light');
+      }
+    }
+  });
+
+  return () => {
+    listenerPromise.then((handle) => handle.remove()).catch(() => {});
+  };
 }
 

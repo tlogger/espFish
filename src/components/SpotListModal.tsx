@@ -10,7 +10,8 @@ import {
   Thermometer,
   Waves,
   Wind,
-  X
+  X,
+  Star
 } from 'lucide-react';
 import type {
   CurrentUnit,
@@ -48,6 +49,8 @@ interface SpotListModalProps {
   currentUnit: CurrentUnit;
   currentUserId?: string;
   userCoords?: { lat: number; lng: number } | null;
+  favoriteSpotIds?: string[];
+  onToggleFavorite?: (spotId: string) => void;
 }
 
 export const SpotListModal: React.FC<SpotListModalProps> = ({
@@ -61,6 +64,8 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
   currentUnit,
   currentUserId,
   userCoords,
+  favoriteSpotIds = [],
+  onToggleFavorite,
 }) => {
   const [filterMethod, setFilterMethod] = React.useState<FishingMethod | 'ALL'>('ALL');
   const [onlyMySpots, setOnlyMySpots] = React.useState(false);
@@ -282,13 +287,38 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
                       </div>
                     </div>
 
-                    {/* ExFish 입질 지수 뱃지 */}
-                    {env && (
-                      <div className="flex flex-col items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-600 to-blue-700 text-white font-black shadow shrink-0">
-                        <span className="text-[9px] opacity-80 leading-none">Ex</span>
-                        <span className="text-base leading-none">{env.biteScore}</span>
-                      </div>
-                    )}
+                    {/* 우측: 즐겨찾기(별표) 버튼 & ExFish 입질 지수 뱃지 (요구사항 6) */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {onToggleFavorite && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleFavorite(spot.id);
+                          }}
+                          className={`p-2 rounded-xl border transition active:scale-90 ${
+                            favoriteSpotIds.includes(spot.id)
+                              ? 'bg-amber-500/20 text-amber-400 border-amber-500/50 shadow-sm'
+                              : 'bg-slate-900 text-slate-500 border-slate-700/80 hover:text-amber-400'
+                          }`}
+                          title={favoriteSpotIds.includes(spot.id) ? '즐겨찾기(찜) 해제' : '즐겨찾기(찜) 등록'}
+                          aria-label="즐겨찾기"
+                        >
+                          <Star
+                            size={16}
+                            className={favoriteSpotIds.includes(spot.id) ? 'fill-amber-400 text-amber-400' : ''}
+                          />
+                        </button>
+                      )}
+
+                      {/* ExFish 입질 지수 뱃지 */}
+                      {env && (
+                        <div className="flex flex-col items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-600 to-blue-700 text-white font-black shadow shrink-0">
+                          <span className="text-[9px] opacity-80 leading-none">Ex</span>
+                          <span className="text-base leading-none">{env.biteScore}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* 하단 라인: 실시간 환경 정보 그리드 (모바일 2줄 반응형 레이아웃)

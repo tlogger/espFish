@@ -81,6 +81,8 @@ interface SpotDetailPanelProps {
   biteScore: BiteScoreBreakdown | null;
   catchLogs: CatchLog[];
   favoriteSpecies?: string[];
+  isFavorited?: boolean;
+  onToggleFavorite?: (spotId: string) => void;
   windUnit: WindUnit;
   currentUnit: CurrentUnit;
   currentUser?: { id: string; name: string } | null;
@@ -102,6 +104,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   biteScore,
   catchLogs,
   favoriteSpecies,
+  isFavorited = false,
+  onToggleFavorite,
   windUnit,
   currentUnit,
   currentUser,
@@ -333,10 +337,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
   return (
     <div className="spot-detail-panel flex flex-col h-full bg-slate-900 border-l border-slate-800 text-white overflow-hidden shadow-2xl">
-      {/* 1. 상단 일체형 히어로: 사진 위에 텍스트/뱃지/날씨(맑음/흐림/비, 기온, 수온)를 superimpose하여 세로 스크롤 최소화 (요구사항 1) */}
+      {/* 1. 상단 일체형 히어로: 사진 위에 텍스트/어종/날씨/기온/수온을 superimpose하여 세로 스크롤 최소화 (요구사항 1, 7, 8) */}
       <div className="relative shrink-0 bg-slate-950 overflow-hidden border-b border-slate-800">
-        <div className="relative w-full h-32 sm:h-36 overflow-hidden">
-          {/* 배경 사진 또는 그라데이션 */}
+        <div className="relative w-full h-36 sm:h-44 overflow-hidden">
+          {/* 배경 사진 또는 은은한 해양 풍경 그라데이션 */}
           {spot.photo_urls && spot.photo_urls.length > 0 ? (
             <img
               src={spot.photo_urls[activePhotoIndex] || spot.photo_urls[0]}
@@ -344,11 +348,13 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
             />
           ) : (
-            <div className="w-full h-full bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950/40" />
+            <div className="w-full h-full bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950 flex items-center justify-center">
+              <span className="text-4xl opacity-20">🌊</span>
+            </div>
           )}
 
           {/* 비네팅 & 딤 오버레이 (사진 위 글씨 가독성 확보) */}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-slate-950/80" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/45 to-slate-950/75" />
 
           {/* Superimpose 콘텐츠 레이어 */}
           <div className="absolute inset-0 p-3 sm:p-3.5 flex flex-col justify-between z-10">
@@ -384,6 +390,18 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   >
                     <span>지도</span>
                     <ChevronDown size={13} />
+                  </button>
+                )}
+                {onToggleFavorite && (
+                  <button
+                    onClick={() => onToggleFavorite(spot.id)}
+                    className={`p-1.5 rounded-lg bg-black/60 backdrop-blur-sm border border-white/10 transition active:scale-95 ${
+                      isFavorited ? 'text-amber-400' : 'text-slate-200 hover:text-amber-400'
+                    }`}
+                    title={isFavorited ? '즐겨찾기(찜) 해제' : '즐겨찾기(찜) 추가'}
+                    aria-label="즐겨찾기"
+                  >
+                    <Star size={13} className={isFavorited ? 'fill-amber-400 text-amber-400' : ''} />
                   </button>
                 )}
                 <button
@@ -432,25 +450,25 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             </div>
 
-            {/* 하단 행: 포인트 이름 + 대상어종 & 간단한 날씨 상태 캡슐 (맑음/흐림/비, 기온, 수온) */}
-            <div className="flex items-end justify-between gap-2">
-              <div className="min-w-0">
-                <h1 className="text-base sm:text-lg font-black text-white truncate drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
-                  {spot.name}
-                </h1>
-                {spot.target_species && spot.target_species.length > 0 && (
-                  <div className="text-[10px] text-cyan-300 font-medium truncate drop-shadow">
-                    🎯 {spot.target_species.slice(0, 3).join(', ')}
-                  </div>
-                )}
-              </div>
+            {/* 하단 행: 포인트 이름 + 대상어종 + 그 바로 아래 날씨/기온/수온 (요구사항 7) */}
+            <div className="space-y-1">
+              <h1 className="text-base sm:text-lg font-black text-white truncate drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
+                {spot.name}
+              </h1>
 
-              {/* 간단한 날씨 상태 (맑음/흐림/비, 기온, 수온) superimpose */}
-              <div className="shrink-0 flex items-center gap-1.5 bg-black/70 backdrop-blur-md px-2.5 py-1 rounded-xl border border-white/15 text-[11px] sm:text-xs font-mono shadow-lg">
+              {/* 대상 어종 */}
+              {spot.target_species && spot.target_species.length > 0 && (
+                <div className="text-[11px] text-cyan-300 font-bold truncate drop-shadow">
+                  🎯 {spot.target_species.slice(0, 4).join(', ')}
+                </div>
+              )}
+
+              {/* [요구사항 7] 어종 바로 아래에 날씨, 기온, 수온 배치 */}
+              <div className="inline-flex items-center gap-2 bg-black/75 backdrop-blur-md px-2.5 py-0.5 rounded-lg border border-white/15 text-[11px] font-mono shadow-md">
                 <span className="text-white font-sans font-bold">{simWeatherText}</span>
-                <span className="text-slate-600">|</span>
-                <span className="text-amber-300 font-bold">{simTemp.toFixed(1)}°C</span>
-                <span className="text-slate-600">|</span>
+                <span className="text-slate-500">·</span>
+                <span className="text-amber-300 font-bold">기온 {simTemp.toFixed(1)}°C</span>
+                <span className="text-slate-500">·</span>
                 <span className="text-cyan-300 font-bold">수온 {simWaterTemp > 0 ? `${simWaterTemp.toFixed(1)}°C` : '--'}</span>
               </div>
             </div>
@@ -571,6 +589,22 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             <span className="absolute bottom-0 w-6 h-0.5 bg-indigo-400 rounded-full" />
           )}
         </button>
+
+        {/* [요구사항 6] 상세보기 '현장 메모' 아이콘 옆에 즐겨찾기(별표) 토글 버튼 */}
+        {onToggleFavorite && (
+          <button
+            onClick={() => onToggleFavorite(spot.id)}
+            className={`px-3 py-2 rounded-xl flex items-center justify-center transition active:scale-95 ${
+              isFavorited
+                ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/50 shadow-sm'
+                : 'text-slate-400 hover:text-amber-300 hover:bg-slate-800/50'
+            }`}
+            title={isFavorited ? '즐겨찾기(찜) 해제' : '이 포인트 즐겨찾기(찜) 추가'}
+            aria-label="즐겨찾기"
+          >
+            <Star size={19} className={isFavorited ? 'fill-amber-400 text-amber-400 animate-in zoom-in-75' : ''} />
+          </button>
+        )}
       </div>
 
       {/* 탭 본문 영역 */}

@@ -34,6 +34,7 @@ import {
   saveCloudSpot,
 } from './utils/cloudDb';
 import { cacheSpotMetadata, getAllCachedSpots, subscribeNetworkStatus } from './utils/offlineStorage';
+import { setupHardwareBackButtonListener } from './utils/nativeBridge';
 
 export function App() {
   const [spots, setSpots] = React.useState<FishingSpot[]>([]);
@@ -90,6 +91,87 @@ export function App() {
   const [newSpotLat, setNewSpotLat] = React.useState<number | undefined>();
   const [newSpotLng, setNewSpotLng] = React.useState<number | undefined>();
   const [microAdjustSpot, setMicroAdjustSpot] = React.useState<FishingSpot | null>(null);
+
+  // [요구사항 6] 나만의 즐겨찾기(찜한 포인트) 목록 상태 (로컬 스토리지 및 세션 동기화)
+  const [favoriteSpotIds, setFavoriteSpotIds] = React.useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('exfish_favorite_spot_ids');
+        if (raw) return JSON.parse(raw);
+      } catch {}
+    }
+    return [];
+  });
+
+  const handleToggleFavorite = React.useCallback((spotId: string) => {
+    setFavoriteSpotIds((prev) => {
+      const next = prev.includes(spotId) ? prev.filter((id) => id !== spotId) : [...prev, spotId];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('exfish_favorite_spot_ids', JSON.stringify(next));
+      }
+      return next;
+    });
+  }, []);
+
+  // [요구사항 2] Android 하드웨어 백 버튼 리스너 (기본 지도 뷰 복귀 제어)
+  React.useEffect(() => {
+    const cleanup = setupHardwareBackButtonListener(() => {
+      // 1. 모달들이 열려 있으면 최우선으로 닫기
+      if (isSpotModalOpen) {
+        setIsSpotModalOpen(false);
+        return true;
+      }
+      if (isCatchLogModalOpen) {
+        setIsCatchLogModalOpen(false);
+        return true;
+      }
+      if (isSpotListModalOpen) {
+        setIsSpotListModalOpen(false);
+        return true;
+      }
+      if (isLoginModalOpen) {
+        setIsLoginModalOpen(false);
+        return true;
+      }
+      if (isHelpModalOpen) {
+        setIsHelpModalOpen(false);
+        return true;
+      }
+      if (isChecklistModalOpen) {
+        setIsChecklistModalOpen(false);
+        return true;
+      }
+      // 2. 미세조정 모드이면 취소
+      if (microAdjustSpot) {
+        setMicroAdjustSpot(null);
+        return true;
+      }
+      // 3. 모바일 상세 드로어가 열려 있으면 닫고 지도 뷰로
+      if (isMobileDrawerOpen) {
+        setIsMobileDrawerOpen(false);
+        return true;
+      }
+      // 4. 선택된 포인트가 있으면 선택 해제 (기본 지도 뷰)
+      if (selectedSpot) {
+        setSelectedSpot(null);
+        return true;
+      }
+      // 5. 기본 지도 뷰 상태: false 반환하여 앱 종료 방지 및 2초 내 더블 클릭 감지
+      return false;
+    });
+
+    return cleanup;
+  }, [
+    isSpotModalOpen,
+    isCatchLogModalOpen,
+    isSpotListModalOpen,
+    isLoginModalOpen,
+    isHelpModalOpen,
+    isChecklistModalOpen,
+    microAdjustSpot,
+    isMobileDrawerOpen,
+    selectedSpot,
+  ]);
 
   // 아웃도어 초고대비 모드 (Sun Mode: WCAG AAA 7:1) 및 오프라인 상태 관리
   const [isSunMode, setIsSunMode] = React.useState<boolean>(() => {
@@ -262,7 +344,10 @@ export function App() {
         setIsMobileDrawerOpen(true);
       }
       if (shouldRecenter) {
-        setRecenterTarget({ lat: spot.lat, lng: spot.lng, zoom: 16 });
+        // [요구사항 3] 공통: 포인트 클릭 시 캐스팅 비거리가 다 나오도록 최적 스케일 확대 (18 - zoom = kakaoLevel)
+        // 원투(SURF): kakaoLevel 4 (zoom 14, 약 150m 반경), 루어/찌: kakaoLevel 3 (zoom 15, 약 70~80m 반경)
+        const isSurf = spot.fishing_methods && spot.fishing_methods.includes('SURF');
+        setRecenterTarget({ lat: spot.lat, lng: spot.lng, zoom: isSurf ? 14 : 15 });
       }
 
       // 1. 한국형 물때 & 36시간 연속 조석 곡선 & 3일간 일출일몰 즉시 계산
@@ -725,6 +810,8 @@ export function App() {
             currentUser={currentUser}
             onStartMicroAdjust={handleStartMicroAdjust}
             onOpenDetail={(spot) => handleSelectSpot(spot, false, true)}
+            favoriteSpotIds={favoriteSpotIds}
+            onToggleFavorite={handleToggleFavorite}
             isSunMode={isSunMode}
             onToggleSunMode={() => {
               const next = !isSunMode;
@@ -751,6 +838,8 @@ export function App() {
               windUnit={windUnit}
               currentUnit={currentUnit}
               currentUser={currentUser}
+              isFavorited={favoriteSpotIds.includes(selectedSpot.id)}
+              onToggleFavorite={handleToggleFavorite}
               onStartMicroAdjust={handleStartMicroAdjust}
               onOpenCatchLogModal={() => {
                 setEditingCatchLog(null);
@@ -782,6 +871,8 @@ export function App() {
               windUnit={windUnit}
               currentUnit={currentUnit}
               currentUser={currentUser}
+              isFavorited={favoriteSpotIds.includes(selectedSpot.id)}
+              onToggleFavorite={handleToggleFavorite}
               onStartMicroAdjust={handleStartMicroAdjust}
               onOpenCatchLogModal={() => {
                 setEditingCatchLog(null);
@@ -902,6 +993,8 @@ export function App() {
         currentUnit={currentUnit}
         currentUserId={currentUser?.id}
         userCoords={userLocation}
+        favoriteSpotIds={favoriteSpotIds}
+        onToggleFavorite={handleToggleFavorite}
       />
       {/* 출조 필수품 & 안전 점검 체크리스트 모달 */}
       <ChecklistModal

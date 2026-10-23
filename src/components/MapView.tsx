@@ -7,7 +7,7 @@ import {
   Circle,
   useKakaoLoader,
 } from 'react-kakao-maps-sdk';
-import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon, Map as MapIcon, Satellite, Moon, Sun, LocateFixed, ChevronUp } from 'lucide-react';
+import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon, Map as MapIcon, Satellite, Moon, Sun, LocateFixed, ChevronUp, Plus, Minus } from 'lucide-react';
 import { MaterialSpotMarker } from './MaterialSpotMarker';
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo } from '../types';
 import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
@@ -94,6 +94,8 @@ interface MapViewProps {
   currentUser?: { id: string; name: string } | null;
   onStartMicroAdjust?: (spot: FishingSpot) => void;
   onOpenDetail?: (spot: FishingSpot) => void;
+  favoriteSpotIds?: string[];
+  onToggleFavorite?: (spotId: string) => void;
   isSunMode?: boolean;
   onToggleSunMode?: () => void;
 }
@@ -116,6 +118,8 @@ export const MapView: React.FC<MapViewProps> = ({
   currentUser = null,
   onStartMicroAdjust,
   onOpenDetail,
+  favoriteSpotIds: externalFavoriteSpotIds,
+  onToggleFavorite: externalOnToggleFavorite,
   isSunMode = false,
   onToggleSunMode,
 }) => {
@@ -153,7 +157,7 @@ export const MapView: React.FC<MapViewProps> = ({
   const [pendingNewSpot, setPendingNewSpot] = React.useState<{ lat: number; lng: number } | null>(null);
 
   // 나만의 즐겨찾기(찜한 포인트) 목록
-  const [favoriteSpotIds, setFavoriteSpotIds] = React.useState<string[]>(() => {
+  const [internalFavoriteSpotIds, setInternalFavoriteSpotIds] = React.useState<string[]>(() => {
     if (typeof window !== 'undefined') {
       try {
         const raw = localStorage.getItem('exfish_favorite_spot_ids');
@@ -162,10 +166,15 @@ export const MapView: React.FC<MapViewProps> = ({
     }
     return [];
   });
+  const favoriteSpotIds = externalFavoriteSpotIds || internalFavoriteSpotIds;
   const [viewOnlyFavorites, setViewOnlyFavorites] = React.useState(false);
 
   const toggleFavorite = (spotId: string) => {
-    setFavoriteSpotIds((prev) => {
+    if (externalOnToggleFavorite) {
+      externalOnToggleFavorite(spotId);
+      return;
+    }
+    setInternalFavoriteSpotIds((prev) => {
       const next = prev.includes(spotId) ? prev.filter((id) => id !== spotId) : [...prev, spotId];
       if (typeof window !== 'undefined') {
         localStorage.setItem('exfish_favorite_spot_ids', JSON.stringify(next));
@@ -242,6 +251,32 @@ export const MapView: React.FC<MapViewProps> = ({
     }
   }, [mapMode]);
 
+  // [요구사항 1] 카카오 기본 줌(Level 1)을 초과하는 2단계 추가 디지털 줌 (1.0x -> 1.8x -> 3.0x)
+  const [digitalZoom, setDigitalZoom] = React.useState<number>(1.0);
+
+  const handleZoomIn = () => {
+    if (level > 1) {
+      setLevel((prev) => Math.max(1, prev - 1));
+    } else {
+      setDigitalZoom((prev) => {
+        if (prev < 1.5) return 1.8;
+        return 3.0;
+      });
+      setVolumeToast('🔍 디지털 슈퍼 줌 (확대)');
+    }
+  };
+
+  const handleZoomOut = () => {
+    if (digitalZoom > 1.0) {
+      setDigitalZoom((prev) => {
+        if (prev > 2.0) return 1.8;
+        return 1.0;
+      });
+    } else {
+      setLevel((prev) => Math.min(14, prev + 1));
+    }
+  };
+
   // 볼륨 키 줌 안내 토스트 상태 (Phase 2 하드웨어 연동)
   const [volumeToast, setVolumeToast] = React.useState<string | null>(null);
 
@@ -249,15 +284,15 @@ export const MapView: React.FC<MapViewProps> = ({
   React.useEffect(() => {
     const cleanup = setupVolumeZoomListener((dir) => {
       if (dir === 'in') {
-        setLevel((prev) => Math.max(1, prev - 1));
-        setVolumeToast('🔍 지도 확대 (볼륨+)');
+        handleZoomIn();
+        setVolumeToast(level === 1 ? '🔍 디지털 줌인 (볼륨+)' : '🔍 지도 확대 (볼륨+)');
       } else {
-        setLevel((prev) => Math.min(14, prev + 1));
+        handleZoomOut();
         setVolumeToast('🔍 지도 축소 (볼륨-)');
       }
     });
     return cleanup;
-  }, []);
+  }, [level, digitalZoom]);
 
   React.useEffect(() => {
     if (volumeToast) {
@@ -454,9 +489,26 @@ export const MapView: React.FC<MapViewProps> = ({
         isDarkMode ? 'kakao-dark-mode' : ''
       } ${isSunMode ? 'exfish-sun-mode' : ''}`}
     >
-      <Map
-        center={center}
-        level={level}
+      {/* [요구사항 1] Level 1 상태에서 2단계 추가 디지털 줌 (1.8x, 3.0x) 지원 래퍼 */}
+      <div
+        className="w-full h-full transition-transform duration-200 origin-center"
+        style={{
+          transform: digitalZoom > 1.0 ? `scale(${digitalZoom})` : 'none',
+          transformOrigin: 'center center',
+        }}
+        onWheel={(e) => {
+          if (level === 1) {
+            if (e.deltaY < 0 && digitalZoom < 3.0) {
+              handleZoomIn();
+            } else if (e.deltaY > 0 && digitalZoom > 1.0) {
+              handleZoomOut();
+            }
+          }
+        }}
+      >
+        <Map
+          center={center}
+          level={level}
         mapTypeId={kakaoMapTypeId}
         style={{ width: '100%', height: '100%' }}
         onClick={(_target, mouseEvent) => {
@@ -1000,7 +1052,8 @@ export const MapView: React.FC<MapViewProps> = ({
             <React.Fragment key={`spot-group-${spot.id}`}>
               <CustomOverlayMap
                 position={{ lat: spot.lat, lng: spot.lng }}
-                yAnchor={1}
+                xAnchor={0.5}
+                yAnchor={0.5}
                 zIndex={isSelected ? 100 : 20}
                 clickable={true}
               >
@@ -1011,53 +1064,58 @@ export const MapView: React.FC<MapViewProps> = ({
                     onSelectSpot(spot);
                     setPendingNewSpot(null);
                   }}
-                  className="cursor-pointer group flex flex-col items-center kakao-invert-restore"
+                  className="relative flex items-center justify-center cursor-pointer group kakao-invert-restore"
                   title={`${spot.name} (${spot.target_species.join(', ')}) 클릭하여 선택`}
                 >
+                  {/* [요구사항 4] 아이콘 정중앙이 캐스팅 반원의 중심 좌표(spot.lat, spot.lng)에 정확히 위치 */}
                   <MaterialSpotMarker
                     methods={spot.fishing_methods}
                     isSelected={isSelected}
                     isFavorited={isFavorited}
                   />
-                  <span className="mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/95 border border-slate-700/80 text-xs sm:text-sm text-white font-bold whitespace-nowrap shadow-xl">
-                    {spot.name}
-                  </span>
 
-                  {/* [요구사항 4] 지도 화면 포인트 아이콘 하단 미세이동 및 상세보기 아이콘 (텍스트 없이 순수 아이콘만) */}
-                  {isSelected && !microAdjustSpot && (
-                    <div className="flex items-center gap-1.5 mt-1 pointer-events-auto">
-                      {isAuthor && onStartMicroAdjust && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            isMarkerClickRef.current = true;
-                            onStartMicroAdjust(spot);
-                          }}
-                          className="p-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-xl flex items-center justify-center transition border border-emerald-400/60"
-                          title="포인트 위치 미세이동 (스카이뷰 드래깅)"
-                          aria-label="미세이동"
-                        >
-                          <Crosshair size={13} className="shrink-0 text-white" />
-                        </button>
-                      )}
-                      {onOpenDetail && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            isMarkerClickRef.current = true;
-                            onOpenDetail(spot);
-                          }}
-                          className="p-1.5 rounded-full bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white shadow-xl flex items-center justify-center transition border border-cyan-400/60"
-                          title="포인트 상세 정보 및 기상/물때 보기"
-                          aria-label="상세보기"
-                        >
-                          <ChevronUp size={14} className="shrink-0 text-white" />
-                        </button>
-                      )}
-                    </div>
-                  )}
+                  {/* 포인트 이름 및 하단 액션 버튼 (아이콘 바로 아래에 절대 위치 매달림) */}
+                  <div className="absolute top-full mt-1.5 flex flex-col items-center pointer-events-auto">
+                    <span className="px-2 py-0.5 rounded-lg bg-slate-950/95 border border-slate-700/80 text-[11px] sm:text-xs text-white font-bold whitespace-nowrap shadow-xl">
+                      {spot.name}
+                    </span>
+
+                    {/* [요구사항 4] 지도 화면 포인트 아이콘 하단 미세이동 및 상세보기 아이콘 (텍스트 없이 순수 아이콘만) */}
+                    {isSelected && !microAdjustSpot && (
+                      <div className="flex items-center gap-1.5 mt-1 pointer-events-auto">
+                        {isAuthor && onStartMicroAdjust && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              isMarkerClickRef.current = true;
+                              onStartMicroAdjust(spot);
+                            }}
+                            className="p-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-xl flex items-center justify-center transition border border-emerald-400/60"
+                            title="포인트 위치 미세이동 (스카이뷰 드래깅)"
+                            aria-label="미세이동"
+                          >
+                            <Crosshair size={13} className="shrink-0 text-white" />
+                          </button>
+                        )}
+                        {onOpenDetail && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              isMarkerClickRef.current = true;
+                              onOpenDetail(spot);
+                            }}
+                            className="p-1.5 rounded-full bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white shadow-xl flex items-center justify-center transition border border-cyan-400/60"
+                            title="포인트 상세 정보 및 기상/물때 보기"
+                            aria-label="상세보기"
+                          >
+                            <ChevronUp size={14} className="shrink-0 text-white" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </CustomOverlayMap>
             </React.Fragment>
@@ -1123,6 +1181,7 @@ export const MapView: React.FC<MapViewProps> = ({
           </React.Fragment>
         )}
       </Map>
+      </div>
 
       {/* 지도 우상단 플로팅 컨트롤: 모드 3단 전환 & 찜한 포인트 필터 & GPS 내 위치 (모바일 드로어 열림 시에만 모바일에서 숨김, PC는 상시 flex 유지) */}
       <div
@@ -1227,6 +1286,31 @@ export const MapView: React.FC<MapViewProps> = ({
               ) : (
                 <LocateFixed size={18} className="text-cyan-400" />
               )}
+            </button>
+          </div>
+
+          <div className="pl-1 flex items-center gap-0.5">
+            {/* [요구사항 1] 지도 확대 (카카오 기본 레벨1 초과 시 2단계 추가 디지털 줌) */}
+            <button
+              onClick={handleZoomIn}
+              className="p-2 hover:bg-slate-800 text-slate-200 hover:text-cyan-300 rounded-xl flex items-center justify-center transition active:scale-95"
+              title={level === 1 ? '디지털 슈퍼 줌인 (2단계 추가 확대)' : '지도 확대'}
+              aria-label="확대"
+            >
+              <Plus size={16} />
+            </button>
+            {digitalZoom > 1.0 && (
+              <span className="text-[10px] font-black font-mono text-cyan-300 px-1 py-0.5 rounded bg-cyan-950/90 border border-cyan-500/60 shadow-sm animate-pulse">
+                {digitalZoom.toFixed(1)}x
+              </span>
+            )}
+            <button
+              onClick={handleZoomOut}
+              className="p-2 hover:bg-slate-800 text-slate-200 hover:text-cyan-300 rounded-xl flex items-center justify-center transition active:scale-95"
+              title="지도 축소"
+              aria-label="축소"
+            >
+              <Minus size={16} />
             </button>
           </div>
         </div>
