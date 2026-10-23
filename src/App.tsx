@@ -8,6 +8,7 @@ import { type AuthUser, getSavedAuthUser, LoginModal } from './components/LoginM
 import { SpotListModal, type SpotRealtimeSummary } from './components/SpotListModal';
 import { BiteScoreHelpModal } from './components/BiteScoreHelpModal';
 import { ChecklistModal } from './components/ChecklistModal';
+import { SplashScreen } from './components/SplashScreen';
 import type {
   BiteScoreBreakdown,
   CatchLog,
@@ -88,6 +89,8 @@ export function App() {
   const [isSpotListModalOpen, setIsSpotListModalOpen] = React.useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = React.useState(false);
   const [isChecklistModalOpen, setIsChecklistModalOpen] = React.useState(false);
+  // 모바일/웹 초기 2초 스플래시 스크린 표시 상태
+  const [showSplash, setShowSplash] = React.useState(true);
   const [newSpotLat, setNewSpotLat] = React.useState<number | undefined>();
   const [newSpotLng, setNewSpotLng] = React.useState<number | undefined>();
   const [microAdjustSpot, setMicroAdjustSpot] = React.useState<FishingSpot | null>(null);
@@ -578,6 +581,9 @@ export function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
+      {/* 2초 스플래시 스크린 (앱 시작 시 4대 핵심 가치 안내) */}
+      {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} durationMs={2200} />}
+
       {/* 글로벌 상단 헤더 & 내비게이션 바 */}
       <header className="h-14 bg-slate-900 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 shadow-md gap-2">
         {/* 로고 (ExFish 브랜딩 및 구호 적용, 클릭 시 페이지 새로고침) */}
