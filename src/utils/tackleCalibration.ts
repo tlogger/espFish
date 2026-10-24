@@ -59,17 +59,16 @@ export const WEIGHT_PRESETS: WeightPreset[] = [
   { id: 'jig-3g', category: 'JIG', categoryLabel: '지그헤드 (g)', label: '3g', subLabel: '볼락', weightGrams: 3 },
   { id: 'jig-5g', category: 'JIG', categoryLabel: '지그헤드 (g)', label: '5g', subLabel: '우럭', weightGrams: 5 },
 
-  // 2. 온스(oz) 지그헤드/루어 (1/32oz ~ 1oz)
+  // 2. 온스(oz) 지그헤드/루어 (1/32oz ~ 2oz, 3/32oz 및 3/16oz 제외)
   { id: 'oz-1-32', category: 'OZ', categoryLabel: '온스 루어 (oz)', label: '1/32oz', subLabel: '0.9g', weightGrams: 0.9 },
   { id: 'oz-1-16', category: 'OZ', categoryLabel: '온스 루어 (oz)', label: '1/16oz', subLabel: '1.8g', weightGrams: 1.8 },
-  { id: 'oz-3-32', category: 'OZ', categoryLabel: '온스 루어 (oz)', label: '3/32oz', subLabel: '2.7g', weightGrams: 2.7 },
   { id: 'oz-1-8',  category: 'OZ', categoryLabel: '온스 루어 (oz)', label: '1/8oz',  subLabel: '3.5g', weightGrams: 3.5 },
-  { id: 'oz-3-16', category: 'OZ', categoryLabel: '온스 루어 (oz)', label: '3/16oz', subLabel: '5.3g', weightGrams: 5.3 },
   { id: 'oz-1-4',  category: 'OZ', categoryLabel: '온스 루어 (oz)', label: '1/4oz',  subLabel: '7.1g', weightGrams: 7.1 },
   { id: 'oz-3-8',  category: 'OZ', categoryLabel: '온스 루어 (oz)', label: '3/8oz',  subLabel: '10.6g', weightGrams: 10.6 },
   { id: 'oz-1-2',  category: 'OZ', categoryLabel: '온스 루어 (oz)', label: '1/2oz',  subLabel: '14.2g', weightGrams: 14.2 },
   { id: 'oz-3-4',  category: 'OZ', categoryLabel: '온스 루어 (oz)', label: '3/4oz',  subLabel: '21.3g', weightGrams: 21.3 },
   { id: 'oz-1',    category: 'OZ', categoryLabel: '온스 루어 (oz)', label: '1oz',    subLabel: '28.3g', weightGrams: 28.3 },
+  { id: 'oz-2',    category: 'OZ', categoryLabel: '온스 루어 (oz)', label: '2oz',    subLabel: '56.7g', weightGrams: 56.7 },
 
   // 3. 주꾸미 낚시용 봉돌 (3호~7호, 1호=3.75g)
   { id: 'juk-3', category: 'JUKKUMI', categoryLabel: '주꾸미 (호)', label: '3호', subLabel: '11.3g', weightGrams: 11.3 },
@@ -78,16 +77,10 @@ export const WEIGHT_PRESETS: WeightPreset[] = [
   { id: 'juk-6', category: 'JUKKUMI', categoryLabel: '주꾸미 (호)', label: '6호', subLabel: '22.5g', weightGrams: 22.5 },
   { id: 'juk-7', category: 'JUKKUMI', categoryLabel: '주꾸미 (호)', label: '7호', subLabel: '26.3g', weightGrams: 26.3 },
 
-  // 4. 원투낚시용 봉돌 (8호~40호, 1호=3.75g)
-  { id: 'surf-8',  category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '8호',  subLabel: '30g',   weightGrams: 30 },
-  { id: 'surf-10', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '10호', subLabel: '37.5g', weightGrams: 37.5 },
-  { id: 'surf-12', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '12호', subLabel: '45g',   weightGrams: 45 },
-  { id: 'surf-15', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '15호', subLabel: '56.3g', weightGrams: 56.3 },
-  { id: 'surf-18', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '18호', subLabel: '67.5g', weightGrams: 67.5 },
+  // 4. 원투낚시용 봉돌 (16호, 20호, 30호, 40호, 1호=3.75g)
+  { id: 'surf-16', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '16호', subLabel: '60g',   weightGrams: 60 },
   { id: 'surf-20', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '20호', subLabel: '75g',   weightGrams: 75 },
-  { id: 'surf-25', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '25호', subLabel: '93.8g', weightGrams: 93.8 },
   { id: 'surf-30', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '30호', subLabel: '112.5g', weightGrams: 112.5 },
-  { id: 'surf-35', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '35호', subLabel: '131.3g', weightGrams: 131.3 },
   { id: 'surf-40', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '40호', subLabel: '150g',  weightGrams: 150 },
 ];
 

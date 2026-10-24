@@ -19,7 +19,7 @@ export interface CloudDbConfig {
 
 /** fishing_spots 테이블에 존재하는 컬럼만 추출하여 Supabase 스키마 불일치 에러 방지 */
 function toDbSpotRecord(spot: FishingSpot): Record<string, unknown> {
-  // description 필드 끝에 캐스팅 방향 및 각도 정보를 안전하게 인코딩하여 스키마 변경 전/후 모두 무결성 유지
+  // description 필드 끝에 캐스팅 방향, 스위트 스팟(최대 3개), 관련 URL 정보를 안전하게 인코딩하여 스키마 변경 전/후 모두 무결성 유지
   let desc = spot.description || '';
   if (spot.casting_start_deg !== undefined && spot.casting_end_deg !== undefined) {
     const rangeTag = `[CASTING_RANGE:${spot.casting_start_deg},${spot.casting_end_deg}]`;
@@ -31,6 +31,22 @@ function toDbSpotRecord(spot: FishingSpot): Record<string, unknown> {
     if (!desc.includes('[CASTING:')) {
       desc = desc ? `${desc}\n${castingTag}` : castingTag;
     }
+  }
+
+  // 스위트 스팟 정보 인코딩 (요구사항 1: 리로드 시 소실 방지)
+  if (spot.use_sweet_spot && spot.sweet_spots && spot.sweet_spots.length > 0) {
+    try {
+      const sweetTag = `[SWEET_SPOTS:${JSON.stringify(spot.sweet_spots)}]`;
+      if (!desc.includes('[SWEET_SPOTS:')) {
+        desc = desc ? `${desc}\n${sweetTag}` : sweetTag;
+      }
+    } catch {}
+  }
+
+  // 관련 URL 인코딩 (요구사항 3)
+  if (spot.related_url && !desc.includes('[RELATED_URL:')) {
+    const urlTag = `[RELATED_URL:${spot.related_url.trim()}]`;
+    desc = desc ? `${desc}\n${urlTag}` : urlTag;
   }
 
   const record: Record<string, unknown> = {
@@ -176,12 +192,15 @@ export async function testCloudConnection(url: string, anonKey: string): Promise
   }
 }
 
-/** DB 레코드로부터 FishingSpot 객체로 변환 (description 내 [CASTING_RANGE:...], [CASTING:...] 태그 파싱) */
+/** DB 레코드로부터 FishingSpot 객체로 변환 (description 내 [CASTING_RANGE:...], [CASTING:...], [SWEET_SPOTS:...], [RELATED_URL:...] 태그 파싱) */
 function fromDbSpotRecord(record: any): FishingSpot {
   let desc = record.description || '';
   let castingDirections: string[] = record.casting_directions || [];
   let castingStartDeg: number | undefined = record.casting_start_deg;
   let castingEndDeg: number | undefined = record.casting_end_deg;
+  let useSweetSpot: boolean | undefined = record.use_sweet_spot;
+  let sweetSpots: any[] | undefined = record.sweet_spots;
+  let relatedUrl: string | undefined = record.related_url;
 
   if (desc && desc.includes('[CASTING_RANGE:')) {
     const match = desc.match(/\[CASTING_RANGE:(\d+),(\d+)\]/);
@@ -200,12 +219,39 @@ function fromDbSpotRecord(record: any): FishingSpot {
     }
   }
 
+  // 스위트 스팟 복원 (요구사항 1)
+  if (desc && desc.includes('[SWEET_SPOTS:')) {
+    const match = desc.match(/\[SWEET_SPOTS:(\[.*?\])\]/s);
+    if (match && match[1]) {
+      try {
+        const parsed = JSON.parse(match[1]);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          sweetSpots = parsed;
+          useSweetSpot = true;
+        }
+      } catch {}
+      desc = desc.replace(/\n?\[SWEET_SPOTS:\[.*?\]\]/s, '').trim();
+    }
+  }
+
+  // 관련 URL 복원 (요구사항 3)
+  if (desc && desc.includes('[RELATED_URL:')) {
+    const match = desc.match(/\[RELATED_URL:([^\]]+)\]/);
+    if (match && match[1]) {
+      relatedUrl = match[1].trim();
+      desc = desc.replace(/\n?\[RELATED_URL:[^\]]+\]/, '').trim();
+    }
+  }
+
   return {
     ...record,
     description: desc,
     casting_directions: castingDirections,
     casting_start_deg: castingStartDeg,
     casting_end_deg: castingEndDeg,
+    use_sweet_spot: useSweetSpot,
+    sweet_spots: sweetSpots,
+    related_url: relatedUrl,
   };
 }
 

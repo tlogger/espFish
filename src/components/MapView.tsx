@@ -9,7 +9,7 @@ import {
 } from 'react-kakao-maps-sdk';
 import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon, Map as MapIcon, Satellite, Moon, Sun, LocateFixed, ChevronUp, Plus, Minus } from 'lucide-react';
 import { MaterialSpotMarker } from './MaterialSpotMarker';
-import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo } from '../types';
+import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo, SweetSpot } from '../types';
 import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
 import { KOREA_DEPTH_CONTOURS, estimateDepthAtPoint } from '../data/depthContours';
 import { generateDynamicBathymetryContours } from '../utils/dynamicBathymetryEngine';
@@ -74,6 +74,36 @@ function calculateDestinationPoint(
   return [(endLatRad * 180) / Math.PI, (endLngRad * 180) / Math.PI];
 }
 
+// 두 위경도 좌표 간의 방위각 (0~359°) 및 거리(미터) 계산
+function calculateDistanceAndBearing(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): { distance: number; bearing: number } {
+  const R = 6378137;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const rLat1 = (lat1 * Math.PI) / 180;
+  const rLat2 = (lat2 * Math.PI) / 180;
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(rLat1) * Math.cos(rLat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = Math.round(R * c);
+
+  const y = Math.sin(dLng) * Math.cos(rLat2);
+  const x =
+    Math.cos(rLat1) * Math.sin(rLat2) -
+    Math.sin(rLat1) * Math.cos(rLat2) * Math.cos(dLng);
+  let bearing = Math.round((Math.atan2(y, x) * 180) / Math.PI);
+  if (bearing < 0) bearing += 360;
+  bearing = bearing % 360;
+
+  return { distance, bearing };
+}
+
 type MapMode = 'ROADMAP' | 'HYBRID' | 'DARK';
 
 interface MapViewProps {
@@ -94,6 +124,8 @@ interface MapViewProps {
   currentUser?: { id: string; name: string } | null;
   onStartMicroAdjust?: (spot: FishingSpot) => void;
   onOpenDetail?: (spot: FishingSpot) => void;
+  onEditSpot?: (spot: FishingSpot) => void;
+  onUpdateSpot?: (updatedSpot: FishingSpot) => Promise<void> | void;
   favoriteSpotIds?: string[];
   onToggleFavorite?: (spotId: string) => void;
   isSunMode?: boolean;
@@ -118,6 +150,8 @@ export const MapView: React.FC<MapViewProps> = ({
   currentUser = null,
   onStartMicroAdjust,
   onOpenDetail,
+  onEditSpot,
+  onUpdateSpot,
   favoriteSpotIds: externalFavoriteSpotIds,
   onToggleFavorite: externalOnToggleFavorite,
   isSunMode = false,
@@ -155,6 +189,24 @@ export const MapView: React.FC<MapViewProps> = ({
 
   // 실수 터치 방지: 지도 빈 자리 클릭 시 임시 핀 & 미니 확인 팝업 상태
   const [pendingNewSpot, setPendingNewSpot] = React.useState<{ lat: number; lng: number } | null>(null);
+
+  // [요구사항 4] 포인트 더블클릭/롱클릭 컨텍스트 메뉴 상태
+  const [contextMenuSpot, setContextMenuSpot] = React.useState<FishingSpot | null>(null);
+  const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPressTriggeredRef = React.useRef(false);
+
+  // [요구사항 4-3] 캐스팅 방향 전용 설정 모드 상태
+  const [castingConfigSpot, setCastingConfigSpot] = React.useState<FishingSpot | null>(null);
+  const [tempCastingEnabled, setTempCastingEnabled] = React.useState(true);
+  const [tempStartDeg, setTempStartDeg] = React.useState(45);
+  const [tempEndDeg, setTempEndDeg] = React.useState(135);
+
+  // [요구사항 4-4] 스윗 스폿 전용 설정 모드 상태
+  const [sweetSpotConfigSpot, setSweetSpotConfigSpot] = React.useState<FishingSpot | null>(null);
+  const [tempUseSweetSpot, setTempUseSweetSpot] = React.useState(true);
+  const [tempSweetSpots, setTempSweetSpots] = React.useState<SweetSpot[]>([]);
+  const [isAddingSweetSpot, setIsAddingSweetSpot] = React.useState(false);
+  const [selectedNewRadius, setSelectedNewRadius] = React.useState<number>(10);
 
   // 나만의 즐겨찾기(찜한 포인트) 목록
   const [internalFavoriteSpotIds, setInternalFavoriteSpotIds] = React.useState<string[]>(() => {
@@ -367,6 +419,58 @@ export const MapView: React.FC<MapViewProps> = ({
       return () => clearTimeout(timer);
     }
   }, [volumeToast]);
+
+  // [요구사항 4-3] 캐스팅 방향 전용 설정 모드 열기/저장
+  const handleOpenCastingConfig = (spot: FishingSpot) => {
+    setCastingConfigSpot(spot);
+    setSweetSpotConfigSpot(null);
+    setContextMenuSpot(null);
+    setCenter({ lat: spot.lat, lng: spot.lng });
+    setLevel(2); // 적어도 맵 거리 200m까지 확대
+    setTempCastingEnabled(spot.casting_start_deg !== undefined && spot.casting_end_deg !== undefined);
+    setTempStartDeg(spot.casting_start_deg ?? 45);
+    setTempEndDeg(spot.casting_end_deg ?? 135);
+  };
+
+  const handleSaveCastingConfig = async () => {
+    if (!castingConfigSpot || !onUpdateSpot) return;
+    await onUpdateSpot({
+      ...castingConfigSpot,
+      casting_start_deg: tempCastingEnabled ? Math.round(tempStartDeg) % 360 : undefined,
+      casting_end_deg: tempCastingEnabled ? Math.round(tempEndDeg) % 360 : undefined,
+    });
+    setCastingConfigSpot(null);
+  };
+
+  // [요구사항 4-4] 스윗 스폿 전용 설정 모드 열기/저장
+  const handleOpenSweetSpotConfig = (spot: FishingSpot) => {
+    setSweetSpotConfigSpot(spot);
+    setCastingConfigSpot(null);
+    setContextMenuSpot(null);
+    setCenter({ lat: spot.lat, lng: spot.lng });
+    setLevel(2); // 적어도 맵 거리 200m까지 확대
+    setTempUseSweetSpot(spot.use_sweet_spot ?? true);
+    setTempSweetSpots(spot.sweet_spots || []);
+    setIsAddingSweetSpot(false);
+    setSelectedNewRadius(10);
+  };
+
+  const handleSaveSweetSpotConfig = async () => {
+    if (!sweetSpotConfigSpot || !onUpdateSpot) return;
+    await onUpdateSpot({
+      ...sweetSpotConfigSpot,
+      use_sweet_spot: tempUseSweetSpot,
+      sweet_spots: tempSweetSpots,
+    });
+    setSweetSpotConfigSpot(null);
+    setIsAddingSweetSpot(false);
+  };
+
+  const handleDeleteTempSweetSpot = (idx: number) => {
+    if (window.confirm('이 스윗 스팟을 삭제하시겠습니까?')) {
+      setTempSweetSpots((prev) => prev.filter((_, i) => i !== idx));
+    }
+  };
 
   // 현재 GPS 위치 가져오기 핸들러 (네이티브 FusedLocation & 브라우저 통합)
   const handleLocateMe = async () => {
@@ -616,9 +720,45 @@ export const MapView: React.FC<MapViewProps> = ({
               dragTrackerRef.current.totalDist = 0;
               return;
             }
-            // 지도 빈 공간 클릭 시 바로 모달을 열지 않고 '미니 확인 팝업'을 띄워 실수 터치 방지
+
             const latLng = mouseEvent.latLng;
-            setPendingNewSpot({ lat: latLng.getLat(), lng: latLng.getLng() });
+            const clickedLat = latLng.getLat();
+            const clickedLng = latLng.getLng();
+
+            // [요구사항 4-4] 스윗 스팟 추가 모드일 때 클릭한 위치에 스윗스팟 원 생성
+            if (sweetSpotConfigSpot && isAddingSweetSpot) {
+              if (tempSweetSpots.length < 3) {
+                const { distance, bearing } = calculateDistanceAndBearing(
+                  sweetSpotConfigSpot.lat,
+                  sweetSpotConfigSpot.lng,
+                  clickedLat,
+                  clickedLng
+                );
+                const newSpotItem: SweetSpot = {
+                  id: `ss-${Date.now()}-${tempSweetSpots.length + 1}`,
+                  direction: bearing,
+                  distance: Math.min(200, Math.max(1, distance)),
+                  radius: selectedNewRadius,
+                  memo: '',
+                };
+                setTempSweetSpots((prev) => [...prev, newSpotItem]);
+                setIsAddingSweetSpot(false);
+              }
+              return;
+            }
+
+            // 컨텍스트 메뉴 닫기
+            if (contextMenuSpot) {
+              setContextMenuSpot(null);
+            }
+
+            // 캐스팅/스윗스팟 설정 모드 중에는 새 포인트 등록 핀 방지
+            if (castingConfigSpot || sweetSpotConfigSpot) {
+              return;
+            }
+
+            // 지도 빈 공간 클릭 시 바로 모달을 열지 않고 '미니 확인 팝업'을 띄워 실수 터치 방지
+            setPendingNewSpot({ lat: clickedLat, lng: clickedLng });
           }}
         onZoomChanged={(target) => {
           setLevel(target.getLevel());
@@ -632,18 +772,28 @@ export const MapView: React.FC<MapViewProps> = ({
         {null}
 
         {/* 선택된 포인트의 캐스팅 비거리 동심원 눈금 링 및 유효 공략 부채꼴 섹터 (채비 캘리브레이션 거리 반영) */}
-        {showCastingArrows && selectedSpot && (() => {
-          let startDeg = selectedSpot.casting_start_deg;
-          let endDeg = selectedSpot.casting_end_deg;
+        {showCastingArrows && (selectedSpot || castingConfigSpot) && (() => {
+          const targetSpot = castingConfigSpot || selectedSpot;
+          if (!targetSpot) return null;
 
-          // 레거시 하위 호환 매핑
-          if (startDeg === undefined || endDeg === undefined) {
-            const dirs = selectedSpot.casting_directions || [];
-            if (dirs.length > 0 && !dirs.includes('ALL')) {
-              const info = CASTING_BEARINGS[dirs[0]];
-              if (info) {
-                startDeg = (info.deg - 30 + 360) % 360;
-                endDeg = (info.deg + 30) % 360;
+          let startDeg = targetSpot.casting_start_deg;
+          let endDeg = targetSpot.casting_end_deg;
+
+          // [요구사항 4-3] 캐스팅 방향 설정 모드 실시간 각도 반영
+          if (castingConfigSpot) {
+            if (!tempCastingEnabled) return null;
+            startDeg = tempStartDeg;
+            endDeg = tempEndDeg;
+          } else {
+            // 레거시 하위 호환 매핑
+            if (startDeg === undefined || endDeg === undefined) {
+              const dirs = targetSpot.casting_directions || [];
+              if (dirs.length > 0 && !dirs.includes('ALL')) {
+                const info = CASTING_BEARINGS[dirs[0]];
+                if (info) {
+                  startDeg = (info.deg - 30 + 360) % 360;
+                  endDeg = (info.deg + 30) % 360;
+                }
               }
             }
           }
@@ -658,15 +808,18 @@ export const MapView: React.FC<MapViewProps> = ({
           const maxRadius = radii[2];
 
           // 좌우 유효 경계선 (최대 비거리 지점까지 뻗어나가는 레이더 가이드 선)
-          const leftEdge = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, startDeg, maxRadius);
-          const rightEdge = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, endDeg, maxRadius);
+          const leftEdge = calculateDestinationPoint(targetSpot.lat, targetSpot.lng, startDeg, maxRadius);
+          const rightEdge = calculateDestinationPoint(targetSpot.lat, targetSpot.lng, endDeg, maxRadius);
+
+          // [요구사항 4-3, 4-4] 설정 모드 중에는 비거리/풍속/조류 HUD를 숨김
+          const isSpecialMode = Boolean(castingConfigSpot || sweetSpotConfigSpot);
 
           return (
-            <React.Fragment key={`range-sector-${selectedSpot.id}`}>
+            <React.Fragment key={`range-sector-${targetSpot.id}`}>
               {/* 시작각 경계선 */}
               <Polyline
                 path={[
-                  { lat: selectedSpot.lat, lng: selectedSpot.lng },
+                  { lat: targetSpot.lat, lng: targetSpot.lng },
                   { lat: leftEdge[0], lng: leftEdge[1] },
                 ]}
                 strokeWeight={1.5}
@@ -679,7 +832,7 @@ export const MapView: React.FC<MapViewProps> = ({
               {/* 종료각 경계선 */}
               <Polyline
                 path={[
-                  { lat: selectedSpot.lat, lng: selectedSpot.lng },
+                  { lat: targetSpot.lat, lng: targetSpot.lng },
                   { lat: rightEdge[0], lng: rightEdge[1] },
                 ]}
                 strokeWeight={1.5}
@@ -695,17 +848,17 @@ export const MapView: React.FC<MapViewProps> = ({
                 const arcPoints: { lat: number; lng: number }[] = [];
                 for (let offset = 0; offset <= span; offset += step) {
                   const b = (startDeg! + offset) % 360;
-                  const [pLat, pLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, b, r);
+                  const [pLat, pLng] = calculateDestinationPoint(targetSpot.lat, targetSpot.lng, b, r);
                   arcPoints.push({ lat: pLat, lng: pLng });
                 }
-                const [endLat, endLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, endDeg!, r);
+                const [endLat, endLng] = calculateDestinationPoint(targetSpot.lat, targetSpot.lng, endDeg!, r);
                 arcPoints.push({ lat: endLat, lng: endLng });
 
                 // 호 중심 지점에 거리 m 표기 오버레이
-                const [labelLat, labelLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, centerBearing, r);
+                const [labelLat, labelLng] = calculateDestinationPoint(targetSpot.lat, targetSpot.lng, centerBearing, r);
 
                 return (
-                  <React.Fragment key={`arc-r-${selectedSpot.id}-${r}`}>
+                  <React.Fragment key={`arc-r-${targetSpot.id}-${r}`}>
                     <Polyline
                       path={arcPoints}
                       strokeWeight={rIdx === 0 ? 2 : 1.5}
@@ -732,8 +885,8 @@ export const MapView: React.FC<MapViewProps> = ({
           );
         })()}
 
-        {/* 선택된 포인트의 파란색 캐스팅 방향 화살표 + 실시간 바람·조류 상호작용 HUD */}
-        {showCastingArrows && selectedSpot && (() => {
+        {/* 선택된 포인트의 파란색 캐스팅 방향 화살표 + 실시간 바람·조류 상호작용 HUD (설정 모드 시 비거리/풍속/조류 HUD 제거) */}
+        {showCastingArrows && selectedSpot && !castingConfigSpot && !sweetSpotConfigSpot && (() => {
           let startDeg = selectedSpot.casting_start_deg;
           let endDeg = selectedSpot.casting_end_deg;
 
@@ -1031,70 +1184,94 @@ export const MapView: React.FC<MapViewProps> = ({
           );
         })()}
 
-        {/* 🎯 스위트 스팟 (Sweet Spot) 오버레이 렌더링 (요구사항 5-7-4) */}
-        {selectedSpot && selectedSpot.use_sweet_spot && selectedSpot.sweet_spots && selectedSpot.sweet_spots.length > 0 && (
-          <React.Fragment key={`sweet-spots-group-${selectedSpot.id}`}>
-            {selectedSpot.sweet_spots.map((ss, idx) => {
-              const [targetLat, targetLng] = calculateDestinationPoint(
-                selectedSpot.lat,
-                selectedSpot.lng,
-                ss.direction,
-                ss.distance
-              );
+        {/* 🎯 스위트 스팟 (Sweet Spot) 오버레이 렌더링 (요구사항 4-4 및 5-7-4) */}
+        {(() => {
+          const isConfig = !!sweetSpotConfigSpot;
+          const target = sweetSpotConfigSpot || selectedSpot;
+          if (!target) return null;
+          const isEnabled = isConfig ? tempUseSweetSpot : (target.use_sweet_spot ?? false);
+          const spots = isConfig ? tempSweetSpots : (target.sweet_spots || []);
+          if (!isEnabled || spots.length === 0) return null;
 
-              return (
-                <React.Fragment key={`sweet-spot-${selectedSpot.id}-${ss.id || idx}`}>
-                  {/* 스위트 스팟 반경 원 */}
-                  <Circle
-                    center={{ lat: targetLat, lng: targetLng }}
-                    radius={ss.radius}
-                    strokeWeight={2}
-                    strokeColor="#f59e0b"
-                    strokeOpacity={0.9}
-                    strokeStyle="solid"
-                    fillColor="#f59e0b"
-                    fillOpacity={0.35}
-                    zIndex={38}
-                  />
+          return (
+            <React.Fragment key={`sweet-spots-group-${target.id}-${isConfig ? 'cfg' : 'view'}`}>
+              {spots.map((ss, idx) => {
+                const [targetLat, targetLng] = calculateDestinationPoint(
+                  target.lat,
+                  target.lng,
+                  ss.direction,
+                  ss.distance
+                );
 
-                  {/* 포인트 -> 스위트스팟 연결 점선 */}
-                  <Polyline
-                    path={[
-                      { lat: selectedSpot.lat, lng: selectedSpot.lng },
-                      { lat: targetLat, lng: targetLng },
-                    ]}
-                    strokeWeight={1.5}
-                    strokeColor="#f59e0b"
-                    strokeOpacity={0.65}
-                    strokeStyle="dash"
-                    zIndex={37}
-                  />
+                return (
+                  <React.Fragment key={`sweet-spot-${target.id}-${ss.id || idx}`}>
+                    {/* 스위트 스팟 반경 원 */}
+                    <Circle
+                      center={{ lat: targetLat, lng: targetLng }}
+                      radius={ss.radius}
+                      strokeWeight={2}
+                      strokeColor="#f59e0b"
+                      strokeOpacity={0.9}
+                      strokeStyle="solid"
+                      fillColor="#f59e0b"
+                      fillOpacity={0.35}
+                      zIndex={38}
+                    />
 
-                  {/* 스위트 스팟 번호 & 거리 & 반경 배지 오버레이 */}
-                  <CustomOverlayMap
-                    position={{ lat: targetLat, lng: targetLng }}
-                    yAnchor={0.5}
-                    xAnchor={0.5}
-                    zIndex={40}
-                    clickable={false}
-                  >
-                    <div className="flex flex-col items-center select-none pointer-events-none kakao-invert-restore whitespace-nowrap animate-in fade-in zoom-in-75 duration-200">
-                      <div className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black shadow-lg border border-white/80 flex items-center gap-1">
-                        <span>🎯 #{idx + 1}</span>
-                        <span>{ss.distance}m (r:{ss.radius}m)</span>
-                      </div>
-                      {ss.memo && (
-                        <div className="mt-0.5 px-1.5 py-0.2 rounded bg-slate-950/90 text-amber-200 border border-amber-500/50 text-[9px] font-medium shadow max-w-[120px] truncate">
-                          {ss.memo}
+                    {/* 포인트 -> 스위트스팟 연결 점선 */}
+                    <Polyline
+                      path={[
+                        { lat: target.lat, lng: target.lng },
+                        { lat: targetLat, lng: targetLng },
+                      ]}
+                      strokeWeight={1.5}
+                      strokeColor="#f59e0b"
+                      strokeOpacity={0.65}
+                      strokeStyle="dash"
+                      zIndex={37}
+                    />
+
+                    {/* 스위트 스팟 번호 & 거리 & 반경 배지 오버레이 (설정 모드 시 삭제 아이콘 포함) */}
+                    <CustomOverlayMap
+                      position={{ lat: targetLat, lng: targetLng }}
+                      yAnchor={0.5}
+                      xAnchor={0.5}
+                      zIndex={40}
+                      clickable={isConfig}
+                    >
+                      <div className="flex flex-col items-center select-none kakao-invert-restore whitespace-nowrap animate-in fade-in zoom-in-75 duration-200">
+                        <div className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black shadow-lg border border-white/80 flex items-center gap-1.5">
+                          <span>🎯 #{idx + 1}</span>
+                          <span>{ss.distance}m (r:{ss.radius}m)</span>
+                          {isConfig && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`스윗 스팟 #${idx + 1}을(를) 삭제하시겠습니까?`)) {
+                                  handleDeleteTempSweetSpot(idx);
+                                }
+                              }}
+                              className="ml-1 px-1 py-0.2 rounded bg-rose-600 hover:bg-rose-700 text-white font-bold text-[9px] shadow active:scale-95 transition pointer-events-auto cursor-pointer"
+                              title="스윗 스팟 삭제"
+                            >
+                              ✕ 삭제
+                            </button>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </CustomOverlayMap>
-                </React.Fragment>
-              );
-            })}
-          </React.Fragment>
-        )}
+                        {ss.memo && (
+                          <div className="mt-0.5 px-1.5 py-0.2 rounded bg-slate-950/90 text-amber-200 border border-amber-500/50 text-[9px] font-medium shadow max-w-[120px] truncate">
+                            {ss.memo}
+                          </div>
+                        )}
+                      </div>
+                    </CustomOverlayMap>
+                  </React.Fragment>
+                );
+              })}
+            </React.Fragment>
+          );
+        })()}
 
         {/* 내 현재 GPS 위치 마커 & 수평 오차 반경 원 (Virtual Crosshair Accuracy Circle) */}
         {myLocation && (
@@ -1198,19 +1375,13 @@ export const MapView: React.FC<MapViewProps> = ({
           </React.Fragment>
         )}
 
-        {/* 등록된 포인트 커스텀 핀 오버레이 (요구사항 9: 불필요한 마커 팝업 제거, 클릭 시 해당 포인트 선택 및 HUD 표시) */}
+        {/* 등록된 포인트 커스텀 핀 오버레이 (요구사항: 아이콘 하단 미세조정/상세보기 아이콘 제거, 짧은클릭=상세보기, 더블/롱클릭=컨텍스트메뉴) */}
         {displayedSpots.map((spot) => {
           // 미세 조정 대상 포인트는 드래깅 전용 MapMarker로 별도 렌더링
           if (microAdjustSpot?.id === spot.id) return null;
 
           const isSelected = selectedSpot?.id === spot.id;
           const isFavorited = favoriteSpotIds.includes(spot.id);
-          const isAuthor = Boolean(
-            currentUser &&
-              (spot.user_id === currentUser.id ||
-                spot.user_id === 'user-me' ||
-                currentUser.id === 'user-me')
-          );
 
           return (
             <React.Fragment key={`spot-group-${spot.id}`}>
@@ -1222,14 +1393,47 @@ export const MapView: React.FC<MapViewProps> = ({
                 clickable={true}
               >
                 <div
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    isLongPressTriggeredRef.current = false;
+                    longPressTimerRef.current = setTimeout(() => {
+                      isLongPressTriggeredRef.current = true;
+                      isMarkerClickRef.current = true;
+                      setContextMenuSpot(spot);
+                      onSelectSpot(spot);
+                      triggerHaptic('medium');
+                    }, 500);
+                  }}
+                  onPointerUp={(e) => {
+                    if (longPressTimerRef.current) {
+                      clearTimeout(longPressTimerRef.current);
+                      longPressTimerRef.current = null;
+                    }
+                  }}
+                  onPointerLeave={() => {
+                    if (longPressTimerRef.current) {
+                      clearTimeout(longPressTimerRef.current);
+                      longPressTimerRef.current = null;
+                    }
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    isMarkerClickRef.current = true;
+                    setContextMenuSpot(spot);
+                    onSelectSpot(spot);
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
                     isMarkerClickRef.current = true;
+                    if (isLongPressTriggeredRef.current) {
+                      isLongPressTriggeredRef.current = false;
+                      return;
+                    }
                     onSelectSpot(spot);
                     setPendingNewSpot(null);
                   }}
                   className="relative flex items-center justify-center cursor-pointer group kakao-invert-restore"
-                  title={`${spot.name} (${spot.target_species.join(', ')}) 클릭하여 선택`}
+                  title={`${spot.name} (클릭: 선택/상세, 길게 누르거나 더블클릭: 메뉴)`}
                 >
                   {/* [요구사항 4] 아이콘 정중앙이 캐스팅 반원의 중심 좌표(spot.lat, spot.lng)에 정확히 위치 */}
                   <MaterialSpotMarker
@@ -1238,53 +1442,115 @@ export const MapView: React.FC<MapViewProps> = ({
                     isFavorited={isFavorited}
                   />
 
-                  {/* 포인트 이름 및 하단 액션 버튼 (아이콘 바로 아래에 절대 위치 매달림) */}
+                  {/* 포인트 이름 텍스트 (아이콘 바로 아래에 매달림 - 하단 미세조정/상세보기 아이콘은 전면 제거) */}
                   <div className="absolute top-full mt-1.5 flex flex-col items-center pointer-events-auto">
                     <span className="px-2 py-0.5 rounded-lg bg-slate-950/95 border border-slate-700/80 text-[11px] sm:text-xs text-white font-bold whitespace-nowrap shadow-xl">
                       {spot.name}
                     </span>
-
-                    {/* [요구사항 4] 지도 화면 포인트 아이콘 하단 미세이동 및 상세보기 아이콘 (텍스트 없이 순수 아이콘만) */}
-                    {isSelected && !microAdjustSpot && (
-                      <div className="flex items-center gap-1.5 mt-1 pointer-events-auto">
-                        {isAuthor && onStartMicroAdjust && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              isMarkerClickRef.current = true;
-                              onStartMicroAdjust(spot);
-                            }}
-                            className="p-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-xl flex items-center justify-center transition border border-emerald-400/60"
-                            title="포인트 위치 미세이동 (스카이뷰 드래깅)"
-                            aria-label="미세이동"
-                          >
-                            <Crosshair size={13} className="shrink-0 text-white" />
-                          </button>
-                        )}
-                        {onOpenDetail && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              isMarkerClickRef.current = true;
-                              onOpenDetail(spot);
-                            }}
-                            className="p-1.5 rounded-full bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white shadow-xl flex items-center justify-center transition border border-cyan-400/60"
-                            title="포인트 상세 정보 및 기상/물때 보기"
-                            aria-label="상세보기"
-                          >
-                            <ChevronUp size={14} className="shrink-0 text-white" />
-                          </button>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </div>
               </CustomOverlayMap>
             </React.Fragment>
           );
         })}
+
+        {/* [요구사항 4] 포인트 더블클릭/롱클릭 시 나타나는 플로팅 컨텍스트 메뉴 */}
+        {contextMenuSpot && (
+          <CustomOverlayMap
+            position={{ lat: contextMenuSpot.lat, lng: contextMenuSpot.lng }}
+            yAnchor={1.25}
+            zIndex={250}
+            clickable={true}
+          >
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                isMarkerClickRef.current = true;
+              }}
+              className="p-2.5 bg-slate-900/95 backdrop-blur-md border border-cyan-500/70 rounded-2xl shadow-2xl text-white text-xs font-sans space-y-1.5 animate-in fade-in zoom-in-95 duration-150 min-w-[190px] kakao-invert-restore select-none"
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 px-1">
+                <span className="font-bold text-cyan-300 text-xs truncate max-w-[140px]">
+                  {contextMenuSpot.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setContextMenuSpot(null)}
+                  className="text-slate-400 hover:text-white text-xs p-0.5 rounded cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-1 pt-0.5">
+                {/* PC 웹 보기에서는 '상세 보기'가 항상 나타나 있으므로 생략 (모바일 화면 < 768px 일 때만 노출) */}
+                {(typeof window === 'undefined' || window.innerWidth < 768) && onOpenDetail && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenDetail(contextMenuSpot);
+                      setContextMenuSpot(null);
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-cyan-300 transition flex items-center gap-2 cursor-pointer text-xs font-medium"
+                  >
+                    <span>📋</span>
+                    <span>상세 보기</span>
+                  </button>
+                )}
+
+                {/* 미세 조정 */}
+                {onStartMicroAdjust && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onStartMicroAdjust(contextMenuSpot);
+                      setContextMenuSpot(null);
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-emerald-300 transition flex items-center gap-2 cursor-pointer text-xs font-medium"
+                  >
+                    <span>🎯</span>
+                    <span>미세 조정</span>
+                  </button>
+                )}
+
+                {/* 포인트 수정 */}
+                {onEditSpot && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onEditSpot(contextMenuSpot);
+                      setContextMenuSpot(null);
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-amber-300 transition flex items-center gap-2 cursor-pointer text-xs font-medium"
+                  >
+                    <span>✏️</span>
+                    <span>포인트 수정</span>
+                  </button>
+                )}
+
+                {/* 캐스팅 방향 설정 */}
+                <button
+                  type="button"
+                  onClick={() => handleOpenCastingConfig(contextMenuSpot)}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-cyan-950/60 text-cyan-300 border border-cyan-800/40 transition flex items-center gap-2 cursor-pointer text-xs font-bold"
+                >
+                  <span>📐</span>
+                  <span>캐스팅 방향 설정</span>
+                </button>
+
+                {/* 스윗 스폿 설정 */}
+                <button
+                  type="button"
+                  onClick={() => handleOpenSweetSpotConfig(contextMenuSpot)}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-amber-950/60 text-amber-300 border border-amber-800/40 transition flex items-center gap-2 cursor-pointer text-xs font-bold"
+                >
+                  <span>🎯</span>
+                  <span>스윗 스폿 설정</span>
+                </button>
+              </div>
+            </div>
+          </CustomOverlayMap>
+        )}
 
         {/* [요구사항 2] 위성지도 기반 2D 평면 포인트 마커 드래깅 미세조정 */}
         {microAdjustSpot && (
@@ -1909,6 +2175,194 @@ export const MapView: React.FC<MapViewProps> = ({
               aria-label="동쪽 1m"
             >
               ►
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* [요구사항 4-3] 캐스팅 방향 실시간 지도 설정 바텀 메뉴 */}
+      {castingConfigSpot && (
+        <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 backdrop-blur-md border border-cyan-500/60 rounded-2xl shadow-2xl p-4 w-[92vw] max-w-lg text-slate-100 animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-cyan-400">🎯 캐스팅 방향 설정</span>
+              <span className="text-xs text-slate-400">({castingConfigSpot.name})</span>
+            </div>
+            <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={tempCastingEnabled}
+                onChange={(e) => setTempCastingEnabled(e.target.checked)}
+                className="w-4 h-4 rounded text-cyan-500 bg-slate-800 border-slate-700 focus:ring-cyan-500"
+              />
+              <span>캐스팅 방향 보기</span>
+            </label>
+          </div>
+
+          {tempCastingEnabled ? (
+            <div className="space-y-3 py-3">
+              <div>
+                <div className="flex justify-between text-xs text-slate-300 mb-1">
+                  <span>시작 각도</span>
+                  <span className="font-mono font-bold text-cyan-400">{Math.round(tempStartDeg)}°</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="359"
+                  value={tempStartDeg}
+                  onChange={(e) => setTempStartDeg(Number(e.target.value))}
+                  className="w-full accent-cyan-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
+                />
+              </div>
+              <div>
+                <div className="flex justify-between text-xs text-slate-300 mb-1">
+                  <span>끝 각도</span>
+                  <span className="font-mono font-bold text-cyan-400">{Math.round(tempEndDeg)}°</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="359"
+                  value={tempEndDeg}
+                  onChange={(e) => setTempEndDeg(Number(e.target.value))}
+                  className="w-full accent-cyan-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="py-4 text-center text-xs text-slate-400">
+              캐스팅 방향 보기가 꺼져 있습니다. (전방위 캐스팅)
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-2 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setCastingConfigSpot(null)}
+              className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition active:scale-95"
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveCastingConfig}
+              className="flex-1 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition active:scale-95 shadow-lg shadow-cyan-600/30"
+            >
+              저장
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* [요구사항 4-4] 스윗 스폿 실시간 지도 설정 바텀 메뉴 */}
+      {sweetSpotConfigSpot && (
+        <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 backdrop-blur-md border border-amber-500/60 rounded-2xl shadow-2xl p-4 w-[92vw] max-w-lg text-slate-100 animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-amber-400">🎯 스윗 스팟 설정</span>
+              <span className="text-xs text-slate-400">({sweetSpotConfigSpot.name})</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                {tempSweetSpots.length}/3개
+              </span>
+            </div>
+            <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={tempUseSweetSpot}
+                onChange={(e) => setTempUseSweetSpot(e.target.checked)}
+                className="w-4 h-4 rounded text-amber-500 bg-slate-800 border-slate-700 focus:ring-amber-500"
+              />
+              <span>스윗 스팟 보기</span>
+            </label>
+          </div>
+
+          <div className="py-3 space-y-2.5">
+            {isAddingSweetSpot ? (
+              <div className="p-2.5 bg-amber-950/40 border border-amber-500/40 rounded-xl space-y-2">
+                <div className="text-xs text-amber-300 font-bold flex items-center justify-between">
+                  <span>📍 지도를 클릭하여 스팟을 지정하세요</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingSweetSpot(false)}
+                    className="text-[11px] text-slate-400 hover:text-white"
+                  >
+                    추가 취소
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-300">반지름:</span>
+                  {[10, 15, 20].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => {
+                        setSelectedNewRadius(r);
+                        // 최근 스팟이 있다면 해당 스팟의 반경도 실시간 업데이트
+                        if (tempSweetSpots.length > 0) {
+                          setTempSweetSpots((prev) => {
+                            const updated = [...prev];
+                            const lastIdx = updated.length - 1;
+                            updated[lastIdx] = { ...updated[lastIdx], radius: r };
+                            return updated;
+                          });
+                        }
+                      }}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition active:scale-95 ${
+                        selectedNewRadius === r
+                          ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                    >
+                      {r}m
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400">
+                  {tempSweetSpots.length >= 3
+                    ? '최대 개수(3개)에 도달했습니다. 핀의 삭제를 눌러 교체할 수 있습니다.'
+                    : '스팟 추가를 누른 후 지도를 클릭하여 입질 스팟을 등록하세요.'}
+                </span>
+                <button
+                  type="button"
+                  disabled={tempSweetSpots.length >= 3}
+                  onClick={() => {
+                    if (tempSweetSpots.length < 3) {
+                      setIsAddingSweetSpot(true);
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 ${
+                    tempSweetSpots.length >= 3
+                      ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                      : 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-black active:scale-95 shadow-md shadow-amber-500/20'
+                  }`}
+                >
+                  + 스팟 추가
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 pt-2 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => {
+                setSweetSpotConfigSpot(null);
+                setIsAddingSweetSpot(false);
+              }}
+              className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition active:scale-95"
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveSweetSpotConfig}
+              className="flex-1 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition active:scale-95 shadow-lg shadow-amber-500/30"
+            >
+              저장
             </button>
           </div>
         </div>

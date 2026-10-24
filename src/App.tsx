@@ -481,6 +481,20 @@ export function App() {
     setIsSpotModalOpen(true);
   };
 
+  // 지도에서 캐스팅 방향/스위트스팟 등 직접 업데이트
+  const handleDirectUpdateSpot = async (updatedSpot: FishingSpot) => {
+    try {
+      await saveCloudSpot(updatedSpot);
+      const cSpots = await fetchCloudSpots();
+      setSpots(cSpots);
+      handleSelectSpot(updatedSpot, false, false);
+      await reloadData();
+    } catch (e: any) {
+      console.error('Failed to update spot directly:', e);
+      alert(`포인트 업데이트에 실패했습니다: ${e?.message || ''}`);
+    }
+  };
+
   // 위치 미세 조정 모드 시작 (작성자 본인 포인트 전용)
   const handleStartMicroAdjust = (spot: FishingSpot) => {
     setMicroAdjustSpot(spot);
@@ -878,6 +892,8 @@ export function App() {
             currentUser={currentUser}
             onStartMicroAdjust={handleStartMicroAdjust}
             onOpenDetail={(spot) => handleSelectSpot(spot, false, true)}
+            onEditSpot={handleEditSpot}
+            onUpdateSpot={handleDirectUpdateSpot}
             favoriteSpotIds={favoriteSpotIds}
             onToggleFavorite={handleToggleFavorite}
             isSunMode={isSunMode}

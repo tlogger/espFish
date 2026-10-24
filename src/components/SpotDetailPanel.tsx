@@ -861,33 +861,97 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   </div>
                 )}
 
-                {/* 3행: 오늘 만조 및 간조 목록 단일 박스 통합 (요구사항 2-1) */}
-                <div className="p-2.5 rounded-xl bg-slate-950/85 border border-slate-800 text-xs sm:text-sm font-mono overflow-x-auto whitespace-nowrap shadow-xs flex flex-wrap items-center gap-x-4 gap-y-1.5">
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-rose-400 font-extrabold font-sans shrink-0 px-1.5 py-0.5 rounded bg-rose-950/80 border border-rose-800/60 text-xs">
-                      만조
-                    </span>
-                    {tide.highTides.length > 0
-                      ? tide.highTides.map((t, idx) => (
-                          <span key={idx} className="bg-rose-950/40 text-rose-200 px-2 py-0.5 rounded border border-rose-800/40 font-semibold">
-                            {t.time} <span className="text-rose-300 font-sans text-[11px]">({t.height}cm)</span>
-                          </span>
-                        ))
-                      : <span className="text-slate-500 font-sans text-xs">정보 없음</span>}
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-blue-400 font-extrabold font-sans shrink-0 px-1.5 py-0.5 rounded bg-blue-950/80 border border-blue-800/60 text-xs">
-                      간조
-                    </span>
-                    {tide.lowTides.length > 0
-                      ? tide.lowTides.map((t, idx) => (
-                          <span key={idx} className="bg-blue-950/40 text-blue-200 px-2 py-0.5 rounded border border-blue-800/40 font-semibold">
-                            {t.time} <span className="text-blue-300 font-sans text-[11px]">({t.height}cm)</span>
-                          </span>
-                        ))
-                      : <span className="text-slate-500 font-sans text-xs">정보 없음</span>}
-                  </div>
-                </div>
+                {/* 3행: 오늘 만조 및 간조 목록 리스트 뷰 및 조위 변화 통합 (요구사항 6) */}
+                {(() => {
+                  interface TideExtremum {
+                    type: 'HIGH' | 'LOW';
+                    time: string;
+                    height: number;
+                    minutes: number;
+                    diff?: number;
+                  }
+                  const allEvents: TideExtremum[] = [
+                    ...(tide.highTides || []).map((h) => {
+                      const [hh, mm] = h.time.split(':').map(Number);
+                      return { type: 'HIGH' as const, time: h.time, height: h.height, minutes: (hh || 0) * 60 + (mm || 0) };
+                    }),
+                    ...(tide.lowTides || []).map((l) => {
+                      const [hh, mm] = l.time.split(':').map(Number);
+                      return { type: 'LOW' as const, time: l.time, height: l.height, minutes: (hh || 0) * 60 + (mm || 0) };
+                    }),
+                  ].sort((a, b) => a.minutes - b.minutes);
+
+                  for (let i = 0; i < allEvents.length; i++) {
+                    const ev = allEvents[i];
+                    let prevOpp: TideExtremum | null = null;
+                    for (let j = i - 1; j >= 0; j--) {
+                      if (allEvents[j].type !== ev.type) {
+                        prevOpp = allEvents[j];
+                        break;
+                      }
+                    }
+                    if (!prevOpp) {
+                      for (let j = i + 1; j < allEvents.length; j++) {
+                        if (allEvents[j].type !== ev.type) {
+                          prevOpp = allEvents[j];
+                          break;
+                        }
+                      }
+                    }
+                    if (prevOpp) {
+                      ev.diff = Math.abs(ev.height - prevOpp.height);
+                    } else {
+                      ev.diff = 300;
+                    }
+                  }
+
+                  const highs = allEvents.filter((e) => e.type === 'HIGH');
+                  const lows = allEvents.filter((e) => e.type === 'LOW');
+
+                  return (
+                    <div className="p-2.5 rounded-xl bg-slate-950/85 border border-slate-800 text-xs sm:text-sm font-mono shadow-xs space-y-2">
+                      {/* 만조 행 */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-rose-400 font-extrabold font-sans shrink-0 px-1.5 py-0.5 rounded bg-rose-950/80 border border-rose-800/60 text-xs">
+                          만조
+                        </span>
+                        {highs.length > 0 ? (
+                          highs.map((t, idx) => (
+                            <span key={idx} className="bg-rose-950/40 text-rose-200 px-2.5 py-0.5 rounded-lg border border-rose-800/40 font-semibold flex items-center gap-1.5">
+                              <span>{t.time}</span>
+                              <span className="text-white font-bold">{t.height}cm</span>
+                              <span className="text-rose-400 font-medium text-[11px] font-mono">
+                                (+{t.diff}cm)
+                              </span>
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-slate-500 font-sans text-xs">정보 없음</span>
+                        )}
+                      </div>
+
+                      {/* 간조 행 */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-blue-400 font-extrabold font-sans shrink-0 px-1.5 py-0.5 rounded bg-blue-950/80 border border-blue-800/60 text-xs">
+                          간조
+                        </span>
+                        {lows.length > 0 ? (
+                          lows.map((t, idx) => (
+                            <span key={idx} className="bg-blue-950/40 text-blue-200 px-2.5 py-0.5 rounded-lg border border-blue-800/40 font-semibold flex items-center gap-1.5">
+                              <span>{t.time}</span>
+                              <span className="text-white font-bold">{t.height}cm</span>
+                              <span className="text-blue-400 font-medium text-[11px] font-mono">
+                                (-{t.diff}cm)
+                              </span>
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-slate-500 font-sans text-xs">정보 없음</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
             {/* 48시간 미래 환경 타임라인 시뮬레이터 (모바일 및 패널 전용 통합) */}
@@ -1326,42 +1390,27 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             )}
 
-            {/* 5. Windy 보기 (요구사항 2-5) */}
+            {/* 5. Windy 상시 노출 (요구사항 7) */}
             <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div className="flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => setIsWindyOpen(!isWindyOpen)}
-                  className="flex items-center gap-1.5 text-xs font-bold text-cyan-300 hover:text-cyan-200 transition cursor-pointer"
-                >
-                  <ChevronDown
-                    size={15}
-                    className={`transition-transform duration-200 ${isWindyOpen ? 'rotate-180' : ''}`}
-                  />
-                  <span>Windy 보기</span>
-                </button>
+              <div className="flex items-center justify-end">
                 <a
                   href={windyUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-2.5 py-1 rounded-md bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-800/60 text-[11px] text-cyan-300 flex items-center gap-1 font-bold transition shadow-xs"
                 >
-                  <span>새 창 열기</span>
+                  <span>windy 새창 열기</span>
                   <ExternalLink size={10} />
                 </a>
               </div>
 
-              {isWindyOpen && (
-                <div className="pt-2">
-                  <div className="relative w-full h-52 rounded-xl overflow-hidden border border-slate-800 bg-slate-900">
-                    <iframe
-                      title="Windy Map"
-                      src={`https://embed.windy.com/embed2.html?lat=${spot.lat}&lon=${spot.lng}&detailLat=${spot.lat}&detailLon=${spot.lng}&width=400&height=200&zoom=11&level=surface&overlay=wind&product=ecmwf&menu=&message=&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=m%2Fs&metricTemp=%C2%B0C&radarRange=-1`}
-                      className="w-full h-full border-0"
-                    />
-                  </div>
-                </div>
-              )}
+              <div className="relative w-full h-52 rounded-xl overflow-hidden border border-slate-800 bg-slate-900">
+                <iframe
+                  title="Windy Map"
+                  src={`https://embed.windy.com/embed2.html?lat=${spot.lat}&lon=${spot.lng}&detailLat=${spot.lat}&detailLon=${spot.lng}&width=400&height=200&zoom=11&level=surface&overlay=wind&product=ecmwf&menu=&message=&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=m%2Fs&metricTemp=%C2%B0C&radarRange=-1`}
+                  className="w-full h-full border-0"
+                />
+              </div>
             </div>
           </div>
         )}
@@ -1915,7 +1964,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     </a>
                   </div>
                 )}
-                <div className="pt-0.5 flex">
+                <div className="pt-0.5 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => openExternalUrl(`https://map.kakao.com/link/roadview/${spot.lat},${spot.lng}`)}
@@ -1924,6 +1973,19 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     <span>로드뷰</span>
                     <ExternalLink size={12} />
                   </button>
+
+                  {/* [요구사항 10-6] 목적지에 관련 URL 표시 */}
+                  {spot.related_url && (
+                    <button
+                      type="button"
+                      onClick={() => openExternalUrl(spot.related_url!)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 font-bold text-xs border border-cyan-500/40 transition shadow cursor-pointer"
+                      title={spot.related_url}
+                    >
+                      <span>관련 URL</span>
+                      <ExternalLink size={12} />
+                    </button>
+                  )}
                 </div>
 
                 {/* 도보 진입로 및 팁 통합 */}
@@ -2092,24 +2154,27 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                             {tackleConfig.rodLengthM.toFixed(1)}m ({tackleConfig.rodLengthFt.toFixed(1)}ft)
                           </span>
                         </div>
-                        <input
-                          type="range"
-                          min={1.6}
-                          max={3.0}
-                          step={0.1}
-                          value={tackleConfig.rodLengthM}
-                          onChange={(e) => {
-                            const lenM = Number(e.target.value);
-                            const updated = saveTackleConfig(
-                              tackleConfig.weightGrams,
-                              tackleConfig.peLineSize,
-                              tackleConfig.rodPower,
-                              lenM
-                            );
-                            setTackleConfig(updated);
-                          }}
-                          className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                        />
+                        {/* [요구사항 10-1] 모바일 스크롤 간섭 방지를 위해 슬라이더 좌우 여백 축소 */}
+                        <div className="px-4 sm:px-1">
+                          <input
+                            type="range"
+                            min={1.6}
+                            max={3.0}
+                            step={0.1}
+                            value={tackleConfig.rodLengthM}
+                            onChange={(e) => {
+                              const lenM = Number(e.target.value);
+                              const updated = saveTackleConfig(
+                                tackleConfig.weightGrams,
+                                tackleConfig.peLineSize,
+                                tackleConfig.rodPower,
+                                lenM
+                              );
+                              setTackleConfig(updated);
+                            }}
+                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                          />
+                        </div>
                         <div className="flex flex-wrap gap-1">
                           {[
                             { m: 1.8, label: '1.8m (5.9ft)' },
@@ -2205,9 +2270,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   <div className="grid grid-cols-4 gap-1 p-0.5 bg-slate-900 rounded-lg border border-slate-800">
                     {[
                       { cat: 'JIG' as WeightCategory, label: '지그헤드', desc: '1~5g' },
-                      { cat: 'OZ' as WeightCategory, label: '온스(oz)', desc: '1/32~1oz' },
+                      { cat: 'OZ' as WeightCategory, label: '온스(oz)', desc: '1/32~2oz' },
                       { cat: 'JUKKUMI' as WeightCategory, label: '주꾸미', desc: '3~7호' },
-                      { cat: 'SURF' as WeightCategory, label: '원투봉돌', desc: '8~40호' },
+                      { cat: 'SURF' as WeightCategory, label: '원투봉돌', desc: '16~40호' },
                     ].map((tab) => (
                       <button
                         key={tab.cat}
@@ -2252,25 +2317,27 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     ))}
                   </div>
 
-                  {/* 슬라이더 1~150g */}
-                  <input
-                    type="range"
-                    min={1}
-                    max={150}
-                    step={1}
-                    value={Math.round(tackleConfig.weightGrams)}
-                    onChange={(e) => {
-                      const w = Number(e.target.value);
-                      const updated = saveTackleConfig(
-                        w,
-                        tackleConfig.peLineSize,
-                        tackleConfig.rodPower,
-                        tackleConfig.rodLengthM
-                      );
-                      setTackleConfig(updated);
-                    }}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                  />
+                  {/* [요구사항 10-1] 모바일 스크롤 간섭 방지를 위해 슬라이더 좌우 여백 축소 */}
+                  <div className="px-4 sm:px-1">
+                    <input
+                      type="range"
+                      min={1}
+                      max={150}
+                      step={1}
+                      value={Math.round(tackleConfig.weightGrams)}
+                      onChange={(e) => {
+                        const w = Number(e.target.value);
+                        const updated = saveTackleConfig(
+                          w,
+                          tackleConfig.peLineSize,
+                          tackleConfig.rodPower,
+                          tackleConfig.rodLengthM
+                        );
+                        setTackleConfig(updated);
+                      }}
+                      className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                    />
+                  </div>
                   <div className="flex justify-between text-[8.5px] text-slate-500 font-mono">
                     <span>1g (지그)</span>
                     <span>28g (1oz)</span>
@@ -2285,24 +2352,27 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     <span className="text-slate-300">합사(PE) 라인 굵기:</span>
                     <span className="font-mono font-bold text-cyan-300">{tackleConfig.peLineSize.toFixed(1)}호</span>
                   </div>
-                  <input
-                    type="range"
-                    min={0.4}
-                    max={3.0}
-                    step={0.1}
-                    value={tackleConfig.peLineSize}
-                    onChange={(e) => {
-                      const pe = Number(e.target.value);
-                      const updated = saveTackleConfig(
-                        tackleConfig.weightGrams,
-                        pe,
-                        tackleConfig.rodPower,
-                        tackleConfig.rodLengthM
-                      );
-                      setTackleConfig(updated);
-                    }}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                  />
+                  {/* [요구사항 10-1] 모바일 스크롤 간섭 방지를 위해 슬라이더 좌우 여백 축소 */}
+                  <div className="px-4 sm:px-1">
+                    <input
+                      type="range"
+                      min={0.4}
+                      max={3.0}
+                      step={0.1}
+                      value={tackleConfig.peLineSize}
+                      onChange={(e) => {
+                        const pe = Number(e.target.value);
+                        const updated = saveTackleConfig(
+                          tackleConfig.weightGrams,
+                          pe,
+                          tackleConfig.rodPower,
+                          tackleConfig.rodLengthM
+                        );
+                        setTackleConfig(updated);
+                      }}
+                      className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                    />
+                  </div>
                   <div className="flex justify-between text-[8.5px] text-slate-500 font-mono">
                     <span>0.4호 (아징)</span>
                     <span>1.0호 (에깅)</span>
@@ -2323,31 +2393,31 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   </div>
                 </div>
 
-                {/* 실시간 조류 연동 수심별 바닥 안착(폴링) 카운트다운 가이드 표 */}
+                {/* [요구사항 10-4, 10-5] 예상 바닥 안착 카운트 가이드 표 (수심 3m, 5m, 10m, 20m) */}
                 {(() => {
                   const curVel = marine?.currentVelocity ?? 0.3;
-                  const sampleDepths = [3, 5, 8, 12, 18];
+                  const sampleDepths = [3, 5, 10, 20];
                   return (
-                    <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-800/50 space-y-1.5 text-[11px]">
+                    <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-800/50 space-y-1.5 text-xs">
                       <div className="flex justify-between items-center font-bold text-cyan-300">
-                        <span>⏱️ 조류 연동 수심별 바닥 안착 카운트</span>
-                        <span className="font-mono text-[10px] text-slate-400 font-normal">
-                          (현재 조류 {curVel}m/s 반영)
+                        <span>⏱️ 예상 바닥 안착 카운트</span>
+                        <span className="font-mono text-[11px] text-slate-400 font-normal">
+                          (현재 {curVel}m/s)
                         </span>
                       </div>
-                      <div className="grid grid-cols-5 gap-1 text-center pt-1 font-mono text-[10.5px]">
+                      <div className="grid grid-cols-4 gap-1.5 text-center pt-1 font-mono">
                         {sampleDepths.map((d) => {
                           const p = calculateSinkingPhysics(tackleConfig.weightGrams, d, curVel);
                           return (
-                            <div key={d} className="p-1 rounded bg-slate-900/90 border border-slate-800 flex flex-col">
-                              <span className="text-slate-400 text-[9.5px]">수심 {d}m</span>
-                              <span className="font-bold text-amber-300">{p.fallTimeSec}초</span>
-                              <span className="text-[8.5px] text-slate-500">+{p.driftDistanceM}m</span>
+                            <div key={d} className="p-1.5 rounded-lg bg-slate-900/90 border border-slate-800 flex flex-col">
+                              <span className="text-slate-400 text-[10.5px]">수심 {d}m</span>
+                              <span className="font-black text-amber-300 text-sm sm:text-base">{p.fallTimeSec}초</span>
+                              <span className="text-[9.5px] text-slate-500">+{p.driftDistanceM}m</span>
                             </div>
                           );
                         })}
                       </div>
-                      <p className="text-[9.5px] text-slate-400 pt-0.5 leading-snug">
+                      <p className="text-[10px] text-slate-400 pt-0.5 leading-snug">
                         💡 캐스팅 후 위 초만큼 카운트다운한 뒤 릴링/액션을 시작하면 밑걸림 없이 바닥권 입질을 유도할 수 있습니다.
                       </p>
                     </div>

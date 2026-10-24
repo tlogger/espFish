@@ -338,6 +338,42 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
     });
   }
 
+  // [요구사항 5] 직전 극값(만조 또는 간조) 기준 조위 변화량(tideDiff) 정밀 재계산
+  // 만조: 이전 간조에서 더해지는 값 (+), 간조: 이전 만조에서 차감되는 값 (-), 사이 값도 직전 극값 기준 증감
+  let lastExtremum: { type: 'HIGH' | 'LOW'; height: number } | null = null;
+  const baseMulNumber = getMulInfo(getMoonAge(baseDate)).mulNumber;
+  const approxRange = harbor.meanRange * (0.4 + 0.6 * (Math.sin(((baseMulNumber - 1) / 15) * Math.PI) ** 2));
+  const meanLevel = harbor.meanRange * 0.6;
+  if (curve36.length >= 2) {
+    const isRising = curve36[1].height >= curve36[0].height;
+    if (isRising) {
+      lastExtremum = { type: 'LOW', height: Math.max(10, Math.round(meanLevel - approxRange / 2)) };
+    } else {
+      lastExtremum = { type: 'HIGH', height: Math.round(meanLevel + approxRange / 2) };
+    }
+  }
+
+  for (let i = 0; i < curve36.length; i++) {
+    const pt = curve36[i];
+    const prevPt = curve36[i - 1];
+    const nextPt = curve36[i + 1];
+
+    const isPeakHigh = (prevPt ? pt.height >= prevPt.height : false) && (nextPt ? pt.height >= nextPt.height : false) && pt.height > meanLevel;
+    const isPeakLow = (prevPt ? pt.height <= prevPt.height : false) && (nextPt ? pt.height <= nextPt.height : false) && pt.height < meanLevel;
+
+    if (isPeakHigh) {
+      const diff = lastExtremum ? pt.height - lastExtremum.height : Math.round(approxRange);
+      pt.tideDiff = Math.abs(diff);
+      lastExtremum = { type: 'HIGH', height: pt.height };
+    } else if (isPeakLow) {
+      const diff = lastExtremum ? pt.height - lastExtremum.height : -Math.round(approxRange);
+      pt.tideDiff = diff < 0 ? diff : -diff;
+      lastExtremum = { type: 'LOW', height: pt.height };
+    } else if (lastExtremum) {
+      pt.tideDiff = pt.height - lastExtremum.height;
+    }
+  }
+
   // 3. 피딩 타임에 curve36의 시작/종료 displayTime 매핑 (차트 ReferenceArea 렌더링용)
   for (const f of allFeedingTimes) {
     const startPt = curve36.find((c) => Math.abs(c.hour * 3600000 + baseTimestamp - f.startTimestamp) <= 45 * 60000) ||

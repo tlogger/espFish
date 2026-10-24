@@ -517,40 +517,57 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-slate-400 mb-1 text-xs">낚시 시작 시각</label>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-400 mb-1 text-xs">낚시 종료 시각</label>
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400"
-                />
-              </div>
-            </div>
+            {/* [요구사항 9] 낚시 시작/종료 시각 2줄 분리 (모바일 분 단위 잘림 방지) 및 자정 넘김(다음날) 표시 */}
+            {(() => {
+              const isNextDay = Boolean(startTime && endTime && endTime < startTime);
+              return (
+                <div className="space-y-2.5">
+                  <div>
+                    <label className="block text-slate-400 mb-1 text-xs">낚시 시작 시각</label>
+                    <input
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-slate-400 text-xs flex items-center gap-1.5">
+                        <span>낚시 종료 시각</span>
+                        {isNextDay && (
+                          <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold">
+                            다음날
+                          </span>
+                        )}
+                      </label>
+                    </div>
+                    <input
+                      type="time"
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+                </div>
+              );
+            })()}
 
-            <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-800">
-              <div>
-                <label className="block text-slate-300 mb-1 font-medium text-xs">
-                  {isHitless ? '대표 체류 시각 *' : '결정적 히트 시각 *'}
-                </label>
-                <input
-                  type="time"
-                  required
-                  value={catchTime}
-                  onChange={(e) => setCatchTime(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400"
-                />
-              </div>
+            <div className={`pt-2 border-t border-slate-800 ${isHitless ? '' : 'grid grid-cols-2 gap-3'}`}>
+              {!isHitless && (
+                <div>
+                  <label className="block text-slate-300 mb-1 font-medium text-xs">
+                    결정적 히트 시각 *
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={catchTime}
+                    onChange={(e) => setCatchTime(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+              )}
               <div>
                 <label className="block text-slate-300 mb-1 font-medium text-xs">총 낚시 시간 (분)</label>
                 <input
@@ -560,7 +577,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                   value={durationMins}
                   onChange={(e) => setDurationMins(Math.max(0, parseInt(e.target.value, 10) || 0))}
                   placeholder="직접 수정 가능"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-cyan-400"
                 />
               </div>
             </div>
@@ -742,8 +759,20 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
               </div>
             )}
             {photoUrl && (
-              <div className="w-24 h-24 rounded-lg overflow-hidden border border-slate-700 mt-1">
-                <img src={photoUrl} alt="Preview" className="w-full h-full object-cover" />
+              <div className="flex items-center gap-2 mt-1">
+                <div className="w-20 h-20 rounded-lg overflow-hidden border border-slate-700 shrink-0">
+                  <img src={photoUrl} alt="Preview" className="w-full h-full object-cover" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhotoUrl('');
+                    setExifNotice('');
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition active:scale-95 shadow"
+                >
+                  ✕ 사진 삭제
+                </button>
               </div>
             )}
           </div>

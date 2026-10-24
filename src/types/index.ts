@@ -22,6 +22,7 @@ export interface FishingSpot {
   lng: number;
   navi_name?: string; // 네비 검색명 / 주차장 지명 (예: 진두선착장 공영주차장)
   navi_url?: string; // 현장 네비 위치 URL (카카오/네이버지도 커스텀 링크)
+  related_url?: string; // 포인트 관련 외부 웹/영상 URL (블로그, 유튜브 등)
   directions: string; // 찾아가는 길, 주차 위치, 도보 팁
   photo_urls: string[]; // 포인트 현장 사진 목록
   fishing_methods: FishingMethod[];
