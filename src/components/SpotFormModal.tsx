@@ -1,6 +1,5 @@
 import React from 'react';
-import type { FishingMethod, FishingSpot, SpotType } from '../types';
-import { getCompassDirection } from '../utils/weatherApi';
+import type { FishingMethod, FishingSpot, SpotType, SweetSpot } from '../types';
 
 interface SpotFormModalProps {
   isOpen: boolean;
@@ -23,6 +22,8 @@ interface SpotFormModalProps {
     casting_end_deg?: number;
     casting_directions?: string[];
     is_public: boolean;
+    use_sweet_spot?: boolean;
+    sweet_spots?: SweetSpot[];
   }) => void;
   editingSpot?: FishingSpot | null;
   initialLat?: number;
@@ -44,7 +45,6 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
   const [lat, setLat] = React.useState<number>(37.2541);
   const [lng, setLng] = React.useState<number>(126.4982);
   const [naviName, setNaviName] = React.useState('');
-  const [naviUrl, setNaviUrl] = React.useState('');
   const [directions, setDirections] = React.useState('');
   const [photoUrls, setPhotoUrls] = React.useState<string[]>([]);
   const [selectedMethods, setSelectedMethods] = React.useState<FishingMethod[]>(['LURE']);
@@ -56,6 +56,11 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
   const [castingStartDeg, setCastingStartDeg] = React.useState(45);
   const [castingEndDeg, setCastingEndDeg] = React.useState(135);
   const [isPublic, setIsPublic] = React.useState(true);
+
+  // 5-7. Sweet Spot 기능 (default uncheck)
+  const [useSweetSpot, setUseSweetSpot] = React.useState(false);
+  const [sweetSpots, setSweetSpots] = React.useState<SweetSpot[]>([]);
+
   const [isExtracting, setIsExtracting] = React.useState(false);
   const [exifSuccessMsg, setExifSuccessMsg] = React.useState('');
 
@@ -69,9 +74,11 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
       setLat(editingSpot.lat);
       setLng(editingSpot.lng);
       setNaviName(editingSpot.navi_name || '');
-      setNaviUrl(editingSpot.navi_url || '');
       setDirections(editingSpot.directions || '');
-      setPhotoUrls(editingSpot.photo_urls || []);
+      // Unsplash 기본 샘플 이미지 필터링 (사용자가 직접 올리지 않은 기본 사진 제외)
+      setPhotoUrls(
+        (editingSpot.photo_urls || []).filter((u) => !u.includes('images.unsplash.com'))
+      );
       setSelectedMethods(editingSpot.fishing_methods || ['LURE']);
       setTargetSpeciesText(editingSpot.target_species?.join(', ') || '');
       setBestTidesText(editingSpot.best_tides?.join(', ') || '');
@@ -99,6 +106,10 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
         setCastingEndDeg(135);
       }
 
+      // 스위트 스팟 복원
+      setUseSweetSpot(Boolean(editingSpot.use_sweet_spot));
+      setSweetSpots(editingSpot.sweet_spots || []);
+
       setIsPublic(editingSpot.is_public ?? true);
       setExifSuccessMsg('');
       setPendingGps(null);
@@ -108,7 +119,6 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
       setName('');
       setSpotType('BREAKWATER');
       setNaviName('');
-      setNaviUrl('');
       setDirections('');
       setPhotoUrls([]);
       setSelectedMethods(['LURE']);
@@ -119,6 +129,8 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
       setHasCastingRange(true);
       setCastingStartDeg(45);
       setCastingEndDeg(135);
+      setUseSweetSpot(false);
+      setSweetSpots([]);
       setIsPublic(true);
       setExifSuccessMsg('');
       setPendingGps(null);
@@ -176,6 +188,46 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
     setPendingGps(null);
   };
 
+  // 스위트 스팟 관리 헬퍼
+  const handleToggleSweetSpot = (checked: boolean) => {
+    setUseSweetSpot(checked);
+    if (checked && sweetSpots.length === 0) {
+      setSweetSpots([
+        {
+          id: `ss-${Date.now()}-1`,
+          direction: 90,
+          distance: 35,
+          radius: 5,
+          memo: '',
+        },
+      ]);
+    }
+  };
+
+  const handleAddSweetSpot = () => {
+    if (sweetSpots.length >= 3) return;
+    setSweetSpots((prev) => [
+      ...prev,
+      {
+        id: `ss-${Date.now()}-${prev.length + 1}`,
+        direction: (prev[prev.length - 1]?.direction + 45) % 360 || 90,
+        distance: 40,
+        radius: 5,
+        memo: '',
+      },
+    ]);
+  };
+
+  const handleUpdateSweetSpot = (index: number, updates: Partial<SweetSpot>) => {
+    setSweetSpots((prev) =>
+      prev.map((ss, i) => (i === index ? { ...ss, ...updates } : ss))
+    );
+  };
+
+  const handleDeleteSweetSpot = (index: number) => {
+    setSweetSpots((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -204,9 +256,8 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
       lat: Number(lat),
       lng: Number(lng),
       navi_name: naviName.trim() || undefined,
-      navi_url: naviUrl.trim() || undefined,
       directions,
-      photo_urls: photoUrls.length > 0 ? photoUrls : ['https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80'],
+      photo_urls: photoUrls, // 파일 미선택 시 빈 배열 유지 (5-1 버그 수정)
       fishing_methods: selectedMethods,
       target_species: species,
       best_tides: tides,
@@ -215,6 +266,8 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
       casting_start_deg: hasCastingRange ? Math.round(castingStartDeg) % 360 : undefined,
       casting_end_deg: hasCastingRange ? Math.round(castingEndDeg) % 360 : undefined,
       is_public: isPublic,
+      use_sweet_spot: useSweetSpot,
+      sweet_spots: useSweetSpot ? sweetSpots : undefined,
     });
     onClose();
   };
@@ -247,7 +300,7 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
               {isExtracting && <span className="text-xs text-cyan-400 animate-pulse font-bold">EXIF 분석 중...</span>}
             </div>
             <p className="text-xs text-slate-300">
-              스마트폰으로 현장에서 촬영한 사진을 선택하면 <strong>EXIF GPS를 즉시 추출</strong>하여 좌표 변경 여부를 안내합니다.
+              사진의 EXIF로부터 GPS 추출합니다
             </p>
             <input
               type="file"
@@ -364,54 +417,35 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
             </div>
           </div>
 
-          {/* 네비 위치 지정 (String) & 현장 네비 위치 URL */}
-          <div className="p-3 bg-slate-800/60 border border-slate-700 rounded-xl space-y-2">
-            <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-              <span>🚗 네비게이션 연동 설정 (카카오/네이버지도 길찾기)</span>
+          {/* 길찾기 & 도보 진입로/주차 안내 통합 (요구사항 5-3, 5-4) */}
+          <div className="p-3.5 bg-slate-800/60 border border-slate-700 rounded-xl space-y-2.5">
+            <div className="text-xs font-bold text-amber-300">
+              <span>길찾기</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <div>
-                <label className="block text-slate-300 text-xs mb-1">
-                  네비 위치 지정 지명 (선택)
-                </label>
-                <input
-                  type="text"
-                  value={naviName}
-                  onChange={(e) => setNaviName(e.target.value)}
-                  placeholder="예: 진두선착장 공영주차장 (미입력시 포인트명 사용)"
-                  className="w-full bg-slate-850 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-300 text-xs mb-1">
-                  현장 네비 위치 URL (선택)
-                </label>
-                <input
-                  type="url"
-                  value={naviUrl}
-                  onChange={(e) => setNaviUrl(e.target.value)}
-                  placeholder="예: https://kko.to/... 또는 네이버 지도 공유 URL"
-                  className="w-full bg-slate-850 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                />
-              </div>
+            <div>
+              <label className="block text-slate-300 text-xs mb-1 font-medium">
+                길찾기 지명(선택)
+              </label>
+              <input
+                type="text"
+                value={naviName}
+                onChange={(e) => setNaviName(e.target.value)}
+                placeholder="예: 진두선착장 공영주차장 (미입력시 포인트명 사용)"
+                className="w-full bg-slate-850 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+              />
             </div>
-            <p className="text-[11px] text-slate-400">
-              * 네비 위치 지명을 입력하시면 카카오/네이버 길찾기 시 해당 주차장 명칭으로 안내됩니다.
-            </p>
-          </div>
-
-          {/* 찾아가는 길 (Directions) */}
-          <div>
-            <label className="block text-slate-300 mb-1 font-medium">
-              🚶 도보 진입로 & 진입 주의구간
-            </label>
-            <textarea
-              rows={2}
-              value={directions}
-              onChange={(e) => setDirections(e.target.value)}
-              placeholder="예: 공영주차장 주차 후 붉은 등대 방면 테트라포드 도보 5분 진입 (장화 착용 요망)"
-              className="w-full bg-slate-800/90 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-            />
+            <div>
+              <label className="block text-slate-300 text-xs mb-1 font-medium">
+                도보 진입로 & 진입 주의구간
+              </label>
+              <textarea
+                rows={2}
+                value={directions}
+                onChange={(e) => setDirections(e.target.value)}
+                placeholder="예: 공영주차장 주차 후 붉은 등대 방면 테트라포드 도보 5분 진입 (장화 착용 요망)"
+                className="w-full bg-slate-850 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs"
+              />
+            </div>
           </div>
 
           {/* 낚시 방법 선택 */}
@@ -492,7 +526,11 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
               </label>
               <button
                 type="button"
-                onClick={() => setHasCastingRange(!hasCastingRange)}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  (document.activeElement as HTMLElement)?.blur();
+                  setHasCastingRange(!hasCastingRange);
+                }}
                 className={`text-[11px] px-2.5 py-1 rounded-md font-semibold transition cursor-pointer ${
                   hasCastingRange
                     ? 'bg-cyan-500 text-slate-950 font-bold shadow'
@@ -532,7 +570,13 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                           height="180"
                           viewBox="0 0 180 180"
                           className="bg-slate-950 rounded-full border-2 border-slate-700 shadow-inner select-none cursor-crosshair"
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            (document.activeElement as HTMLElement)?.blur();
+                          }}
                           onClick={(e) => {
+                            e.stopPropagation();
+                            (document.activeElement as HTMLElement)?.blur();
                             const rect = e.currentTarget.getBoundingClientRect();
                             const px = e.clientX - rect.left;
                             const py = e.clientY - rect.top;
@@ -589,6 +633,41 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                           {/* 끝각 핸들 (시안 E) */}
                           <circle cx={x2} cy={y2} r="5" fill="#06b6d4" stroke="#ffffff" strokeWidth="1.5" />
 
+                          {/* 스위트 스팟 활성화 시 레이더 내 오버레이 표시 (요구사항 5-7-3) */}
+                          {useSweetSpot &&
+                            sweetSpots.map((ss, idx) => {
+                              const ssDistRatio = Math.min(ss.distance / 120, 1.1) * r;
+                              const ssRad = (ss.direction * Math.PI) / 180;
+                              const ssX = cx + ssDistRatio * Math.sin(ssRad);
+                              const ssY = cy - ssDistRatio * Math.cos(ssRad);
+                              const ssR = Math.max((ss.radius / 100) * r, 4);
+
+                              return (
+                                <g key={ss.id}>
+                                  <circle
+                                    cx={ssX}
+                                    cy={ssY}
+                                    r={ssR}
+                                    fill="#f59e0b"
+                                    fillOpacity={0.4}
+                                    stroke="#f59e0b"
+                                    strokeWidth="1.5"
+                                  />
+                                  <circle cx={ssX} cy={ssY} r="2.5" fill="#ffffff" />
+                                  <text
+                                    x={ssX}
+                                    y={ssY - ssR - 2}
+                                    fill="#fbbf24"
+                                    fontSize="8"
+                                    fontWeight="bold"
+                                    textAnchor="middle"
+                                  >
+                                    #{idx + 1}
+                                  </text>
+                                </g>
+                              );
+                            })}
+
                           {/* 시작 각도 & 종료 각도 레이더 표시 내부에 표기 */}
                           <text x={cx} y={cy - 6} fill="#10b981" fontSize="11" fontWeight="bold" textAnchor="middle">
                             {castingStartDeg}°
@@ -602,7 +681,7 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                   );
                 })()}
 
-                {/* 슬라이더 컨트롤 */}
+                {/* 슬라이더 컨트롤 (모바일 키보드 포커스 방지 적용) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs">
@@ -613,7 +692,12 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                       min={0}
                       max={359}
                       value={castingStartDeg}
-                      onChange={(e) => setCastingStartDeg(Number(e.target.value))}
+                      onPointerDown={() => (document.activeElement as HTMLElement)?.blur()}
+                      onTouchStart={() => (document.activeElement as HTMLElement)?.blur()}
+                      onChange={(e) => {
+                        setCastingStartDeg(Number(e.target.value));
+                        (document.activeElement as HTMLElement)?.blur();
+                      }}
                       className="w-full accent-emerald-500 cursor-pointer"
                     />
                   </div>
@@ -626,13 +710,18 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                       min={0}
                       max={359}
                       value={castingEndDeg}
-                      onChange={(e) => setCastingEndDeg(Number(e.target.value))}
+                      onPointerDown={() => (document.activeElement as HTMLElement)?.blur()}
+                      onTouchStart={() => (document.activeElement as HTMLElement)?.blur()}
+                      onChange={(e) => {
+                        setCastingEndDeg(Number(e.target.value));
+                        (document.activeElement as HTMLElement)?.blur();
+                      }}
                       className="w-full accent-cyan-500 cursor-pointer"
                     />
                   </div>
                 </div>
 
-                {/* 빠른 방향 프리셋: 동, 서, 남, 북 및 60, 90, 120 극단적 단순화 */}
+                {/* 빠른 방향 프리셋: 동, 서, 남, 북 및 60, 90, 120 (키보드 포커스 방지 적용) */}
                 <div className="space-y-1.5 pt-1">
                   <span className="text-[11px] text-slate-400 font-medium">⚡ 빠른 프리셋</span>
                   <div className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -645,11 +734,13 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                       <button
                         type="button"
                         key={`cardinal-${idx}`}
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.currentTarget.blur();
+                          (document.activeElement as HTMLElement)?.blur();
                           setCastingStartDeg(p.start);
                           setCastingEndDeg(p.end);
                         }}
-                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 text-xs font-bold transition"
+                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 text-xs font-bold transition cursor-pointer"
                       >
                         {p.label}
                       </button>
@@ -663,17 +754,19 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                       <button
                         type="button"
                         key={`angle-${idx}`}
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.currentTarget.blur();
+                          (document.activeElement as HTMLElement)?.blur();
                           const span = castingEndDeg >= castingStartDeg
                             ? castingEndDeg - castingStartDeg
                             : 360 - castingStartDeg + castingEndDeg;
                           const center = (castingStartDeg + span / 2) % 360;
                           const s = (center - a.delta + 360) % 360;
-                          const e = (center + a.delta) % 360;
+                          const eTarget = (center + a.delta) % 360;
                           setCastingStartDeg(s);
-                          setCastingEndDeg(e);
+                          setCastingEndDeg(eTarget);
                         }}
-                        className="px-2.5 py-1 bg-cyan-950/70 hover:bg-cyan-900 text-cyan-300 rounded-md border border-cyan-800/60 text-xs font-bold transition"
+                        className="px-2.5 py-1 bg-cyan-950/70 hover:bg-cyan-900 text-cyan-300 rounded-md border border-cyan-800/60 text-xs font-bold transition cursor-pointer"
                       >
                         {a.label}
                       </button>
@@ -688,11 +781,162 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
             )}
           </div>
 
-          {/* 공개 여부 설정 */}
+          {/* 5-7. Sweet Spot (스위트 스팟) 설정 섹션 */}
+          <div className="p-3.5 bg-slate-800/60 border border-amber-600/50 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-amber-300 font-bold text-xs flex items-center gap-1.5">
+                  <span>🎯 스위트 스팟 (Sweet Spot)</span>
+                </label>
+                <p className="text-[10.5px] text-slate-400">
+                  특정 방향·거리·반경의 입질 집중 구역 (최대 3개)
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  (document.activeElement as HTMLElement)?.blur();
+                  handleToggleSweetSpot(!useSweetSpot);
+                }}
+                className={`text-[11px] px-2.5 py-1 rounded-md font-semibold transition cursor-pointer ${
+                  useSweetSpot
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow'
+                    : 'bg-slate-750 hover:bg-slate-700 text-slate-400 border border-slate-650'
+                }`}
+              >
+                {useSweetSpot ? '✓ 사용' : '미사용'}
+              </button>
+            </div>
+
+            {useSweetSpot ? (
+              <div className="space-y-3 pt-1">
+                {sweetSpots.map((ss, idx) => (
+                  <div
+                    key={ss.id}
+                    className="p-3 bg-slate-900/90 border border-amber-500/30 rounded-xl space-y-2.5 text-xs"
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                      <span className="font-bold text-amber-300 flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center justify-center text-[10px]">
+                          #{idx + 1}
+                        </span>
+                        <span>스위트 스팟 {idx + 1}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSweetSpot(idx)}
+                        className="text-slate-400 hover:text-rose-400 p-1 rounded hover:bg-slate-800 transition cursor-pointer"
+                        title="삭제"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    {/* 방향 & 거리 & 반경 슬라이더 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {/* 방향 슬라이더 (0~359°) */}
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-slate-300 font-medium">방향</span>
+                          <span className="text-amber-300 font-mono font-bold">{ss.direction}°</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={359}
+                          value={ss.direction}
+                          onPointerDown={() => (document.activeElement as HTMLElement)?.blur()}
+                          onTouchStart={() => (document.activeElement as HTMLElement)?.blur()}
+                          onChange={(e) => {
+                            handleUpdateSweetSpot(idx, { direction: Number(e.target.value) });
+                            (document.activeElement as HTMLElement)?.blur();
+                          }}
+                          className="w-full accent-amber-500 cursor-pointer"
+                        />
+                      </div>
+
+                      {/* 거리 슬라이더 (1~150m) */}
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-slate-300 font-medium">거리</span>
+                          <span className="text-amber-300 font-mono font-bold">{ss.distance}m</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={1}
+                          max={150}
+                          value={ss.distance}
+                          onPointerDown={() => (document.activeElement as HTMLElement)?.blur()}
+                          onTouchStart={() => (document.activeElement as HTMLElement)?.blur()}
+                          onChange={(e) => {
+                            handleUpdateSweetSpot(idx, { distance: Number(e.target.value) });
+                            (document.activeElement as HTMLElement)?.blur();
+                          }}
+                          className="w-full accent-amber-500 cursor-pointer"
+                        />
+                      </div>
+
+                      {/* 반경 슬라이더 (1~20m) */}
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-slate-300 font-medium">반경</span>
+                          <span className="text-amber-300 font-mono font-bold">{ss.radius}m</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={1}
+                          max={20}
+                          value={ss.radius}
+                          onPointerDown={() => (document.activeElement as HTMLElement)?.blur()}
+                          onTouchStart={() => (document.activeElement as HTMLElement)?.blur()}
+                          onChange={(e) => {
+                            handleUpdateSweetSpot(idx, { radius: Number(e.target.value) });
+                            (document.activeElement as HTMLElement)?.blur();
+                          }}
+                          className="w-full accent-amber-500 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 메모 입력 */}
+                    <div>
+                      <input
+                        type="text"
+                        value={ss.memo || ''}
+                        onChange={(e) => handleUpdateSweetSpot(idx, { memo: e.target.value })}
+                        placeholder="메모 (예: 40m 전방 수중여 턱, 브레이크라인)"
+                        className="w-full bg-slate-950 border border-slate-750 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
+                ))}
+
+                {sweetSpots.length < 3 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      (document.activeElement as HTMLElement)?.blur();
+                      handleAddSweetSpot();
+                    }}
+                    className="w-full py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <span>+ 스위트 스팟 추가 ({sweetSpots.length}/3)</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 py-1">
+                스위트 스팟이 미설정 상태입니다. (체크 시 특정 입질 핫스팟 지정 가능)
+              </p>
+            )}
+          </div>
+
+          {/* 공개 여부 설정 (요구사항 5-6: '공개'로 변경 및 부가설명 삭제) */}
           <div className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700">
             <div>
-              <span className="font-medium text-slate-200">전체 공개 포인트로 등록</span>
-              <p className="text-xs text-slate-400">체크 해제 시 나만 볼 수 있는 비공개 비밀 포인트가 됩니다.</p>
+              <span className="font-medium text-slate-200">공개</span>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input

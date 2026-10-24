@@ -3,6 +3,14 @@ export type FishingMethod = 'SURF' | 'LURE' | 'FLOAT';
 export type WindUnit = 'ms' | 'knot' | 'kmh';
 export type CurrentUnit = 'knot' | 'ms' | 'cms';
 
+export interface SweetSpot {
+  id: string;
+  direction: number; // 0 ~ 359° (북쪽 0° 기준 시계방향)
+  distance: number;  // 1 ~ 150m
+  radius: number;    // 1 ~ 20m
+  memo?: string;     // 메모 (예: "수중여 뒤편 포켓")
+}
+
 export interface FishingSpot {
   id: string;
   user_id: string;
@@ -25,6 +33,8 @@ export interface FishingSpot {
   casting_start_deg?: number; // 캐스팅 공략 유효 시작각 (0~359°, 북쪽 0° 기준 시계방향)
   casting_end_deg?: number; // 캐스팅 공략 유효 끝각 (0~359°)
   casting_directions?: string[]; // 캐스팅 공략 방향 (레거시 하위 호환)
+  use_sweet_spot?: boolean; // 스위트 스팟 활성화 여부
+  sweet_spots?: SweetSpot[]; // 스위트 스팟 목록 (최대 3개)
   created_at: string;
 }
 

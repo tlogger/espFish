@@ -657,7 +657,7 @@ export const MapView: React.FC<MapViewProps> = ({
           const radii = tackleConfig.radii;
           const maxRadius = radii[2];
 
-          // 좌우 유효 경계선 (최대 사거리 지점까지 뻗어나가는 레이더 가이드 선)
+          // 좌우 유효 경계선 (최대 비거리 지점까지 뻗어나가는 레이더 가이드 선)
           const leftEdge = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, startDeg, maxRadius);
           const rightEdge = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, endDeg, maxRadius);
 
@@ -1030,6 +1030,71 @@ export const MapView: React.FC<MapViewProps> = ({
             </React.Fragment>
           );
         })()}
+
+        {/* 🎯 스위트 스팟 (Sweet Spot) 오버레이 렌더링 (요구사항 5-7-4) */}
+        {selectedSpot && selectedSpot.use_sweet_spot && selectedSpot.sweet_spots && selectedSpot.sweet_spots.length > 0 && (
+          <React.Fragment key={`sweet-spots-group-${selectedSpot.id}`}>
+            {selectedSpot.sweet_spots.map((ss, idx) => {
+              const [targetLat, targetLng] = calculateDestinationPoint(
+                selectedSpot.lat,
+                selectedSpot.lng,
+                ss.direction,
+                ss.distance
+              );
+
+              return (
+                <React.Fragment key={`sweet-spot-${selectedSpot.id}-${ss.id || idx}`}>
+                  {/* 스위트 스팟 반경 원 */}
+                  <Circle
+                    center={{ lat: targetLat, lng: targetLng }}
+                    radius={ss.radius}
+                    strokeWeight={2}
+                    strokeColor="#f59e0b"
+                    strokeOpacity={0.9}
+                    strokeStyle="solid"
+                    fillColor="#f59e0b"
+                    fillOpacity={0.35}
+                    zIndex={38}
+                  />
+
+                  {/* 포인트 -> 스위트스팟 연결 점선 */}
+                  <Polyline
+                    path={[
+                      { lat: selectedSpot.lat, lng: selectedSpot.lng },
+                      { lat: targetLat, lng: targetLng },
+                    ]}
+                    strokeWeight={1.5}
+                    strokeColor="#f59e0b"
+                    strokeOpacity={0.65}
+                    strokeStyle="dash"
+                    zIndex={37}
+                  />
+
+                  {/* 스위트 스팟 번호 & 거리 & 반경 배지 오버레이 */}
+                  <CustomOverlayMap
+                    position={{ lat: targetLat, lng: targetLng }}
+                    yAnchor={0.5}
+                    xAnchor={0.5}
+                    zIndex={40}
+                    clickable={false}
+                  >
+                    <div className="flex flex-col items-center select-none pointer-events-none kakao-invert-restore whitespace-nowrap animate-in fade-in zoom-in-75 duration-200">
+                      <div className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black shadow-lg border border-white/80 flex items-center gap-1">
+                        <span>🎯 #{idx + 1}</span>
+                        <span>{ss.distance}m (r:{ss.radius}m)</span>
+                      </div>
+                      {ss.memo && (
+                        <div className="mt-0.5 px-1.5 py-0.2 rounded bg-slate-950/90 text-amber-200 border border-amber-500/50 text-[9px] font-medium shadow max-w-[120px] truncate">
+                          {ss.memo}
+                        </div>
+                      )}
+                    </div>
+                  </CustomOverlayMap>
+                </React.Fragment>
+              );
+            })}
+          </React.Fragment>
+        )}
 
         {/* 내 현재 GPS 위치 마커 & 수평 오차 반경 원 (Virtual Crosshair Accuracy Circle) */}
         {myLocation && (
@@ -1741,7 +1806,7 @@ export const MapView: React.FC<MapViewProps> = ({
               return (
                 <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5 text-xs sm:text-sm">
                   <div className="flex justify-between text-slate-300">
-                    <span>예상 사거리:</span>
+                    <span>예상 비거리:</span>
                     <strong className="font-mono text-cyan-300 text-sm font-bold">{tackleConfig.calibratedDistanceMeters}m</strong>
                   </div>
                   <div className="flex justify-between text-[11px] sm:text-xs text-slate-400 pt-1 border-t border-slate-800/80">

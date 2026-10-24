@@ -27,4 +27,8 @@ dist-ssr
 *.jks
 *.keystore
 *.aab
+*.apk
+update_images.ps1
+convert_assets.ps1
+
 
