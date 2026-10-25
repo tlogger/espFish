@@ -2764,56 +2764,55 @@ export const MapView: React.FC<MapViewProps> = ({
         </div>
       )}
 
-      {/* [요구사항 1-3] 지도 좌측 상단 날씨·기온·풍향·풍속·수온·물때 미니 위젯 (컨텍스트 메뉴 활성화 시 표기 중단) */}
+      {/* [요구사항 1-3] 지도 좌측 상단 날씨·기온 & 수온·물때 미니 표시 (배경 완전 제거 및 투명 2줄 분리 배치로 지도 조작 아이콘 간섭 방지) */}
       {!contextMenuSpot && (weather || marine || tide) && (
-        <div className="absolute top-4 left-4 z-20 bg-slate-900/85 backdrop-blur-md border border-slate-700/70 rounded-xl px-2.5 py-1.5 text-xs text-white shadow-xl flex items-center gap-2 select-none pointer-events-auto">
-          {/* 날씨 아이콘 */}
+        <div className="absolute top-2.5 left-3 z-20 flex flex-col gap-0.5 select-none pointer-events-none drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.95)]">
+          {/* 1행: 날씨 아이콘 + 기온 + 풍향/풍속 */}
           {weather && (
-            <span className="text-sm" title={weather.weatherText}>
-              {weather.weatherCode <= 1
-                ? '☀️'
-                : weather.weatherCode <= 3
-                ? '⛅'
-                : weather.weatherCode >= 51 && weather.weatherCode <= 67
-                ? '🌧️'
-                : '☁️'}
-            </span>
-          )}
-
-          {/* 기온 (온도만) */}
-          {weather && (
-            <span className="font-mono font-bold text-amber-300 text-xs">
-              {weather.temp.toFixed(1)}°
-            </span>
-          )}
-
-          {/* 풍향 (아이콘) + 풍속 (숫자와 단위만) */}
-          {weather && (
-            <div className="flex items-center gap-0.5 text-cyan-300" title={`풍향 ${Math.round(weather.windDirection)}°`}>
-              <div
-                className="w-3.5 h-3.5 flex items-center justify-center text-[10px] font-bold"
-                style={{ transform: `rotate(${weather.windDirection}deg)` }}
-              >
-                ↓
-              </div>
-              <span className="font-mono font-semibold text-[11px]">
-                {formatWindSpeed(weather.windSpeed, windUnit)}
+            <div className="flex items-center gap-1.5 leading-none">
+              <span className="text-sm leading-none" title={weather.weatherText}>
+                {weather.weatherCode <= 1
+                  ? '☀️'
+                  : weather.weatherCode <= 3
+                  ? '⛅'
+                  : weather.weatherCode >= 51 && weather.weatherCode <= 67
+                  ? '🌧️'
+                  : '☁️'}
               </span>
+
+              <span className="font-mono font-bold text-amber-300 text-xs leading-none">
+                {weather.temp.toFixed(1)}°
+              </span>
+
+              <div className="flex items-center gap-0.5 text-cyan-300 leading-none" title={`풍향 ${Math.round(weather.windDirection)}°`}>
+                <div
+                  className="w-3.5 h-3.5 flex items-center justify-center text-[10px] font-bold"
+                  style={{ transform: `rotate(${weather.windDirection}deg)` }}
+                >
+                  ↓
+                </div>
+                <span className="font-mono font-semibold text-[11px] leading-none">
+                  {formatWindSpeed(weather.windSpeed, windUnit)}
+                </span>
+              </div>
             </div>
           )}
 
-          {/* 수온 */}
-          {marine?.seaSurfaceTemp !== undefined && (
-            <span className="text-[11px] font-mono text-rose-300 font-medium">
-              수온 {marine.seaSurfaceTemp.toFixed(1)}°
-            </span>
-          )}
+          {/* 2행: 수온 + 물때 (배경 없는 투명 텍스트 줄바꿈) */}
+          {(marine?.seaSurfaceTemp !== undefined || tide?.mulText) && (
+            <div className="flex items-center gap-1.5 leading-none mt-0.5">
+              {marine?.seaSurfaceTemp !== undefined && (
+                <span className="text-[11px] font-mono text-rose-300 font-bold leading-none">
+                  수온 {marine.seaSurfaceTemp.toFixed(1)}°
+                </span>
+              )}
 
-          {/* 물때 */}
-          {tide?.mulText && (
-            <span className="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/60 text-[10px] font-bold">
-              {tide.mulText}
-            </span>
+              {tide?.mulText && (
+                <span className="text-[10.5px] font-bold text-cyan-200 leading-none">
+                  {marine?.seaSurfaceTemp !== undefined ? `· ${tide.mulText}` : tide.mulText}
+                </span>
+              )}
+            </div>
           )}
         </div>
       )}
