@@ -2033,7 +2033,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
         {/* [요구사항 2-6] 비거리 예측 팝오버 (상단 고정 예측치 + 하단 스크롤 설정) */}
         {isTacklePopoverOpen && (
-          <div className="w-84 sm:w-96 max-w-[95vw] max-h-[85vh] bg-slate-950/95 border border-cyan-500/60 rounded-2xl shadow-2xl backdrop-blur text-white flex flex-col animate-fade-in text-sm pointer-events-auto overflow-hidden">
+          <div className="w-84 sm:w-96 max-w-[95vw] max-h-[85vh] supports-[height:100dvh]:max-h-[85dvh] bg-slate-950/95 border border-cyan-500/60 rounded-2xl shadow-2xl backdrop-blur text-white flex flex-col animate-fade-in text-sm pointer-events-auto overflow-hidden">
             {/* [요구사항 2-6-10] 상단 고정 헤더: 타이틀, 닫기 버튼, 예상 비거리, 예상 바닥 안착 카운트 */}
             <div className="p-3 border-b border-slate-800 bg-slate-900/90 flex flex-col gap-2 shrink-0">
               <div className="flex items-center justify-between">
@@ -2095,8 +2095,8 @@ export const MapView: React.FC<MapViewProps> = ({
               </div>
             </div>
 
-            {/* [요구사항 2-6-9] 스크롤 가능한 상세 설정 영역 */}
-            <div className="p-3 overflow-y-auto max-h-[60vh] space-y-3.5 divide-y divide-slate-800/60">
+            {/* [요구사항 2-6-9, 1] 스크롤 가능한 상세 설정 영역 (flex-1 min-h-0으로 상단 고정 헤더 제외 남은 전체 높이 활용 및 하단 여백 확보) */}
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 pb-6 space-y-3.5 divide-y divide-slate-800/60">
               {/* 1. 로드 구분 (루어대 vs 원투대) */}
               <div className="space-y-1.5 pt-1">
                 <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800">
@@ -2558,6 +2558,15 @@ export const MapView: React.FC<MapViewProps> = ({
                     <span>3.0호 (대물)</span>
                   </div>
                 </div>
+              </div>
+
+              {/* [요구사항 1] 원줄 합사 슬라이더 하단 여백 및 안전 마진 spacer */}
+              <div className="pt-3 pb-8 flex flex-col items-center justify-center gap-1.5 text-[11px] text-slate-400 border-none">
+                <span className="text-slate-500 text-[10.5px]">─── 채비 세부 설정 끝 ───</span>
+                <span className="text-slate-400 text-center text-[10.5px] leading-tight">
+                  💡 변경된 채비 스펙은 자동 저장되며 지도의 비거리 링 및 비행 편류에 즉시 반영됩니다.
+                </span>
+                <div className="h-6 shrink-0" aria-hidden="true" />
               </div>
             </div>
           </div>
