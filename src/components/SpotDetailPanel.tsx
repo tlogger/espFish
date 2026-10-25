@@ -55,6 +55,7 @@ import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeather
 import { generatePostMortemReport } from '../utils/postMortemEngine';
 import { playEvacuationBeep } from '../utils/tideAlertSound';
 import { sendEmergencyEvacuationNotification, requestNotificationPermission } from '../utils/nativeBridge';
+import { findNearestKhoaStation } from '../utils/tideService';
 
 interface SpotDetailPanelProps {
   spot: FishingSpot;
@@ -806,193 +807,274 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               );
             })()}
 
-            {/* [요구사항 2-4B, 3] 바다타임(badatime.com 149) 표준 스타일 물때·조위 테이블 및 기상 연동 */}
-            {tide && (
-              <div className="p-3.5 sm:p-4 bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-slate-950/95 border border-cyan-500/40 rounded-2xl shadow-xl space-y-3">
-                {/* 1행: 물때 명칭 & 월령 & 현재 수위 & 바다타임 링크 */}
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <span className="font-extrabold text-base sm:text-lg text-cyan-300 drop-shadow">🌊 {tide.mulText}</span>
-                    <span className="text-xs sm:text-sm text-slate-300 font-medium">({tide.lunarDateStr})</span>
-                    <a
-                      href="https://www.badatime.com/149/graph/2026-10-25"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] text-cyan-400/80 hover:text-cyan-200 underline flex items-center gap-0.5 ml-1"
-                      title="바다타임 강릉(안인진) 조위관측소 물때표"
-                    >
-                      <span>바다타임 149</span>
-                      <span>↗</span>
-                    </a>
+            {/* [국립해양조사원 KHOA 공식 연동] 조위 그래픽 곡선 및 물때표 */}
+            {tide && (() => {
+              const nearestStation = findNearestKhoaStation(spot.lat, spot.lng);
+
+              interface TideScheduleItem {
+                type: 'HIGH' | 'LOW' | 'SUNRISE' | 'SUNSET';
+                typeLabel: string;
+                time: string;
+                minutes: number;
+                height?: number;
+                diff?: number;
+              }
+
+              const rawExtremums: { type: 'HIGH' | 'LOW'; time: string; height: number; minutes: number; diff?: number }[] = [
+                ...(tide.highTides || []).map((h) => {
+                  const [hh, mm] = h.time.split(':').map(Number);
+                  return { type: 'HIGH' as const, time: h.time, height: h.height, minutes: (hh || 0) * 60 + (mm || 0) };
+                }),
+                ...(tide.lowTides || []).map((l) => {
+                  const [hh, mm] = l.time.split(':').map(Number);
+                  return { type: 'LOW' as const, time: l.time, height: l.height, minutes: (hh || 0) * 60 + (mm || 0) };
+                }),
+              ].sort((a, b) => a.minutes - b.minutes);
+
+              // 조위차 계산 (이전/이후 반대 극값과의 높이 차이)
+              for (let i = 0; i < rawExtremums.length; i++) {
+                const ev = rawExtremums[i];
+                let prevOpp: typeof ev | null = null;
+                for (let j = i - 1; j >= 0; j--) {
+                  if (rawExtremums[j].type !== ev.type) {
+                    prevOpp = rawExtremums[j];
+                    break;
+                  }
+                }
+                if (!prevOpp) {
+                  for (let j = i + 1; j < rawExtremums.length; j++) {
+                    if (rawExtremums[j].type !== ev.type) {
+                      prevOpp = rawExtremums[j];
+                      break;
+                    }
+                  }
+                }
+                ev.diff = prevOpp ? Math.abs(ev.height - prevOpp.height) : 20;
+              }
+
+              const scheduleItems: TideScheduleItem[] = [
+                ...rawExtremums.map((e) => ({
+                  type: e.type,
+                  typeLabel: e.type === 'HIGH' ? '만조' : '간조',
+                  time: e.time,
+                  minutes: e.minutes,
+                  height: e.height,
+                  diff: e.diff,
+                })),
+              ];
+
+              if (tide.sunrise) {
+                const [hh, mm] = tide.sunrise.split(':').map(Number);
+                scheduleItems.push({
+                  type: 'SUNRISE',
+                  typeLabel: '일출',
+                  time: tide.sunrise,
+                  minutes: (hh || 0) * 60 + (mm || 0),
+                });
+              }
+
+              if (tide.sunset) {
+                const [hh, mm] = tide.sunset.split(':').map(Number);
+                scheduleItems.push({
+                  type: 'SUNSET',
+                  typeLabel: '일몰',
+                  time: tide.sunset,
+                  minutes: (hh || 0) * 60 + (mm || 0),
+                });
+              }
+
+              scheduleItems.sort((a, b) => a.minutes - b.minutes);
+
+              // 24시간 그래픽 조위 곡선 (SVG 좌표 산출: width 320, height 70)
+              const svgW = 320;
+              const svgH = 70;
+              const allHeights = rawExtremums.map((e) => e.height);
+              const minH = allHeights.length ? Math.min(...allHeights) - 15 : 0;
+              const maxH = allHeights.length ? Math.max(...allHeights) + 20 : 100;
+              const rangeH = Math.max(20, maxH - minH);
+
+              // 24개 시간별 샘플 포인트 (부드러운 코사인 곡선 보간)
+              const curvePoints: { x: number; y: number; hour: number }[] = [];
+              for (let hr = 0; hr <= 24; hr++) {
+                const x = (hr / 24) * svgW;
+                // 가장 가까운 극점들을 기반으로 높이 보간
+                let estHeight = (minH + maxH) / 2;
+                if (rawExtremums.length >= 2) {
+                  // 인접 만조/간조 기반 코사인 위상 계산
+                  const targetMins = hr * 60;
+                  const firstEv = rawExtremums[0];
+                  const phase = ((targetMins - firstEv.minutes) / 745.2) * 2 * Math.PI;
+                  const amp = (maxH - minH) / 2;
+                  const mid = minH + amp;
+                  estHeight = firstEv.type === 'HIGH' ? mid + amp * Math.cos(phase) : mid - amp * Math.cos(phase);
+                }
+                const y = svgH - 12 - ((estHeight - minH) / rangeH) * (svgH - 24);
+                curvePoints.push({ x, y: Math.max(10, Math.min(svgH - 6, y)), hour: hr });
+              }
+
+              const pathD = curvePoints.reduce((acc, pt, idx) => {
+                return idx === 0 ? `M ${pt.x} ${pt.y}` : `${acc} L ${pt.x} ${pt.y}`;
+              }, '');
+              const areaD = `${pathD} L ${svgW} ${svgH} L 0 ${svgH} Z`;
+
+              const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+              const nowX = Math.min(svgW - 2, Math.max(2, (nowMinutes / 1440) * svgW));
+
+              return (
+                <div className="p-3.5 sm:p-4 bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-slate-950/95 border border-cyan-500/40 rounded-2xl shadow-xl space-y-3">
+                  {/* 1행: 물때 명칭 & 음력 & 국립해양조사원 관측소 & 현재 조위 */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-extrabold text-base sm:text-lg text-cyan-300 drop-shadow">🌊 {tide.mulText}</span>
+                      <span className="text-xs sm:text-sm text-slate-300 font-medium">({tide.lunarDateStr})</span>
+                      <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-cyan-950/80 text-cyan-400 border border-cyan-800/60 font-medium">
+                        국립해양조사원 {nearestStation.station.name} 관측소 ({nearestStation.distanceKm}km)
+                      </span>
+                    </div>
+                    {currentTidePoint && (
+                      <div className="text-xs sm:text-sm text-cyan-200 font-mono font-bold bg-cyan-950/90 border border-cyan-700/70 px-2.5 py-1 rounded-lg shadow-inner flex items-center gap-1.5">
+                        <span className="text-slate-400 font-sans font-normal text-xs">현재:</span>
+                        <span className="text-white font-extrabold">{currentTidePoint.height}cm</span>
+                        <span className="text-cyan-300 font-sans text-xs">({currentTidePoint.stateText})</span>
+                      </div>
+                    )}
                   </div>
-                  {currentTidePoint && (
-                    <div className="text-xs sm:text-sm text-cyan-200 font-mono font-bold bg-cyan-950/90 border border-cyan-700/70 px-2.5 py-1 rounded-lg shadow-inner flex items-center gap-1.5">
-                      <span className="text-slate-400 font-sans font-normal text-xs">현재:</span>
-                      <span className="text-white font-extrabold">{currentTidePoint.height}cm</span>
-                      <span className="text-cyan-300 font-sans text-xs">({currentTidePoint.stateText})</span>
+
+                  {/* 2행: 24시간 실시간 조위 곡선 그래픽 (바다타임 표준 그래픽 시각화) */}
+                  <div className="relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950/80 p-2 shadow-inner">
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono mb-1 px-1">
+                      <span>00:00</span>
+                      <span className="text-cyan-400 font-sans font-semibold">24시간 연속 조위 변화 곡선</span>
+                      <span>24:00</span>
                     </div>
-                  )}
+                    <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full h-16 overflow-visible">
+                      <defs>
+                        <linearGradient id="tideGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.45" />
+                          <stop offset="100%" stopColor="#0284c7" stopOpacity="0.05" />
+                        </linearGradient>
+                      </defs>
+                      {/* 수위 영역 그래디언트 채우기 */}
+                      <path d={areaD} fill="url(#tideGrad)" />
+                      {/* 수위 조석 곡선 */}
+                      <path d={pathD} fill="none" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round" />
+
+                      {/* 만조/간조 극점 그래픽 핀 & 텍스트 */}
+                      {rawExtremums.map((ev, idx) => {
+                        const px = (ev.minutes / 1440) * svgW;
+                        const py = svgH - 12 - ((ev.height - minH) / rangeH) * (svgH - 24);
+                        const isHigh = ev.type === 'HIGH';
+                        return (
+                          <g key={idx}>
+                            <circle
+                              cx={px}
+                              cy={py}
+                              r={isHigh ? 3.5 : 3}
+                              fill={isHigh ? '#f43f5e' : '#38bdf8'}
+                              stroke="#0f172a"
+                              strokeWidth="1.5"
+                            />
+                            <text
+                              x={px}
+                              y={isHigh ? Math.max(10, py - 6) : Math.min(svgH - 2, py + 11)}
+                              fill={isHigh ? '#fb7185' : '#7dd3fc'}
+                              fontSize="8.5"
+                              fontWeight="bold"
+                              textAnchor="middle"
+                              className="font-mono"
+                            >
+                              {ev.time} ({ev.height}cm)
+                            </text>
+                          </g>
+                        );
+                      })}
+
+                      {/* 현재 시각 버티컬 인디케이터 라인 */}
+                      <line
+                        x1={nowX}
+                        y1="4"
+                        x2={nowX}
+                        y2={svgH}
+                        stroke="#f59e0b"
+                        strokeWidth="1.5"
+                        strokeDasharray="2 2"
+                      />
+                      <circle cx={nowX} cy="5" r="2.5" fill="#f59e0b" />
+                    </svg>
+                  </div>
+
+                  {/* 3행: 물때 & 태양 이벤트 시간표 (박스/아이콘 제거하여 한 줄 유지) */}
+                  <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/90 shadow-md">
+                    <table className="w-full text-xs text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-800 bg-slate-900/80 text-[11px] text-slate-400 font-semibold">
+                          <th className="py-1.5 px-3 w-16 text-center">시간</th>
+                          <th className="py-1.5 px-3 w-16 text-center">구분</th>
+                          <th className="py-1.5 px-3 text-right">조위 (수위 변화)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/70 font-mono">
+                        {scheduleItems.map((item, idx) => {
+                          const isHigh = item.type === 'HIGH';
+                          const isLow = item.type === 'LOW';
+                          const isSunrise = item.type === 'SUNRISE';
+                          const isSunset = item.type === 'SUNSET';
+
+                          return (
+                            <tr
+                              key={idx}
+                              className={`transition-colors ${
+                                isHigh
+                                  ? 'hover:bg-rose-950/20'
+                                  : isLow
+                                  ? 'hover:bg-blue-950/20'
+                                  : 'hover:bg-slate-900/40'
+                              }`}
+                            >
+                              <td className="py-2 px-3 text-center font-bold text-slate-200 text-xs whitespace-nowrap">
+                                {item.time}
+                              </td>
+                              <td className="py-2 px-3 text-center whitespace-nowrap">
+                                {isHigh && (
+                                  <span className="font-bold text-rose-400 text-xs">만조</span>
+                                )}
+                                {isLow && (
+                                  <span className="font-bold text-cyan-400 text-xs">간조</span>
+                                )}
+                                {isSunrise && (
+                                  <span className="font-medium text-amber-400 text-xs">일출</span>
+                                )}
+                                {isSunset && (
+                                  <span className="font-medium text-indigo-400 text-xs">일몰</span>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 text-right whitespace-nowrap">
+                                {item.height !== undefined ? (
+                                  <span className="inline-flex items-center justify-end gap-1.5">
+                                    <span className="font-extrabold text-white text-xs sm:text-sm">
+                                      {item.height}cm
+                                    </span>
+                                    <span
+                                      className={`text-[11px] font-semibold ${
+                                        isHigh ? 'text-rose-400' : 'text-cyan-400'
+                                      }`}
+                                    >
+                                      ({isHigh ? '+' : '-'}{item.diff}cm)
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-600 font-sans text-xs">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-
-                {/* 2행: 오늘 시간순 물때 & 태양 이벤트 시간표 테이블 (바다타임 149 증감 표기 완전 호환) */}
-                {(() => {
-                  interface TideScheduleItem {
-                    type: 'HIGH' | 'LOW' | 'SUNRISE' | 'SUNSET';
-                    typeLabel: string;
-                    time: string;
-                    minutes: number;
-                    height?: number;
-                    diff?: number;
-                  }
-
-                  const rawExtremums: { type: 'HIGH' | 'LOW'; time: string; height: number; minutes: number; diff?: number }[] = [
-                    ...(tide.highTides || []).map((h) => {
-                      const [hh, mm] = h.time.split(':').map(Number);
-                      return { type: 'HIGH' as const, time: h.time, height: h.height, minutes: (hh || 0) * 60 + (mm || 0) };
-                    }),
-                    ...(tide.lowTides || []).map((l) => {
-                      const [hh, mm] = l.time.split(':').map(Number);
-                      return { type: 'LOW' as const, time: l.time, height: l.height, minutes: (hh || 0) * 60 + (mm || 0) };
-                    }),
-                  ].sort((a, b) => a.minutes - b.minutes);
-
-                  // 조위차 계산 (이전/이후 반대 극값과의 높이 차이)
-                  for (let i = 0; i < rawExtremums.length; i++) {
-                    const ev = rawExtremums[i];
-                    let prevOpp: typeof ev | null = null;
-                    for (let j = i - 1; j >= 0; j--) {
-                      if (rawExtremums[j].type !== ev.type) {
-                        prevOpp = rawExtremums[j];
-                        break;
-                      }
-                    }
-                    if (!prevOpp) {
-                      for (let j = i + 1; j < rawExtremums.length; j++) {
-                        if (rawExtremums[j].type !== ev.type) {
-                          prevOpp = rawExtremums[j];
-                          break;
-                        }
-                      }
-                    }
-                    ev.diff = prevOpp ? Math.abs(ev.height - prevOpp.height) : 20;
-                  }
-
-                  const scheduleItems: TideScheduleItem[] = [
-                    ...rawExtremums.map((e) => ({
-                      type: e.type,
-                      typeLabel: e.type === 'HIGH' ? '만조' : '간조',
-                      time: e.time,
-                      minutes: e.minutes,
-                      height: e.height,
-                      diff: e.diff,
-                    })),
-                  ];
-
-                  if (tide.sunrise) {
-                    const [hh, mm] = tide.sunrise.split(':').map(Number);
-                    scheduleItems.push({
-                      type: 'SUNRISE',
-                      typeLabel: '일출',
-                      time: tide.sunrise,
-                      minutes: (hh || 0) * 60 + (mm || 0),
-                    });
-                  }
-
-                  if (tide.sunset) {
-                    const [hh, mm] = tide.sunset.split(':').map(Number);
-                    scheduleItems.push({
-                      type: 'SUNSET',
-                      typeLabel: '일몰',
-                      time: tide.sunset,
-                      minutes: (hh || 0) * 60 + (mm || 0),
-                    });
-                  }
-
-                  scheduleItems.sort((a, b) => a.minutes - b.minutes);
-
-                  return (
-                    <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/90 shadow-md">
-                      <table className="w-full text-xs text-left border-collapse">
-                        <thead>
-                          <tr className="border-b border-slate-800 bg-slate-900/80 text-[11px] text-slate-400 font-semibold">
-                            <th className="py-1.5 px-3 w-16 text-center">시간</th>
-                            <th className="py-1.5 px-3 w-20 text-center">구분</th>
-                            <th className="py-1.5 px-3 text-right">조위 (수위 변화)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800/70 font-mono">
-                          {scheduleItems.map((item, idx) => {
-                            const isHigh = item.type === 'HIGH';
-                            const isLow = item.type === 'LOW';
-                            const isSunrise = item.type === 'SUNRISE';
-                            const isSunset = item.type === 'SUNSET';
-
-                            return (
-                              <tr
-                                key={idx}
-                                className={`transition-colors ${
-                                  isHigh
-                                    ? 'hover:bg-rose-950/20'
-                                    : isLow
-                                    ? 'hover:bg-blue-950/20'
-                                    : 'hover:bg-slate-900/40'
-                                }`}
-                              >
-                                <td className="py-2 px-3 text-center font-bold text-slate-200">
-                                  {item.time}
-                                </td>
-                                <td className="py-2 px-3 text-center">
-                                  {isHigh && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-sans font-extrabold bg-rose-950 text-rose-300 border border-rose-800/60 shadow-xs">
-                                      <span>▲</span>
-                                      <span>만조</span>
-                                    </span>
-                                  )}
-                                  {isLow && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-sans font-extrabold bg-blue-950 text-blue-300 border border-blue-800/60 shadow-xs">
-                                      <span>▼</span>
-                                      <span>간조</span>
-                                    </span>
-                                  )}
-                                  {isSunrise && (
-                                    <span className="inline-block px-2 py-0.5 rounded text-[11px] font-sans font-bold bg-amber-950/80 text-amber-300 border border-amber-800/60 shadow-xs">
-                                      일출 ☀️
-                                    </span>
-                                  )}
-                                  {isSunset && (
-                                    <span className="inline-block px-2 py-0.5 rounded text-[11px] font-sans font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 shadow-xs">
-                                      일몰 🌙
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="py-2 px-3 text-right">
-                                  {item.height !== undefined ? (
-                                    <span className="flex items-center justify-end gap-1.5">
-                                      <span className="font-extrabold text-white text-xs sm:text-sm">
-                                        {item.height}cm
-                                      </span>
-                                      <span
-                                        className={`text-[11px] font-semibold ${
-                                          isHigh ? 'text-rose-400' : 'text-blue-400'
-                                        }`}
-                                      >
-                                        ({isHigh ? '▲ +' : '▼ -'}{item.diff}cm)
-                                      </span>
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-600 font-sans text-[11px]">-</span>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
+              );
+            })()}
             {/* 48시간 미래 환경 타임라인 시뮬레이터 (모바일 및 패널 전용 통합) */}
             <div className="p-3.5 bg-slate-950/90 border border-cyan-500/30 rounded-2xl shadow-lg space-y-2.5">
               <div className="flex items-center justify-between">

@@ -127,7 +127,7 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                전국 낚시 포인트 리스트
+                낚시 포인트 리스트
                 <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800 font-mono">
                   {sorted.length}곳
                 </span>
@@ -199,10 +199,10 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
               <SlidersHorizontal size={11} /> 정렬:
             </span>
             {[
-              { id: 'BITESCORE', label: '🔥 입질 지수 높은순' },
-              { id: 'DISTANCE', label: `🎯 내 위치 가까운순 ${userCoords ? '' : '(GPS 필요)'}` },
-              { id: 'NAME', label: '🔤 가나다순' },
-              { id: 'LATEST', label: '⏱️ 최신 등록순' },
+              { id: 'BITESCORE', label: '입질 지수' },
+              { id: 'DISTANCE', label: `가까운 순${userCoords ? '' : ' (GPS 필요)'}` },
+              { id: 'NAME', label: '가나다 순' },
+              { id: 'LATEST', label: '최신 순' },
             ].map((s) => (
               <button
                 key={s.id}

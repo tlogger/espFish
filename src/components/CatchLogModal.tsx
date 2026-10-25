@@ -290,7 +290,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
       current_velocity: Number(simCurrentVel),
       lat: catchLat,
       lng: catchLng,
-      photo_url: photoUrl || 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=600&q=80',
+      photo_url: photoUrl.trim() ? photoUrl.trim() : undefined,
       memo,
     });
     onClose();

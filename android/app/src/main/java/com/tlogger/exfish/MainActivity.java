@@ -30,6 +30,31 @@ public class MainActivity extends BridgeActivity {
 
             bridge.getWebView().setWebChromeClient(new WebChromeClient() {
                 @Override
+                public boolean onJsAlert(WebView view, String url, String message, final android.webkit.JsResult result) {
+                    new android.app.AlertDialog.Builder(view.getContext())
+                        .setTitle("알림")
+                        .setMessage(message)
+                        .setPositiveButton("확인", (dialog, which) -> result.confirm())
+                        .setOnCancelListener(dialog -> result.cancel())
+                        .setCancelable(true)
+                        .show();
+                    return true;
+                }
+
+                @Override
+                public boolean onJsConfirm(WebView view, String url, String message, final android.webkit.JsResult result) {
+                    new android.app.AlertDialog.Builder(view.getContext())
+                        .setTitle("확인")
+                        .setMessage(message)
+                        .setPositiveButton("확인", (dialog, which) -> result.confirm())
+                        .setNegativeButton("취소", (dialog, which) -> result.cancel())
+                        .setOnCancelListener(dialog -> result.cancel())
+                        .setCancelable(true)
+                        .show();
+                    return true;
+                }
+
+                @Override
                 public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
                     // Automatically grant geolocation permission for https://localhost (Capacitor Origin)
                     callback.invoke(origin, true, false);

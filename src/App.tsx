@@ -536,7 +536,11 @@ export function App() {
   const handleSaveCatchLog = async (logData: Omit<CatchLog, 'id' | 'created_at'>) => {
     try {
       if (editingCatchLog) {
-        const updatedLog: CatchLog = { ...editingCatchLog, ...logData };
+        const updatedLog: CatchLog = {
+          ...editingCatchLog,
+          ...logData,
+          photo_url: logData.photo_url || undefined,
+        };
         await saveCloudCatchLog(updatedLog);
         setEditingCatchLog(null);
       } else {

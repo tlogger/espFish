@@ -4,6 +4,14 @@ export type ActivityPeriod = 'NOCTURNAL' | 'DIURNAL' | 'CREPUSCULAR';
 export type CurrentPreference = 'STRONG' | 'MODERATE' | 'SLACK_GENTLE';
 export type WaterLayer = 'SURFACE' | 'MID' | 'BOTTOM' | 'ALL';
 export type CoastRegion = 'WEST' | 'SOUTH' | 'EAST' | 'JEJU';
+export type TimeRestriction = 'STRICT_DAY' | 'STRICT_NIGHT' | 'CREPUSCULAR_PEAK' | 'ALL_DAY';
+
+export interface DailyActivityProfile {
+  activeHours: number[]; // 활동 시간대 (0~23시)
+  peakHours: number[]; // 최적 피크 시간대
+  restriction: TimeRestriction; // STRICT_DAY(낮에만), STRICT_NIGHT(밤에만), CREPUSCULAR_PEAK(해창), ALL_DAY(전일)
+  timeNote: string; // 시간대별 생태 설명
+}
 
 export interface SpeciesEcology {
   name: string;
@@ -38,6 +46,7 @@ export interface SpeciesEcology {
   prohibitedPeriod?: string | null; // 법정 금어기 기간 텍스트 (null이면 없음)
   prohibitedNote?: string; // 금어기/금지체장 세부 규정 및 지자체 예외 고시
   recommendedBait?: string; // 초보자용 대표 추천 미끼/루어 요약
+  dailyProfile?: DailyActivityProfile; // 어종별 일중 활동 시간대 프로필
 }
 
 export const SPECIES_ENCYCLOPEDIA: Record<string, SpeciesEcology> = {
@@ -92,6 +101,12 @@ export const SPECIES_ENCYCLOPEDIA: Record<string, SpeciesEcology> = {
     prohibitedPeriod: '7월 1일 ~ 7월 31일 (연근해어업 기준)',
     prohibitedNote: '항문장(머리~항문) 18cm 이하 포획 금지. 7월 한 달간 산란기 금어기 운영.',
     recommendedBait: '갈치용 물방개 지그헤드 5~10g + 축광 웜, 꽁치 생미끼',
+    dailyProfile: {
+      activeHours: [18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4],
+      peakHours: [19, 20, 21, 22, 23, 0, 1],
+      restriction: 'STRICT_NIGHT',
+      timeNote: '일몰 후 가로등/집어등 불빛 아래 상층 먹이 사냥, 낮에는 심해 하강하여 주간 연안 낚시 불가',
+    },
   },
   갈치: {
     name: '갈치',
@@ -118,6 +133,12 @@ export const SPECIES_ENCYCLOPEDIA: Record<string, SpeciesEcology> = {
     prohibitedPeriod: '7월 1일 ~ 7월 31일',
     prohibitedNote: '항문장(머리~항문) 18cm 이하 방생 필수.',
     recommendedBait: '메탈지그 20~40g 텐야, 꽁치 생미끼 채비',
+    dailyProfile: {
+      activeHours: [18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4],
+      peakHours: [19, 20, 21, 22, 23, 0, 1],
+      restriction: 'STRICT_NIGHT',
+      timeNote: '일몰 후 가로등/집어등 불빛 아래 상층 먹이 사냥, 낮에는 심해 하강하여 주간 연안 낚시 불가',
+    },
   },
   광어: {
     name: '광어',
@@ -170,6 +191,12 @@ export const SPECIES_ENCYCLOPEDIA: Record<string, SpeciesEcology> = {
     prohibitedPeriod: '5월 1일 ~ 5월 31일',
     prohibitedNote: '전장 25cm 이하 연중 포획 금지. 5월 한 달간 전국 공통 산란기 금어기.',
     recommendedBait: '반유동/전유동 찌낚시 (크릴, 옥수수, 혼무시), 치닝 루어',
+    dailyProfile: {
+      activeHours: [5, 6, 7, 8, 9, 16, 17, 18, 19, 20],
+      peakHours: [5, 6, 7, 17, 18, 19],
+      restriction: 'CREPUSCULAR_PEAK',
+      timeNote: '동틀 무렵(여명)과 해질녘(해창) 골든타임에 70% 이상 입질 집중, 한낮에는 깊은 수중여 은신',
+    },
   },
   참돔: {
     name: '참돔',
@@ -248,6 +275,12 @@ export const SPECIES_ENCYCLOPEDIA: Record<string, SpeciesEcology> = {
     prohibitedPeriod: null,
     prohibitedNote: '국가 법정 금지체장 및 금어기 없음. 낚시계 자율 방생 권장 기준 20cm.',
     recommendedBait: '0찌/00찌 제로 찌낚시 (크릴, 빵가루 경단, 홍개비)',
+    dailyProfile: {
+      activeHours: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+      peakHours: [7, 8, 9, 15, 16, 17],
+      restriction: 'STRICT_DAY',
+      timeNote: '철저한 주간 시각 찌낚시 어종, 밤에는 테트라/갯바위 틈으로 수면 들어가 입질 전무',
+    },
   },
   볼락: {
     name: '볼락',
@@ -274,6 +307,12 @@ export const SPECIES_ENCYCLOPEDIA: Record<string, SpeciesEcology> = {
     prohibitedPeriod: null,
     prohibitedNote: '전장 15cm 이하 연중 포획 금지. 전국 금어기는 없음.',
     recommendedBait: '볼락 지그헤드 1~2.5g + 1.5~2인치 웜, 청갯지렁이',
+    dailyProfile: {
+      activeHours: [18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5],
+      peakHours: [19, 20, 21, 22, 23, 0, 1],
+      restriction: 'STRICT_NIGHT',
+      timeNote: '야행성 락피시, 해진 후 테트라포드나 몰밭 위로 피어올라 집어등/루어에 반응 (주간 바닥 은신)',
+    },
   },
   쥐노래미: {
     name: '쥐노래미',
@@ -300,6 +339,12 @@ export const SPECIES_ENCYCLOPEDIA: Record<string, SpeciesEcology> = {
     prohibitedPeriod: '11월 1일 ~ 12월 31일',
     prohibitedNote: '전장 20cm 이하 포획 금지. 11~12월 산란기 전국 금어기 (백령·소청도는 11/15~12/14).',
     recommendedBait: '원투 묶음추 16~25호 + 청갯지렁이, 텍사스 리그 웜',
+    dailyProfile: {
+      activeHours: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+      peakHours: [8, 9, 10, 14, 15, 16],
+      restriction: 'STRICT_DAY',
+      timeNote: '주간 시각 탐색 어종, 야간에는 암초 틈에 엎드려 취침하므로 밤 낚시 입질 극히 드묾',
+    },
   },
   노래미: {
     name: '노래미',
@@ -534,6 +579,12 @@ export const SPECIES_ENCYCLOPEDIA: Record<string, SpeciesEcology> = {
     prohibitedPeriod: null,
     prohibitedNote: '법정 금지체장 및 금어기 없음.',
     recommendedBait: '보리멸 전용 3~5단 바늘 채비 + 모래지렁이/청갯지렁이 토막',
+    dailyProfile: {
+      activeHours: [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+      peakHours: [9, 10, 11, 12, 13, 14, 15],
+      restriction: 'STRICT_DAY',
+      timeNote: '맑은 한낮에만 모래밭 시각 사냥, 밤에는 모래 속에 파묻혀 휴면하므로 야간 입질 전무',
+    },
   },
   붕장어: {
     name: '붕장어',
@@ -550,16 +601,22 @@ export const SPECIES_ENCYCLOPEDIA: Record<string, SpeciesEcology> = {
     description: '낮에는 돌 틈이나 모래 속에 완전히 몸을 숨기며, 해가 완전히 진 깜깜한 밤에만 후각으로 미끼를 찾습니다.',
     scientificName: 'Conger myriaster',
     waterLayer: 'BOTTOM',
-    waterLayerName: '바닥 암초 틈새/자갈 바닥',
+    waterLayerName: '바닥 밀착 뻘/자갈층',
     regions: ['WEST', 'SOUTH', 'EAST'],
-    regionNames: '서해 갯벌/석축, 남해(통영/여수), 동해남부',
+    regionNames: '서해/남해/동해 전역 (방파제, 갯바위 원투)',
     tastiestMonths: [7, 8, 9, 10],
-    tastiestDesc: '여름~가을철 원기회복 구이와 물기 꽉 짠 눈꽃 아나고회',
+    tastiestDesc: '여름~가을 기름기 가득 찬 장어구이 및 탕',
     minLengthCm: 35,
     lengthStandard: 'TOTAL_LENGTH',
     prohibitedPeriod: null,
-    prohibitedNote: '전장 35cm 이하 연중 포획 금지. 전국 금어기는 없음.',
-    recommendedBait: '원투 세이코 바늘 16~20호 + 굵은 청갯지렁이, 오징어 살, 전어 토막',
+    prohibitedNote: '전장 35cm 이하 포획 금지.',
+    recommendedBait: '꽁치 토막, 청갯지렁이 뭉치, 오징어 살 원투 채비',
+    dailyProfile: {
+      activeHours: [19, 20, 21, 22, 23, 0, 1, 2, 3, 4],
+      peakHours: [20, 21, 22, 23, 0, 1, 2],
+      restriction: 'STRICT_NIGHT',
+      timeNote: '철저한 야행성 어종, 낮에는 굴/돌 틈 은신, 밤에만 왕성한 후각 탐식 (낮 입질 불가)',
+    },
   },
   주꾸미: {
     name: '주꾸미',
@@ -1028,6 +1085,12 @@ export const SPECIES_ENCYCLOPEDIA: Record<string, SpeciesEcology> = {
     prohibitedPeriod: null,
     prohibitedNote: '법정 금지체장 및 금어기 없음. 꼬리 독가시 주의 요망.',
     recommendedBait: '통오징어, 참갯지렁이(혼무시), 산낙지/개불 + 대물 원투 와이어 채비',
+    dailyProfile: {
+      activeHours: [20, 21, 22, 23, 0, 1, 2, 3, 4],
+      peakHours: [21, 22, 23, 0, 1, 2],
+      restriction: 'STRICT_NIGHT',
+      timeNote: '서해 갯골 야간 먹이 유입 대물 어종, 낮에는 모래/뻘 속에 매몰되어 야간(20~04시)에만 입질 집중',
+    },
   },
   '노랑 가오리': {
     name: '노랑가오리',
@@ -1054,6 +1117,12 @@ export const SPECIES_ENCYCLOPEDIA: Record<string, SpeciesEcology> = {
     prohibitedPeriod: null,
     prohibitedNote: '법정 금지체장 및 금어기 없음. 꼬리 독가시 주의 요망.',
     recommendedBait: '통오징어, 참갯지렁이(혼무시), 산낙지/개불 + 대물 원투 와이어 채비',
+    dailyProfile: {
+      activeHours: [20, 21, 22, 23, 0, 1, 2, 3, 4],
+      peakHours: [21, 22, 23, 0, 1, 2],
+      restriction: 'STRICT_NIGHT',
+      timeNote: '서해 갯골 야간 먹이 유입 대물 어종, 낮에는 모래/뻘 속에 매몰되어 야간(20~04시)에만 입질 집중',
+    },
   },
 };
 

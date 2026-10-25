@@ -34,48 +34,99 @@ export function calculateSingleSpeciesScore(
     tempMatch = sst < tr.min ? `저수온 비활성 (${sst.toFixed(1)}°C)` : `고수온 비활성 (${sst.toFixed(1)}°C)`;
   }
 
-  // 2. 주야간 및 일출/일몰 생태 적합도 (25점 만점)
+  // 2. 어종별 일중 활동 시간대(주행성/야행성/피딩 타임) 정밀 적합도 (25점 만점 + 생태 페널티)
   let timeScore = 12;
   let activityMatch = '';
-  const isNight = currentHour >= 20 || currentHour <= 4;
-  const isDay = currentHour >= 9 && currentHour <= 16;
-  const isCrepuscular = (currentHour >= 5 && currentHour <= 8) || (currentHour >= 17 && currentHour <= 19);
+  let isStrictlyInactiveTime = false;
 
-  if (species.activityPeriod === 'NOCTURNAL') {
-    // 야행성: 우럭, 풀치(갈치), 낙지, 볼락, 붕장어 등
-    if (isNight) {
-      timeScore = 25;
-      activityMatch = '야간 먹이활동 집중 (최고 활성)';
-    } else if (isCrepuscular) {
-      timeScore = 20;
-      activityMatch = '어두워지는 피딩 진입';
+  const profile = species.dailyProfile;
+  if (profile) {
+    const isPeak = profile.peakHours.includes(currentHour);
+    const isActive = profile.activeHours.includes(currentHour);
+
+    if (profile.restriction === 'STRICT_DAY') {
+      if (isPeak) {
+        timeScore = 25;
+        activityMatch = `주간 시각 사냥 최고 피크 (${currentHour}시 활성 극대화)`;
+      } else if (isActive) {
+        timeScore = 20;
+        activityMatch = `주간 정상 먹이활동 시간대`;
+      } else {
+        timeScore = 2;
+        activityMatch = `야간 비활성/휴면 (입질 전무: ${profile.timeNote})`;
+        isStrictlyInactiveTime = true;
+      }
+    } else if (profile.restriction === 'STRICT_NIGHT') {
+      if (isPeak) {
+        timeScore = 25;
+        activityMatch = `야간 집중 먹이 사냥 최고조 (${currentHour}시 골든타임)`;
+      } else if (isActive) {
+        timeScore = 20;
+        activityMatch = `야간 먹이활동 시간대`;
+      } else {
+        timeScore = 2;
+        activityMatch = `주간 은신/매몰 상태 (입질 불가: ${profile.timeNote})`;
+        isStrictlyInactiveTime = true;
+      }
+    } else if (profile.restriction === 'CREPUSCULAR_PEAK') {
+      if (isPeak) {
+        timeScore = 25;
+        activityMatch = `동틀녘/해창 황금 피딩 타임 (폭발적 입질 집중)`;
+      } else if (isActive) {
+        timeScore = 18;
+        activityMatch = `피딩 전후 완만한 활동 시간대`;
+      } else {
+        timeScore = 7;
+        activityMatch = `비피딩 시간대 (경계심 극대화, 깊은 은신처 위치)`;
+      }
     } else {
-      timeScore = 8;
-      activityMatch = '주간 은신 상태 (입질 뜸함)';
-    }
-  } else if (species.activityPeriod === 'DIURNAL') {
-    // 주행성: 주꾸미, 삼치, 고등어, 쥐노래미, 도다리, 보리멸, 벵에돔 등
-    if (isDay) {
-      timeScore = 25;
-      activityMatch = '주간 시각 사냥 최적';
-    } else if (isCrepuscular) {
-      timeScore = 18;
-      activityMatch = '아침/오후 완만한 입질';
-    } else {
-      timeScore = 6;
-      activityMatch = '야간 시야 부재 (입질 저하)';
+      if (isPeak) {
+        timeScore = 25;
+        activityMatch = `최고 활성 시간대 (${profile.timeNote})`;
+      } else {
+        timeScore = 16;
+        activityMatch = `통상 활동 시간대 (${profile.timeNote})`;
+      }
     }
   } else {
-    // 피딩형: 광어, 농어, 감성돔, 참돔, 무늬오징어 등
-    if (isCrepuscular) {
-      timeScore = 25;
-      activityMatch = '해창/일몰 골든타임 (폭발적)';
-    } else if (isNight) {
-      timeScore = 17;
-      activityMatch = '야간 완만한 피딩';
+    // 기본 생태 주기 폴백
+    const isNight = currentHour >= 20 || currentHour <= 4;
+    const isDay = currentHour >= 9 && currentHour <= 16;
+    const isCrepuscular = (currentHour >= 5 && currentHour <= 8) || (currentHour >= 17 && currentHour <= 19);
+
+    if (species.activityPeriod === 'NOCTURNAL') {
+      if (isNight) {
+        timeScore = 25;
+        activityMatch = '야간 먹이활동 집중 (최고 활성)';
+      } else if (isCrepuscular) {
+        timeScore = 18;
+        activityMatch = '어두워지는 피딩 진입';
+      } else {
+        timeScore = 5;
+        activityMatch = '주간 은신 상태 (입질 뜸함)';
+      }
+    } else if (species.activityPeriod === 'DIURNAL') {
+      if (isDay) {
+        timeScore = 25;
+        activityMatch = '주간 시각 사냥 최적';
+      } else if (isCrepuscular) {
+        timeScore = 16;
+        activityMatch = '아침/오후 완만한 입질';
+      } else {
+        timeScore = 4;
+        activityMatch = '야간 시야 부재 (입질 저하/휴면)';
+      }
     } else {
-      timeScore = 14;
-      activityMatch = '낮 시간대 무난';
+      if (isCrepuscular) {
+        timeScore = 25;
+        activityMatch = '해창/일몰 골든타임 (폭발적)';
+      } else if (isNight) {
+        timeScore = 17;
+        activityMatch = '야간 완만한 피딩';
+      } else {
+        timeScore = 14;
+        activityMatch = '낮 시간대 무난';
+      }
     }
   }
 
@@ -125,7 +176,11 @@ export function calculateSingleSpeciesScore(
     spotSeasonScore += 4;
   }
 
-  const score = Math.min(100, Math.round(tempScore + timeScore + currentScore + spotSeasonScore));
+  let score = Math.min(100, Math.round(tempScore + timeScore + currentScore + spotSeasonScore));
+  if (isStrictlyInactiveTime) {
+    // 낮 전용 어종의 야간(보리멸, 벵에돔 등) 또는 야간 전용 어종의 주간(노랑가오리, 붕장어 등) 생태적 입질 불가 반영
+    score = Math.min(score, 15);
+  }
 
   let verdict = '';
   if (score >= 85) verdict = `${species.name} 대박 찬스! ${activityMatch}, ${tempMatch}`;
