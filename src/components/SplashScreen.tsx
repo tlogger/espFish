@@ -62,11 +62,12 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
 
       {/* 2. 메인 스플래시 아트워크 (모바일 & PC 반응형 고화질 렌더링) */}
       <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+        {/* [요구사항 3] 모바일app에서 스플래시 화면 가로를 약 5% 축소하여 그림의 숨겨진 부분이 더 보이도록 처리 */}
         <img
           src={bgUrl}
           alt="떠난 물고기를 기리며..."
           onLoad={() => setImageLoaded(true)}
-          className="w-full h-full sm:max-w-md sm:h-[90vh] sm:rounded-3xl sm:border sm:border-cyan-500/20 sm:shadow-[0_0_50px_rgba(6,182,212,0.25)] object-cover object-center filter brightness-95 transition-transform duration-1000 ease-out scale-100"
+          className="w-full h-full sm:max-w-md sm:h-[90vh] sm:rounded-3xl sm:border sm:border-cyan-500/20 sm:shadow-[0_0_50px_rgba(6,182,212,0.25)] object-cover object-center filter brightness-95 transition-transform duration-1000 ease-out scale-x-[0.95] sm:scale-x-100"
         />
 
         {/* 3. 모바일/PC 비네팅 오버레이 */}

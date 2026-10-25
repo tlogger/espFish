@@ -6,6 +6,65 @@
 export type RodType = 'LURE' | 'SURF';
 export type RodPower = 'UL' | 'L' | 'ML' | 'M' | 'MH' | 'H' | 'SURF';
 
+// [요구사항 2-6-12] 미끼 선택 모델 (생미끼, 루어: 인치 및 형상)
+export type BaitType = 'LIVE' | 'LURE';
+export type LureShape = 'GRUB' | 'SHAD' | 'STRAIGHT' | 'MINNOW';
+
+export interface BaitConfig {
+  type: BaitType;
+  lengthInches: number; // 1 ~ 4
+  shape: LureShape;
+  weightGrams: number;
+  surfaceAreaCm2: number;
+}
+
+export const LURE_SHAPE_NAMES: Record<LureShape, string> = {
+  GRUB: '그럽웜',
+  SHAD: '쉐드웜',
+  STRAIGHT: '스트레이트',
+  MINNOW: '미노우',
+};
+
+export function getBaitSpecs(type: BaitType, lengthInches: number = 2, shape: LureShape = 'GRUB'): BaitConfig {
+  const safeLen = Math.max(1, Math.min(4, Math.round(lengthInches)));
+  if (type === 'LIVE') {
+    // 생미끼는 2인치 그럽웜으로 가정
+    return {
+      type: 'LIVE',
+      lengthInches: 2,
+      shape: 'GRUB',
+      weightGrams: 2.5,
+      surfaceAreaCm2: 2.0,
+    };
+  }
+
+  // 루어 형상 & 길이별 무게 및 단면적
+  const weightTable: Record<LureShape, Record<number, number>> = {
+    GRUB: { 1: 1.0, 2: 2.5, 3: 5.0, 4: 9.0 },
+    SHAD: { 1: 1.2, 2: 3.2, 3: 6.8, 4: 12.5 },
+    STRAIGHT: { 1: 0.8, 2: 1.8, 3: 3.6, 4: 6.2 },
+    MINNOW: { 1: 1.6, 2: 4.2, 3: 8.8, 4: 15.5 },
+  };
+
+  const areaTable: Record<LureShape, Record<number, number>> = {
+    GRUB: { 1: 1.2, 2: 2.0, 3: 3.5, 4: 5.2 },
+    SHAD: { 1: 1.4, 2: 2.6, 3: 4.8, 4: 7.5 },
+    STRAIGHT: { 1: 0.9, 2: 1.5, 3: 2.4, 4: 3.5 },
+    MINNOW: { 1: 1.8, 2: 3.2, 3: 5.6, 4: 8.8 },
+  };
+
+  const weightGrams = weightTable[shape]?.[safeLen] ?? 2.5;
+  const surfaceAreaCm2 = areaTable[shape]?.[safeLen] ?? 2.0;
+
+  return {
+    type: 'LURE',
+    lengthInches: safeLen,
+    shape,
+    weightGrams,
+    surfaceAreaCm2,
+  };
+}
+
 export interface RodPowerSpec {
   power: RodPower;
   label: string;
@@ -107,9 +166,14 @@ const KEY_PE_LINE = 'exfish_pe_line_size';
 const KEY_ROD_POWER = 'exfish_rod_power';
 const KEY_ROD_LENGTH_M = 'exfish_rod_length_m';
 const KEY_ROD_LENGTH = 'exfish_rod_length_ft'; // 레거시 호환용
+const KEY_BAIT_TYPE = 'exfish_bait_type';
+const KEY_BAIT_LENGTH = 'exfish_bait_length';
+const KEY_BAIT_SHAPE = 'exfish_bait_shape';
 
 export interface TackleRigConfig {
-  weightGrams: number; // 0.9g ~ 150g
+  weightGrams: number; // 싱커/추/봉돌 무게 (0.9g ~ 150g)
+  totalWeightGrams: number; // 봉돌 + 미끼 합산 총 무게
+  baitConfig: BaitConfig; // [요구사항 2-6-12] 미끼 스펙
   peLineSize: number; // 0.4호 ~ 3.0호
   rodType: RodType; // 'LURE' | 'SURF'
   rodPower: RodPower; // UL ~ H, SURF
@@ -122,22 +186,30 @@ export interface TackleRigConfig {
 }
 
 /**
- * 낚싯대 파워(탄성), 전장(길이), 채비 무게, 합사 라인 굵기를 결합한 공기역학 비거리 산식
+ * 낚싯대 파워(탄성), 전장(길이), 채비 무게 + 미끼 무게/표면적, 합사 라인 굵기를 결합한 공기역학 비거리 산식
  * - 루어대: 파워별 탄성 복원율(UL~H) + 길이(1.6~3.0m) 레버 암 (ML대: 7~30g, MH/H대: 50g+ 반영)
  * - 원투대: 휨/탄성의 왜곡보다 "추 무게(8~40호)"와 "로드 길이(2.7~5.4m)"가 비거리의 지배적 변수
+ * - 미끼(생미끼/루어 형상·길이): 합산 질량 증가 및 표면적에 따른 공기저항 감쇄 반영
  */
 export function calculateCalibratedDistance(
   weightGrams: number,
   peLineSize: number,
   rodPower: RodPower = 'M',
-  rodLengthM: number = 2.6
+  rodLengthM: number = 2.6,
+  baitConfig: BaitConfig = getBaitSpecs('LIVE', 2, 'GRUB')
 ): {
   distanceMeters: number;
   elasticityEfficiency: number;
   lengthFactor: number;
+  totalWeightGrams: number;
 } {
-  const safeWeight = Math.max(0.5, Math.min(160, weightGrams));
+  const safeSinkerWeight = Math.max(0.5, Math.min(160, weightGrams));
+  const safeTotalWeight = Math.max(0.5, Math.min(180, safeSinkerWeight + baitConfig.weightGrams));
   const safePE = Math.max(0.4, Math.min(3.0, peLineSize));
+
+  // 미끼 표면적에 따른 공기저항 계수 (기준 2.0 cm² = 1.0)
+  const baitDragRatio = Math.max(0.5, baitConfig.surfaceAreaCm2) / 2.0;
+  const baitAirFactor = Math.pow(1.0 / baitDragRatio, 0.08);
 
   if (rodPower === 'SURF') {
     // ----------------------------------------------------
@@ -149,32 +221,31 @@ export function calculateCalibratedDistance(
     // 1. 로드 길이 레버 암 및 원심력 계수 (기준 4.2m = 1.0)
     const lengthFactor = Math.pow(safeSurfLengthM / 4.2, 0.70);
 
-    // 2. 추 무게 관성 모멘텀 계수 (스위트스팟 25호 95g 기준 = 1.0)
-    // 8호(30g) ~ 40호(150g)에 걸쳐 탄성 손실 없이 고중량 추진력 반영
+    // 2. 총 무게 관성 모멘텀 계수 (스위트스팟 25호 95g 기준 = 1.0)
     const optWeight = 95.0;
     const weightFactor =
-      Math.pow(safeWeight / optWeight, 0.35) *
-      Math.exp(-Math.pow(Math.log(safeWeight) - Math.log(optWeight), 2) / (2 * 0.95 * 0.95));
+      Math.pow(safeTotalWeight / optWeight, 0.35) *
+      Math.exp(-Math.pow(Math.log(safeTotalWeight) - Math.log(optWeight), 2) / (2 * 0.95 * 0.95));
 
     // 3. 원줄 합사 PE 라인 공기저항 계수 (원투 기준 1.5호 = 1.0)
     const lineFactor = Math.pow(1.5 / safePE, 0.20);
 
     // 4. 원투 기준 비거리 (4.2m 대, 25호 95g, 1.5호 합사 기준 95m)
-    const rawDist = 95.0 * lengthFactor * weightFactor * lineFactor;
+    const rawDist = 95.0 * lengthFactor * weightFactor * lineFactor * baitAirFactor;
     const distanceMeters = Math.round(Math.max(20, Math.min(150, rawDist)));
 
     return {
       distanceMeters,
       elasticityEfficiency: Math.round(Math.min(1.0, weightFactor) * 100) / 100,
       lengthFactor: Math.round(lengthFactor * 100) / 100,
+      totalWeightGrams: Math.round(safeTotalWeight * 10) / 10,
     };
   }
 
   // ----------------------------------------------------
   // [루어대 비거리 연산 엔진]
   // 파워 등급(UL~H)별 탄성 복원율 + 로드 길이(ft) 레버 암
-  // 저그램 지그헤드(0.5~5g) 스풀 림 코일 방출 저항 & 가이드 링 마찰 페널티 반영
-  // ML대: 7~30g 허용, MH 및 H대: 50g까지 허용 반영
+  // 미끼 합산 질량 및 표면적 공기저항 반영
   // ----------------------------------------------------
   const rodLengthFt = rodLengthM * 3.28084;
   const safeLengthFt = Math.max(5.0, Math.min(11.0, rodLengthFt));
@@ -182,49 +253,45 @@ export function calculateCalibratedDistance(
   // 1. 로드 길이 레버 암 계수 (8.6ft 기준 = 1.0)
   const lengthFactor = Math.pow(safeLengthFt / 8.6, 0.65);
 
-  // 2. 루어 질량 기반 비행 포텐셜 (공기역학적 질량-단면적 및 공기저항 한계 거리)
-  // 1g: ~21m, 3g: ~37m, 5g: ~47m, 10g: ~60m, 25g: ~71m, 50g: ~76m
-  const massPotential = 78.0 * (1 - Math.exp(-0.31 * Math.pow(safeWeight, 0.58)));
+  // 2. 루어 총 질량 기반 비행 포텐셜
+  const massPotential = 78.0 * (1 - Math.exp(-0.31 * Math.pow(safeTotalWeight, 0.58)));
 
   // 3. 로드 파워 탄성 위치에너지 축적 및 복원 효율 (적정 루어 무게와의 일치도)
   const spec = ROD_POWER_SPECS[rodPower] || ROD_POWER_SPECS.M;
   const optW = spec.optWeightG;
 
-  // ML대는 7~30g, MH/H는 50g까지 원활하게 커버하도록 파워별 가우시안 분산 폭(sigma) 조정
   let sigma = 0.55;
   if (rodPower === 'ML') {
-    sigma = 0.65; // 7g~30g 넓은 허용 범위
+    sigma = 0.65;
   } else if (rodPower === 'MH' || rodPower === 'H') {
-    sigma = 0.62; // 50g+ 고중량 루어 캐스팅 허용
+    sigma = 0.62;
   }
 
-  const logRatio = Math.log(safeWeight) - Math.log(optW);
+  const logRatio = Math.log(safeTotalWeight) - Math.log(optW);
   const elasticityEfficiency = Math.exp(-(logRatio * logRatio) / (2 * sigma * sigma));
   const rodEfficiencyFactor = 0.62 + 0.38 * elasticityEfficiency;
 
   // 4. 합사 PE 라인 공기저항 계수 (0.8호 기준 = 1.0)
   const lineAirFactor = Math.pow(0.8 / safePE, 0.18);
 
-  // 5. 스풀 림 방출 저항 및 가이드 링 통과 마찰 저항 (Spool Lip & Guide Ring Payout Friction)
-  // 저그램(0.5g~5g) 지그헤드는 초기 운동에너지(E_k = 0.5*m*v^2)가 극히 작아(1g 시 약 0.2J),
-  // 스피닝 릴 스풀 림에서 나선형(Coil)으로 풀려나갈 때의 저항과 초릿대 가이드 링 마찰(Line Slap)에 의해 속도가 급감함.
-  // 특히 라인이 굵을수록(PE 0.4호 초과) 휨 강성(EI ∝ d^4)으로 인해 방출 저항이 비선형적으로 폭증함.
+  // 5. 스풀 림 방출 저항 및 가이드 링 마찰 저항
   let spoolGuideFactor = 1.0;
-  if (safeWeight < 5.5) {
-    const lightDeficit = (5.5 - safeWeight) / 5.0; // 0.5g -> 1.0, 1g -> 0.9, 3g -> 0.5, 5g -> 0.1
-    const lineStiffnessPenalty = Math.max(0, safePE - 0.3) / 0.5; // 0.4호: 0.2, 0.8호: 1.0, 1.5호: 2.4
+  if (safeTotalWeight < 5.5) {
+    const lightDeficit = (5.5 - safeTotalWeight) / 5.0;
+    const lineStiffnessPenalty = Math.max(0, safePE - 0.3) / 0.5;
     const loss = 0.38 * Math.pow(lightDeficit, 1.1) * Math.pow(lineStiffnessPenalty, 0.85);
     spoolGuideFactor = Math.max(0.20, 1.0 - loss);
   }
 
   // 6. 비거리 종합 산출
-  const rawDist = massPotential * lengthFactor * rodEfficiencyFactor * lineAirFactor * spoolGuideFactor;
+  const rawDist = massPotential * lengthFactor * rodEfficiencyFactor * lineAirFactor * spoolGuideFactor * baitAirFactor;
   const distanceMeters = Math.round(Math.max(3, Math.min(125, rawDist)));
 
   return {
     distanceMeters,
     elasticityEfficiency: Math.round(elasticityEfficiency * 100) / 100,
     lengthFactor: Math.round(lengthFactor * 100) / 100,
+    totalWeightGrams: Math.round(safeTotalWeight * 10) / 10,
   };
 }
 
@@ -338,33 +405,41 @@ export function calculateAerodynamicCastingDrift(
  * @param weightGrams 루어/싱커 무게 (g)
  * @param depthMeters 착수 지점 수심 (m)
  * @param currentVelocityMps 실시간 조류 유속 (m/s)
+ * @param baitConfig 미끼 스펙 (무게 합산 및 수중 유체 항력 반영)
  */
 export function calculateSinkingPhysics(
   weightGrams: number,
   depthMeters: number,
-  currentVelocityMps: number = 0.3
+  currentVelocityMps: number = 0.3,
+  baitConfig: BaitConfig = getBaitSpecs('LIVE', 2, 'GRUB')
 ): {
   sinkSpeedMps: number;
   effSinkSpeedMps: number;
   fallTimeSec: number;
   driftDistanceM: number;
+  totalWeightGrams: number;
 } {
-  const safeWeight = Math.max(0.5, Math.min(160, weightGrams));
+  const safeSinkerWeight = Math.max(0.5, Math.min(160, weightGrams));
+  const safeTotalWeight = Math.max(0.5, Math.min(180, safeSinkerWeight + baitConfig.weightGrams));
   const safeDepth = Math.max(1.0, Math.min(60, depthMeters));
   const safeCurrent = Math.max(0.0, Math.min(3.0, currentVelocityMps));
 
-  // 1. 정지 수역 수중 종단 침강 속도 (v_sink = 0.28 * sqrt(W))
-  const rawSinkSpeed = 0.28 * Math.sqrt(safeWeight);
-  const sinkSpeedMps = Math.round(Math.max(0.35, Math.min(3.2, rawSinkSpeed)) * 100) / 100;
+  // 1. 미끼 유체 항력 계수 (기준 2.0 cm² = 1.0)
+  const baitDragRatio = Math.max(0.6, baitConfig.surfaceAreaCm2) / 2.0;
+  const hydroDragFactor = Math.pow(1.0 / baitDragRatio, 0.25);
 
-  // 2. 조류에 의한 원줄(합사) 배불뚝이(Belly) 양력 감쇄 효과
+  // 2. 정지 수역 수중 종단 침강 속도 (v_sink = 0.28 * sqrt(W_total) * hydroDrag)
+  const rawSinkSpeed = 0.28 * Math.sqrt(safeTotalWeight) * hydroDragFactor;
+  const sinkSpeedMps = Math.round(Math.max(0.20, Math.min(3.5, rawSinkSpeed)) * 100) / 100;
+
+  // 3. 조류에 의한 원줄(합사) 배불뚝이(Belly) 양력 감쇄 효과
   const currentRatio = safeCurrent / (0.6 * sinkSpeedMps);
   const effSinkSpeedMps = Math.round((sinkSpeedMps / Math.sqrt(1 + currentRatio * currentRatio)) * 100) / 100;
 
-  // 3. 바닥 안착(폴링) 총 소요 시간 (초)
-  const fallTimeSec = Math.max(1, Math.round(safeDepth / Math.max(0.2, effSinkSpeedMps)));
+  // 4. 바닥 안착(폴링) 총 소요 시간 (초)
+  const fallTimeSec = Math.max(1, Math.round(safeDepth / Math.max(0.15, effSinkSpeedMps)));
 
-  // 4. 침강 중 조류 방향으로 밀려가는 흘림 거리 (m)
+  // 5. 침강 중 조류 방향으로 밀려가는 흘림 거리 (m)
   const driftDistanceM = Math.round(safeCurrent * fallTimeSec * 10) / 10;
 
   return {
@@ -372,6 +447,7 @@ export function calculateSinkingPhysics(
     effSinkSpeedMps,
     fallTimeSec,
     driftDistanceM,
+    totalWeightGrams: Math.round(safeTotalWeight * 10) / 10,
   };
 }
 
@@ -380,6 +456,9 @@ export function getSavedTackleConfig(): TackleRigConfig {
   let pe = 1.0;
   let rodPower: RodPower = 'M';
   let rodLengthM = 2.6; // 기본 8.6ft = 2.6m
+  let baitType: BaitType = 'LIVE';
+  let baitLength = 2;
+  let baitShape: LureShape = 'GRUB';
 
   if (typeof window !== 'undefined') {
     try {
@@ -388,6 +467,9 @@ export function getSavedTackleConfig(): TackleRigConfig {
       const savedPower = localStorage.getItem(KEY_ROD_POWER) as string | null;
       const savedLenM = localStorage.getItem(KEY_ROD_LENGTH_M);
       const savedLenFt = localStorage.getItem(KEY_ROD_LENGTH);
+      const savedBaitType = localStorage.getItem(KEY_BAIT_TYPE) as BaitType | null;
+      const savedBaitLen = localStorage.getItem(KEY_BAIT_LENGTH);
+      const savedBaitShape = localStorage.getItem(KEY_BAIT_SHAPE) as LureShape | null;
 
       if (savedW) weight = parseFloat(savedW) || 25;
       if (savedPE) pe = parseFloat(savedPE) || 1.0;
@@ -405,6 +487,12 @@ export function getSavedTackleConfig(): TackleRigConfig {
         const ft = parseFloat(savedLenFt) || 8.6;
         rodLengthM = Math.round(ft * 0.3048 * 10) / 10;
       }
+
+      if (savedBaitType === 'LIVE' || savedBaitType === 'LURE') baitType = savedBaitType;
+      if (savedBaitLen) baitLength = parseInt(savedBaitLen, 10) || 2;
+      if (savedBaitShape && ['GRUB', 'SHAD', 'STRAIGHT', 'MINNOW'].includes(savedBaitShape)) {
+        baitShape = savedBaitShape;
+      }
     } catch {
       // ignore
     }
@@ -420,11 +508,14 @@ export function getSavedTackleConfig(): TackleRigConfig {
     rodLengthM = Math.max(1.6, Math.min(3.0, rodLengthM));
   }
 
-  const { distanceMeters, elasticityEfficiency, lengthFactor } = calculateCalibratedDistance(
+  const baitConfig = getBaitSpecs(baitType, baitLength, baitShape);
+
+  const { distanceMeters, elasticityEfficiency, lengthFactor, totalWeightGrams } = calculateCalibratedDistance(
     weight,
     pe,
     rodPower,
-    rodLengthM
+    rodLengthM,
+    baitConfig
   );
 
   const rodLengthFt = Math.round(rodLengthM * 3.28084 * 10) / 10;
@@ -434,6 +525,8 @@ export function getSavedTackleConfig(): TackleRigConfig {
 
   return {
     weightGrams: weight,
+    totalWeightGrams,
+    baitConfig,
     peLineSize: pe,
     rodType,
     rodPower,
@@ -450,7 +543,10 @@ export function saveTackleConfig(
   weightGrams: number,
   peLineSize: number,
   rodPower?: RodPower,
-  rodLength?: number // m 단위 (만약 6.0 이상이면 ft로 간주하여 m로 변환)
+  rodLength?: number, // m 단위 (만약 6.0 이상이면 ft로 간주하여 m로 변환)
+  baitType?: BaitType,
+  baitLength?: number,
+  baitShape?: LureShape
 ): TackleRigConfig {
   if (typeof window !== 'undefined') {
     try {
@@ -462,7 +558,6 @@ export function saveTackleConfig(
       if (finalPower) localStorage.setItem(KEY_ROD_POWER, finalPower);
 
       if (rodLength !== undefined) {
-        // 6.0보다 크고 원투 규격(2.7, 3.3, 4.2, 4.5, 5.4)이 아니면 ft 단위로 간주
         let lengthM = rodLength;
         if (rodLength > 6.0) {
           lengthM = Math.round(rodLength * 0.3048 * 10) / 10;
@@ -471,9 +566,13 @@ export function saveTackleConfig(
         localStorage.setItem(KEY_ROD_LENGTH, String(Math.round(lengthM * 3.28084 * 10) / 10));
       }
 
+      if (baitType) localStorage.setItem(KEY_BAIT_TYPE, baitType);
+      if (baitLength !== undefined) localStorage.setItem(KEY_BAIT_LENGTH, String(baitLength));
+      if (baitShape) localStorage.setItem(KEY_BAIT_SHAPE, baitShape);
+
       window.dispatchEvent(
         new CustomEvent('exfish_tackle_updated', {
-          detail: { weightGrams, peLineSize, rodPower: finalPower, rodLength },
+          detail: { weightGrams, peLineSize, rodPower: finalPower, rodLength, baitType, baitLength, baitShape },
         })
       );
     } catch {

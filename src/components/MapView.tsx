@@ -26,6 +26,10 @@ import {
   WEIGHT_PRESETS,
   WeightCategory,
   getWeightDescription,
+  BaitType,
+  LureShape,
+  LURE_SHAPE_NAMES,
+  getBaitSpecs,
 } from '../utils/tackleCalibration';
 import {
   getNativeLocation,
@@ -207,6 +211,20 @@ export const MapView: React.FC<MapViewProps> = ({
   const [tempSweetSpots, setTempSweetSpots] = React.useState<SweetSpot[]>([]);
   const [isAddingSweetSpot, setIsAddingSweetSpot] = React.useState(false);
   const [selectedNewRadius, setSelectedNewRadius] = React.useState<number>(10);
+  // [요구사항 2-1-6] 추가 중인 스윗 스팟 초안 (위치/반지름/노트는 '추가' 승인 전까지 자유롭게 변경)
+  const [draftSweetPos, setDraftSweetPos] = React.useState<{ lat: number; lng: number } | null>(null);
+  const [draftSweetNote, setDraftSweetNote] = React.useState('');
+  // [요구사항 2-1-5] 삭제 확인용 인앱 다이얼로그 (네이티브 confirm 중복/도메인 표기 제거)
+  const [pendingDeleteSweetIdx, setPendingDeleteSweetIdx] = React.useState<number | null>(null);
+  // [요구사항 2-2] 노트 전체 보기 (클릭/hover)
+  const [expandedSweetId, setExpandedSweetId] = React.useState<string | null>(null);
+
+  // [요구사항 1-1, 1-2] 멀티터치(핀치 줌) 및 클릭 분기용 Ref
+  const activeTouchCountRef = React.useRef(0);
+  const lastMultiTouchAtRef = React.useRef(0);
+  const pressStartPosRef = React.useRef<{ x: number; y: number } | null>(null);
+  const skipAutoRecenterRef = React.useRef(false);
+  const isCoarsePointer = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
   // 나만의 즐겨찾기(찜한 포인트) 목록
   const [internalFavoriteSpotIds, setInternalFavoriteSpotIds] = React.useState<string[]>(() => {
@@ -453,6 +471,62 @@ export const MapView: React.FC<MapViewProps> = ({
     setTempSweetSpots(spot.sweet_spots || []);
     setIsAddingSweetSpot(false);
     setSelectedNewRadius(10);
+    setDraftSweetPos(null);
+    setDraftSweetNote('');
+    setPendingDeleteSweetIdx(null);
+  };
+
+  // [요구사항 2-1-6] 스윗 스팟 변경 시 즉시 DB 반영
+  const persistSweetSpots = async (nextSpots: SweetSpot[], nextUse: boolean) => {
+    setTempSweetSpots(nextSpots);
+    setTempUseSweetSpot(nextUse);
+    if (!sweetSpotConfigSpot || !onUpdateSpot) return;
+    const updated: FishingSpot = {
+      ...sweetSpotConfigSpot,
+      use_sweet_spot: nextUse,
+      sweet_spots: nextSpots,
+    };
+    setSweetSpotConfigSpot(updated);
+    await onUpdateSpot(updated);
+  };
+
+  const handleStartAddSweetSpot = () => {
+    if (tempSweetSpots.length >= 3) return;
+    setIsAddingSweetSpot(true);
+    setDraftSweetPos(null);
+    setDraftSweetNote('');
+    setSelectedNewRadius(10);
+  };
+
+  const handleCancelAddSweetSpot = () => {
+    setIsAddingSweetSpot(false);
+    setDraftSweetPos(null);
+    setDraftSweetNote('');
+  };
+
+  const handleConfirmAddSweetSpot = async () => {
+    if (!sweetSpotConfigSpot || !draftSweetPos || tempSweetSpots.length >= 3) return;
+    const { distance, bearing } = calculateDistanceAndBearing(
+      sweetSpotConfigSpot.lat,
+      sweetSpotConfigSpot.lng,
+      draftSweetPos.lat,
+      draftSweetPos.lng
+    );
+    const newSpotItem: SweetSpot = {
+      id: `ss-${Date.now()}`,
+      direction: bearing,
+      distance: Math.min(200, Math.max(1, distance)),
+      radius: selectedNewRadius,
+      memo: draftSweetNote.trim(),
+    };
+    handleCancelAddSweetSpot();
+    await persistSweetSpots([...tempSweetSpots, newSpotItem], true);
+  };
+
+  const handleCloseSweetSpotConfig = () => {
+    handleCancelAddSweetSpot();
+    setPendingDeleteSweetIdx(null);
+    setSweetSpotConfigSpot(null);
   };
 
   const handleSaveSweetSpotConfig = async () => {
@@ -466,10 +540,9 @@ export const MapView: React.FC<MapViewProps> = ({
     setIsAddingSweetSpot(false);
   };
 
-  const handleDeleteTempSweetSpot = (idx: number) => {
-    if (window.confirm('이 스윗 스팟을 삭제하시겠습니까?')) {
-      setTempSweetSpots((prev) => prev.filter((_, i) => i !== idx));
-    }
+  const handleDeleteTempSweetSpot = async (idx: number) => {
+    setPendingDeleteSweetIdx(null);
+    await persistSweetSpots(tempSweetSpots.filter((_, i) => i !== idx), tempUseSweetSpot);
   };
 
   // 현재 GPS 위치 가져오기 핸들러 (네이티브 FusedLocation & 브라우저 통합)
@@ -535,6 +608,10 @@ export const MapView: React.FC<MapViewProps> = ({
       return;
     }
     if (selectedSpot && !microAdjustSpot) {
+      if (skipAutoRecenterRef.current) {
+        skipAutoRecenterRef.current = false;
+        return;
+      }
       setCenter({ lat: selectedSpot.lat, lng: selectedSpot.lng });
       setLevel(2); // 포인트 클릭 시 줌 레벨 한 단계 더 확대 (레벨 2)
       setPendingNewSpot(null);
@@ -679,17 +756,43 @@ export const MapView: React.FC<MapViewProps> = ({
         onMouseUp={handlePointerUp}
         onMouseLeave={handlePointerUp}
         onTouchStart={(e) => {
+          activeTouchCountRef.current = e.touches.length;
+          if (e.touches.length > 1) {
+            lastMultiTouchAtRef.current = Date.now();
+            if (longPressTimerRef.current) {
+              clearTimeout(longPressTimerRef.current);
+              longPressTimerRef.current = null;
+            }
+          }
           if (e.touches.length === 1) {
             handlePointerDown(e.touches[0].clientX, e.touches[0].clientY);
           }
         }}
         onTouchMove={(e) => {
+          activeTouchCountRef.current = e.touches.length;
+          if (e.touches.length > 1) {
+            lastMultiTouchAtRef.current = Date.now();
+            if (longPressTimerRef.current) {
+              clearTimeout(longPressTimerRef.current);
+              longPressTimerRef.current = null;
+            }
+          }
           if (e.touches.length === 1) {
             handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
           }
         }}
-        onTouchEnd={handlePointerUp}
-        onTouchCancel={handlePointerUp}
+        onTouchEnd={(e) => {
+          activeTouchCountRef.current = e.touches.length;
+          if (e.touches.length > 0) {
+            lastMultiTouchAtRef.current = Date.now();
+          }
+          handlePointerUp();
+        }}
+        onTouchCancel={() => {
+          activeTouchCountRef.current = 0;
+          lastMultiTouchAtRef.current = Date.now();
+          handlePointerUp();
+        }}
         onWheel={(e) => {
           if (level === 1) {
             if (e.deltaY < 0 && digitalZoom < 3.0) {
@@ -725,25 +828,9 @@ export const MapView: React.FC<MapViewProps> = ({
             const clickedLat = latLng.getLat();
             const clickedLng = latLng.getLng();
 
-            // [요구사항 4-4] 스윗 스팟 추가 모드일 때 클릭한 위치에 스윗스팟 원 생성
+            // [요구사항 2-1-6] 스윗 스팟 추가 모드: 지도를 누를 때마다 초안 위치 변경 ('추가' 버튼으로 최종 승인)
             if (sweetSpotConfigSpot && isAddingSweetSpot) {
-              if (tempSweetSpots.length < 3) {
-                const { distance, bearing } = calculateDistanceAndBearing(
-                  sweetSpotConfigSpot.lat,
-                  sweetSpotConfigSpot.lng,
-                  clickedLat,
-                  clickedLng
-                );
-                const newSpotItem: SweetSpot = {
-                  id: `ss-${Date.now()}-${tempSweetSpots.length + 1}`,
-                  direction: bearing,
-                  distance: Math.min(200, Math.max(1, distance)),
-                  radius: selectedNewRadius,
-                  memo: '',
-                };
-                setTempSweetSpots((prev) => [...prev, newSpotItem]);
-                setIsAddingSweetSpot(false);
-              }
+              setDraftSweetPos({ lat: clickedLat, lng: clickedLng });
               return;
             }
 
@@ -902,6 +989,9 @@ export const MapView: React.FC<MapViewProps> = ({
             }
           }
 
+          // [요구사항 2-4] 캐스팅 방향이 없으면(보이지 않으면) 예상 비거리 관련 표시 생략, 풍향·풍속·조류는 유지
+          const hasCasting = startDeg !== undefined && endDeg !== undefined;
+
           if (startDeg === undefined || endDeg === undefined) {
             startDeg = 45;
             endDeg = 135;
@@ -1040,6 +1130,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   </div>
                 </CustomOverlayMap>
 
+                {hasCasting && (<>
                 {/* 2. 바람 없을 때의 원래 목표 호선 (은은한 점선 기준선) */}
                 <Polyline
                   path={targetArcPts}
@@ -1134,6 +1225,7 @@ export const MapView: React.FC<MapViewProps> = ({
                     )}
                   </div>
                 </CustomOverlayMap>
+                </>)}
               </React.Fragment>
             );
           }
@@ -1141,7 +1233,9 @@ export const MapView: React.FC<MapViewProps> = ({
           // 3. 실시간 조류 흘림선 (Drift Path)
           let currentElements = null;
           if (marine && (marine.currentVelocity ?? 0) > 0.05) {
-            const landing = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, 50);
+            const landing = hasCasting
+              ? calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, 50)
+              : [selectedSpot.lat, selectedSpot.lng];
             const driftDist = Math.max(18, Math.min(45, (marine.currentVelocity ?? 0.3) * 65));
             const driftEnd = calculateDestinationPoint(landing[0], landing[1], marine.currentDirection, driftDist);
             const driftMid = calculateDestinationPoint(landing[0], landing[1], marine.currentDirection, driftDist * 0.5);
@@ -1177,7 +1271,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
           return (
             <React.Fragment key={`selected-hud-${selectedSpot.id}`}>
-              {castingLines}
+              {hasCasting && castingLines}
               {windElements}
               {currentElements}
             </React.Fragment>
@@ -1237,34 +1331,50 @@ export const MapView: React.FC<MapViewProps> = ({
                       yAnchor={0.5}
                       xAnchor={0.5}
                       zIndex={40}
-                      clickable={isConfig}
+                      clickable={true}
                     >
-                      <div className="flex flex-col items-center select-none kakao-invert-restore whitespace-nowrap animate-in fade-in zoom-in-75 duration-200">
-                        <div className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black shadow-lg border border-white/80 flex items-center gap-1.5">
-                          <span>🎯 #{idx + 1}</span>
-                          <span>{ss.distance}m (r:{ss.radius}m)</span>
-                          {isConfig && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (window.confirm(`스윗 스팟 #${idx + 1}을(를) 삭제하시겠습니까?`)) {
-                                  handleDeleteTempSweetSpot(idx);
-                                }
-                              }}
-                              className="ml-1 px-1 py-0.2 rounded bg-rose-600 hover:bg-rose-700 text-white font-bold text-[9px] shadow active:scale-95 transition pointer-events-auto cursor-pointer"
-                              title="스윗 스팟 삭제"
-                            >
-                              ✕ 삭제
-                            </button>
-                          )}
-                        </div>
-                        {ss.memo && (
-                          <div className="mt-0.5 px-1.5 py-0.2 rounded bg-slate-950/90 text-amber-200 border border-amber-500/50 text-[9px] font-medium shadow max-w-[120px] truncate">
-                            {ss.memo}
+                      {(() => {
+                        const ssKey = ss.id || `idx-${idx}`;
+                        const isExpanded = expandedSweetId === ssKey;
+                        const memo = ss.memo || '';
+                        const shortMemo = memo.length > 10 ? `${memo.slice(0, 10)}…` : memo;
+                        return (
+                          <div
+                            className="flex flex-col items-center select-none kakao-invert-restore whitespace-nowrap animate-in fade-in zoom-in-75 duration-200 cursor-pointer"
+                            onMouseEnter={() => setExpandedSweetId(ssKey)}
+                            onMouseLeave={() => setExpandedSweetId((prev) => (prev === ssKey ? null : prev))}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              isMarkerClickRef.current = true;
+                              setExpandedSweetId((prev) => (prev === ssKey ? null : ssKey));
+                            }}
+                          >
+                            <div className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black shadow-lg border border-white/80 flex items-center gap-1.5">
+                              <span>{ss.distance}m</span>
+                              {shortMemo && !isExpanded && <span className="font-semibold">{shortMemo}</span>}
+                              {isConfig && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    isMarkerClickRef.current = true;
+                                    setPendingDeleteSweetIdx(idx);
+                                  }}
+                                  className="ml-0.5 px-1 py-0.2 rounded bg-rose-600 hover:bg-rose-700 text-white font-bold text-[9px] shadow active:scale-95 transition pointer-events-auto cursor-pointer"
+                                  title="스윗 스팟 삭제"
+                                >
+                                  ✕ 삭제
+                                </button>
+                              )}
+                            </div>
+                            {isExpanded && memo && (
+                              <div className="mt-0.5 px-2 py-1 rounded-lg bg-slate-950/95 text-amber-200 border border-amber-500/60 text-[10px] font-medium shadow-lg max-w-[200px] whitespace-normal break-words text-center">
+                                {memo}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
+                        );
+                      })()}
                     </CustomOverlayMap>
                   </React.Fragment>
                 );
@@ -1272,6 +1382,36 @@ export const MapView: React.FC<MapViewProps> = ({
             </React.Fragment>
           );
         })()}
+
+        {/* [요구사항 2-1-6] 추가 중인 스윗 스팟 초안 미리보기 (지도를 누를 때마다 위치 갱신) */}
+        {sweetSpotConfigSpot && isAddingSweetSpot && draftSweetPos && (
+          <React.Fragment key="sweet-spot-draft">
+            <Circle
+              center={draftSweetPos}
+              radius={selectedNewRadius}
+              strokeWeight={2.5}
+              strokeColor="#fde047"
+              strokeOpacity={1}
+              strokeStyle="dash"
+              fillColor="#fde047"
+              fillOpacity={0.3}
+              zIndex={39}
+            />
+            <Polyline
+              path={[{ lat: sweetSpotConfigSpot.lat, lng: sweetSpotConfigSpot.lng }, draftSweetPos]}
+              strokeWeight={1.5}
+              strokeColor="#fde047"
+              strokeOpacity={0.8}
+              strokeStyle="dash"
+              zIndex={37}
+            />
+            <CustomOverlayMap position={draftSweetPos} yAnchor={0.5} xAnchor={0.5} zIndex={41} clickable={false}>
+              <div className="px-1.5 py-0.5 rounded-full bg-yellow-300 text-slate-950 text-[10px] font-black shadow-lg border border-white pointer-events-none kakao-invert-restore whitespace-nowrap">
+                {calculateDistanceAndBearing(sweetSpotConfigSpot.lat, sweetSpotConfigSpot.lng, draftSweetPos.lat, draftSweetPos.lng).distance}m
+              </div>
+            </CustomOverlayMap>
+          </React.Fragment>
+        )}
 
         {/* 내 현재 GPS 위치 마커 & 수평 오차 반경 원 (Virtual Crosshair Accuracy Circle) */}
         {myLocation && (
@@ -1396,15 +1536,35 @@ export const MapView: React.FC<MapViewProps> = ({
                   onPointerDown={(e) => {
                     e.stopPropagation();
                     isLongPressTriggeredRef.current = false;
+                    // [요구사항 1-2] 핀치 줌(멀티터치) 중에는 롱프레스 메뉴 비활성화
+                    if (activeTouchCountRef.current > 1 || Date.now() - lastMultiTouchAtRef.current < 600) {
+                      return;
+                    }
+                    pressStartPosRef.current = { x: e.clientX, y: e.clientY };
+                    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
                     longPressTimerRef.current = setTimeout(() => {
+                      longPressTimerRef.current = null;
+                      if (activeTouchCountRef.current > 1 || Date.now() - lastMultiTouchAtRef.current < 600) return;
                       isLongPressTriggeredRef.current = true;
                       isMarkerClickRef.current = true;
                       setContextMenuSpot(spot);
-                      onSelectSpot(spot);
                       triggerHaptic('medium');
                     }, 500);
                   }}
-                  onPointerUp={(e) => {
+                  onPointerMove={(e) => {
+                    const start = pressStartPosRef.current;
+                    if (start && longPressTimerRef.current && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) {
+                      clearTimeout(longPressTimerRef.current);
+                      longPressTimerRef.current = null;
+                    }
+                  }}
+                  onPointerUp={() => {
+                    if (longPressTimerRef.current) {
+                      clearTimeout(longPressTimerRef.current);
+                      longPressTimerRef.current = null;
+                    }
+                  }}
+                  onPointerCancel={() => {
                     if (longPressTimerRef.current) {
                       clearTimeout(longPressTimerRef.current);
                       longPressTimerRef.current = null;
@@ -1418,9 +1578,10 @@ export const MapView: React.FC<MapViewProps> = ({
                   }}
                   onDoubleClick={(e) => {
                     e.stopPropagation();
+                    // [요구사항 1-2] 터치 기기(모바일)는 더블클릭 대신 롱프레스만 사용 → 핀치 줌 오작동 방지
+                    if (isCoarsePointer) return;
                     isMarkerClickRef.current = true;
                     setContextMenuSpot(spot);
-                    onSelectSpot(spot);
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1429,8 +1590,16 @@ export const MapView: React.FC<MapViewProps> = ({
                       isLongPressTriggeredRef.current = false;
                       return;
                     }
-                    onSelectSpot(spot);
+                    if (Date.now() - lastMultiTouchAtRef.current < 600) return;
                     setPendingNewSpot(null);
+                    setContextMenuSpot(null);
+                    // [요구사항 1-1] 짧게 클릭: 뷰 리셋/재정렬 없이 상세보기 표시
+                    skipAutoRecenterRef.current = true;
+                    if (onOpenDetail) {
+                      onOpenDetail(spot);
+                    } else {
+                      onSelectSpot(spot);
+                    }
                   }}
                   className="relative flex items-center justify-center cursor-pointer group kakao-invert-restore"
                   title={`${spot.name} (클릭: 선택/상세, 길게 누르거나 더블클릭: 메뉴)`}
@@ -1745,351 +1914,535 @@ export const MapView: React.FC<MapViewProps> = ({
           </div>
         </div>
 
-        {/* 채비 및 로드 탄성 공기역학 캘리브레이션 플로팅 팝업 (폰트 1pt+ 확대) */}
+        {/* [요구사항 2-6] 비거리 예측 팝오버 (상단 고정 예측치 + 하단 스크롤 설정) */}
         {isTacklePopoverOpen && (
-          <div className="w-84 sm:w-96 max-w-[95vw] max-h-[85vh] overflow-y-auto bg-slate-950/95 border border-cyan-500/60 rounded-2xl p-3.5 shadow-2xl backdrop-blur text-white flex flex-col gap-3 animate-fade-in text-sm pointer-events-auto">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-              <div className="flex items-center gap-1.5 font-bold text-cyan-300 text-sm sm:text-base">
-                <Sliders size={16} className="text-cyan-400" />
-                <span>장비·채비 공기역학 캘리브레이터</span>
-              </div>
-              <button
-                onClick={() => setIsTacklePopoverOpen(false)}
-                className="text-slate-400 hover:text-white text-xs px-2 py-0.5 rounded bg-slate-800"
-              >
-                닫기
-              </button>
-            </div>
-
-            {/* 1. 로드 구분 (루어대 vs 원투대) */}
-            <div className="space-y-1.5">
-              <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800">
+          <div className="w-84 sm:w-96 max-w-[95vw] max-h-[85vh] bg-slate-950/95 border border-cyan-500/60 rounded-2xl shadow-2xl backdrop-blur text-white flex flex-col animate-fade-in text-sm pointer-events-auto overflow-hidden">
+            {/* [요구사항 2-6-10] 상단 고정 헤더: 타이틀, 닫기 버튼, 예상 비거리, 예상 바닥 안착 카운트 */}
+            <div className="p-3 border-b border-slate-800 bg-slate-900/90 flex flex-col gap-2 shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 font-bold text-cyan-300 text-sm sm:text-base">
+                  <Sliders size={16} className="text-cyan-400" />
+                  <span>비거리 예측</span>
+                </div>
                 <button
-                  type="button"
-                  onClick={() => {
-                    const newPower: RodPower = 'ML';
-                    const newLenM = 2.6;
-                    const updated = saveTackleConfig(tackleConfig.weightGrams, tackleConfig.peLineSize, newPower, newLenM);
-                    setTackleConfig(updated);
-                  }}
-                  className={`flex-1 py-1.5 text-center text-xs sm:text-sm font-bold rounded-md transition ${
-                    tackleConfig.rodType === 'LURE'
-                      ? 'bg-cyan-500 text-slate-950 shadow'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
+                  onClick={() => setIsTacklePopoverOpen(false)}
+                  className="text-slate-400 hover:text-white text-xs px-2.5 py-1 rounded-md bg-slate-800 transition active:scale-95"
                 >
-                  🎣 루어대 (UL ~ H)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newPower: RodPower = 'SURF';
-                    const newLenM = 4.2;
-                    const newW = tackleConfig.weightGrams < 20 ? 93.8 : tackleConfig.weightGrams;
-                    const updated = saveTackleConfig(newW, tackleConfig.peLineSize, newPower, newLenM);
-                    setTackleConfig(updated);
-                    setSelectedWeightCategory('SURF');
-                  }}
-                  className={`flex-1 py-1.5 text-center text-xs sm:text-sm font-bold rounded-md transition ${
-                    tackleConfig.rodType === 'SURF'
-                      ? 'bg-amber-500 text-slate-950 shadow'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  🌊 원투대 (서프 8~40호)
+                  닫기
                 </button>
               </div>
 
-              {/* 루어대: 파워 6개 선택 & 1.6~3.0m 전장 */}
-              {tackleConfig.rodType === 'LURE' ? (
-                <div className="space-y-2 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
-                  <div className="flex justify-between items-center text-xs sm:text-sm">
-                    <span className="text-slate-300">루어대 파워 등급:</span>
-                    <span className="font-mono font-bold text-cyan-300">
-                      {tackleConfig.rodPower} (최적 {ROD_POWER_SPECS[tackleConfig.rodPower]?.optWeightG}g)
+              {/* [요구사항 2-6-8, 2-6-10, 2-6-11] 예상 비거리 및 수심별 바닥 안착 카운트 고정 표시 */}
+              <div className="bg-slate-950/80 rounded-xl p-2.5 border border-cyan-500/30 space-y-2">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-xs text-slate-300 font-medium">예상 비거리</span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xl font-bold font-mono text-cyan-300 tracking-tight">
+                      {tackleConfig.calibratedDistanceMeters}m
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      (총 {tackleConfig.totalWeightGrams ?? tackleConfig.weightGrams}g)
                     </span>
                   </div>
-                  <div className="grid grid-cols-6 gap-1">
-                    {(['UL', 'L', 'ML', 'M', 'MH', 'H'] as RodPower[]).map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => {
-                          const updated = saveTackleConfig(
-                            tackleConfig.weightGrams,
-                            tackleConfig.peLineSize,
-                            p,
-                            tackleConfig.rodLengthM
-                          );
-                          setTackleConfig(updated);
-                        }}
-                        className={`py-1.5 rounded text-xs font-bold font-mono transition ${
-                          tackleConfig.rodPower === p
-                            ? 'bg-cyan-500 text-slate-950 shadow ring-1 ring-cyan-300'
-                            : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="text-[10.5px] sm:text-xs text-cyan-400/90 leading-tight">
-                    * {ROD_POWER_SPECS[tackleConfig.rodPower]?.description}
-                  </div>
+                </div>
 
-                  {/* 루어대 전장 1.6m ~ 3.0m (ft 동시 표기) */}
-                  <div className="space-y-1.5 pt-1.5 border-t border-slate-800/80">
+                {/* [요구사항 2-6-8, 2-6-11] 예상 바닥 안착 카운트 (3m, 5m, 10m, 20m, 모바일에서는 '수심' 생략) */}
+                <div className="pt-1.5 border-t border-slate-800/80">
+                  <div className="text-[11px] text-slate-400 mb-1 flex items-center justify-between">
+                    <span>예상 바닥 안착 카운트</span>
+                    <span className="text-[10px] text-emerald-400/80 font-mono">
+                      (유속 {marine?.currentVelocity ?? 0.3}m/s)
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1 text-center font-mono">
+                    {[3, 5, 10, 20].map((d) => {
+                      const sinkRes = calculateSinkingPhysics(
+                        tackleConfig.weightGrams,
+                        d,
+                        marine?.currentVelocity ?? 0.3,
+                        tackleConfig.baitConfig
+                      );
+                      return (
+                        <div key={d} className="bg-slate-900/90 py-1 px-0.5 rounded border border-slate-800/80">
+                          <div className="text-[10px] text-slate-400">
+                            {isCoarsePointer ? `${d}m` : `수심 ${d}m`}
+                          </div>
+                          <div className="text-xs font-bold text-emerald-300">
+                            {sinkRes.fallTimeSec}초
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* [요구사항 2-6-9] 스크롤 가능한 상세 설정 영역 */}
+            <div className="p-3 overflow-y-auto max-h-[60vh] space-y-3.5 divide-y divide-slate-800/60">
+              {/* 1. 로드 구분 (루어대 vs 원투대) */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newPower: RodPower = 'ML';
+                      const newLenM = 2.6;
+                      const updated = saveTackleConfig(
+                        tackleConfig.weightGrams,
+                        tackleConfig.peLineSize,
+                        newPower,
+                        newLenM,
+                        tackleConfig.baitConfig?.type,
+                        tackleConfig.baitConfig?.lengthInches,
+                        tackleConfig.baitConfig?.shape
+                      );
+                      setTackleConfig(updated);
+                    }}
+                    className={`flex-1 py-1.5 text-center text-xs sm:text-sm font-bold rounded-md transition ${
+                      tackleConfig.rodType === 'LURE'
+                        ? 'bg-cyan-500 text-slate-950 shadow'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    🎣 루어대
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newPower: RodPower = 'SURF';
+                      const newLenM = 4.2;
+                      const newW = tackleConfig.weightGrams < 20 ? 93.8 : tackleConfig.weightGrams;
+                      const updated = saveTackleConfig(
+                        newW,
+                        tackleConfig.peLineSize,
+                        newPower,
+                        newLenM,
+                        tackleConfig.baitConfig?.type,
+                        tackleConfig.baitConfig?.lengthInches,
+                        tackleConfig.baitConfig?.shape
+                      );
+                      setTackleConfig(updated);
+                      setSelectedWeightCategory('SURF');
+                    }}
+                    className={`flex-1 py-1.5 text-center text-xs sm:text-sm font-bold rounded-md transition ${
+                      tackleConfig.rodType === 'SURF'
+                        ? 'bg-amber-500 text-slate-950 shadow'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    🌊 원투대
+                  </button>
+                </div>
+
+                {/* 루어대: 파워 등급 & 1.6~3.0m 전장 */}
+                {tackleConfig.rodType === 'LURE' ? (
+                  <div className="space-y-2 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
                     <div className="flex justify-between items-center text-xs sm:text-sm">
-                      <span className="text-slate-300">루어대 전장:</span>
+                      <span className="text-slate-300">루어대 파워 등급:</span>
                       <span className="font-mono font-bold text-cyan-300">
-                        {tackleConfig.rodLengthM.toFixed(1)}m ({tackleConfig.rodLengthFt.toFixed(1)}ft)
+                        {tackleConfig.rodPower} (최적 {ROD_POWER_SPECS[tackleConfig.rodPower]?.optWeightG}g)
                       </span>
                     </div>
-                    <input
-                      type="range"
-                      min={1.6}
-                      max={3.0}
-                      step={0.1}
-                      value={tackleConfig.rodLengthM}
-                      onChange={(e) => {
-                        const lenM = Number(e.target.value);
-                        const updated = saveTackleConfig(
-                          tackleConfig.weightGrams,
-                          tackleConfig.peLineSize,
-                          tackleConfig.rodPower,
-                          lenM
-                        );
-                        setTackleConfig(updated);
-                      }}
-                      className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                    />
-                    <div className="flex flex-wrap gap-1">
-                      {[
-                        { m: 1.8, label: '1.8m (5.9ft)' },
-                        { m: 2.1, label: '2.1m (6.9ft)' },
-                        { m: 2.4, label: '2.4m (7.9ft)' },
-                        { m: 2.6, label: '2.6m (8.6ft)' },
-                        { m: 3.0, label: '3.0m (9.8ft)' },
-                      ].map((item) => (
+                    <div className="grid grid-cols-6 gap-1">
+                      {(['UL', 'L', 'ML', 'M', 'MH', 'H'] as RodPower[]).map((p) => (
                         <button
-                          key={item.m}
+                          key={p}
                           type="button"
                           onClick={() => {
                             const updated = saveTackleConfig(
                               tackleConfig.weightGrams,
                               tackleConfig.peLineSize,
-                              tackleConfig.rodPower,
-                              item.m
+                              p,
+                              tackleConfig.rodLengthM,
+                              tackleConfig.baitConfig?.type,
+                              tackleConfig.baitConfig?.lengthInches,
+                              tackleConfig.baitConfig?.shape
                             );
                             setTackleConfig(updated);
                           }}
-                          className={`px-2 py-0.5 rounded text-[10.5px] sm:text-xs font-mono transition ${
-                            Math.abs(tackleConfig.rodLengthM - item.m) < 0.05
-                              ? 'bg-cyan-500/30 text-cyan-200 border border-cyan-400/80 font-bold'
-                              : 'bg-slate-900/90 text-slate-400 hover:text-slate-200 border border-slate-800'
+                          className={`py-1.5 rounded text-xs font-bold font-mono transition ${
+                            tackleConfig.rodPower === p
+                              ? 'bg-cyan-500 text-slate-950 shadow ring-1 ring-cyan-300'
+                              : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
                           }`}
                         >
-                          {item.label}
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="text-[10.5px] sm:text-xs text-cyan-400/90 leading-tight">
+                      * {ROD_POWER_SPECS[tackleConfig.rodPower]?.description}
+                    </div>
+
+                    {/* [요구사항 2-6-4] 루어대 전장 버튼에 feet 표기 생략 (m만 표기) */}
+                    <div className="space-y-1.5 pt-1.5 border-t border-slate-800/80">
+                      <div className="flex justify-between items-center text-xs sm:text-sm">
+                        <span className="text-slate-300">루어대 전장:</span>
+                        <span className="font-mono font-bold text-cyan-300">
+                          {tackleConfig.rodLengthM.toFixed(1)}m
+                        </span>
+                      </div>
+                      <div className="px-1">
+                        <input
+                          type="range"
+                          min={1.6}
+                          max={3.0}
+                          step={0.1}
+                          value={tackleConfig.rodLengthM}
+                          onChange={(e) => {
+                            const lenM = Number(e.target.value);
+                            const updated = saveTackleConfig(
+                              tackleConfig.weightGrams,
+                              tackleConfig.peLineSize,
+                              tackleConfig.rodPower,
+                              lenM,
+                              tackleConfig.baitConfig?.type,
+                              tackleConfig.baitConfig?.lengthInches,
+                              tackleConfig.baitConfig?.shape
+                            );
+                            setTackleConfig(updated);
+                          }}
+                          className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {[1.8, 2.1, 2.4, 2.6, 3.0].map((mVal) => (
+                          <button
+                            key={mVal}
+                            type="button"
+                            onClick={() => {
+                              const updated = saveTackleConfig(
+                                tackleConfig.weightGrams,
+                                tackleConfig.peLineSize,
+                                tackleConfig.rodPower,
+                                mVal,
+                                tackleConfig.baitConfig?.type,
+                                tackleConfig.baitConfig?.lengthInches,
+                                tackleConfig.baitConfig?.shape
+                              );
+                              setTackleConfig(updated);
+                            }}
+                            className={`px-2.5 py-1 rounded text-xs font-mono transition ${
+                              Math.abs(tackleConfig.rodLengthM - mVal) < 0.05
+                                ? 'bg-cyan-500/30 text-cyan-200 border border-cyan-400/80 font-bold'
+                                : 'bg-slate-900/90 text-slate-400 hover:text-slate-200 border border-slate-800'
+                            }`}
+                          >
+                            {mVal.toFixed(1)}m
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* [요구사항 2-6-2] 원투대: 고정 규격 전장 (각 버튼의 밑줄 feet 표기 생략) */
+                  <div className="space-y-2 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                    <div className="flex justify-between items-center text-xs sm:text-sm">
+                      <span className="text-slate-300">원투대 규격 전장:</span>
+                      <span className="font-mono font-bold text-amber-300">
+                        {tackleConfig.rodLengthM.toFixed(1)}m
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-5 gap-1">
+                      {[2.7, 3.3, 4.2, 4.5, 5.4].map((mVal) => (
+                        <button
+                          key={mVal}
+                          type="button"
+                          onClick={() => {
+                            const updated = saveTackleConfig(
+                              tackleConfig.weightGrams,
+                              tackleConfig.peLineSize,
+                              'SURF',
+                              mVal,
+                              tackleConfig.baitConfig?.type,
+                              tackleConfig.baitConfig?.lengthInches,
+                              tackleConfig.baitConfig?.shape
+                            );
+                            setTackleConfig(updated);
+                          }}
+                          className={`py-2 px-1 rounded flex items-center justify-center transition ${
+                            Math.abs(tackleConfig.rodLengthM - mVal) < 0.05
+                              ? 'bg-amber-500 text-slate-950 font-bold shadow ring-1 ring-amber-300'
+                              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                          }`}
+                        >
+                          <span className="text-xs font-mono font-bold">{mVal.toFixed(1)}m</span>
                         </button>
                       ))}
                     </div>
                   </div>
-                </div>
-              ) : (
-                /* 원투대: 고정 규격 길이 (2.7, 3.3, 4.2, 4.5, 5.4m) */
-                <div className="space-y-2 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
-                  <div className="flex justify-between items-center text-xs sm:text-sm">
-                    <span className="text-slate-300">원투대 규격 전장 (m/ft):</span>
-                    <span className="font-mono font-bold text-amber-300">
-                      {tackleConfig.rodLengthM.toFixed(1)}m ({tackleConfig.rodLengthFt.toFixed(1)}ft)
+                )}
+              </div>
+
+              {/* [요구사항 2-6-12] 미끼 선택 섹션 (생미끼, 루어: 길이 1~4인치 및 형상 선택) */}
+              <div className="space-y-2 pt-3">
+                <div className="flex justify-between items-center text-xs sm:text-sm">
+                  <span className="text-slate-300 font-medium">미끼 (Lure / Bait):</span>
+                  <span className="font-mono text-cyan-300 text-xs font-semibold">
+                    {tackleConfig.baitConfig?.type === 'LIVE'
+                      ? '생미끼 (2인치 그럽웜 가정)'
+                      : `${tackleConfig.baitConfig?.lengthInches}인치 ${LURE_SHAPE_NAMES[tackleConfig.baitConfig?.shape ?? 'GRUB']}`}
+                    <span className="text-slate-400 ml-1">
+                      (+{tackleConfig.baitConfig?.weightGrams ?? 2.5}g)
                     </span>
-                  </div>
-                  <div className="grid grid-cols-5 gap-1">
-                    {[
-                      { m: 2.7, sub: '8.9ft' },
-                      { m: 3.3, sub: '10.8ft' },
-                      { m: 4.2, sub: '13.8ft' },
-                      { m: 4.5, sub: '14.8ft' },
-                      { m: 5.4, sub: '17.7ft' },
-                    ].map((surf) => (
-                      <button
-                        key={surf.m}
-                        type="button"
-                        onClick={() => {
-                          const updated = saveTackleConfig(
-                            tackleConfig.weightGrams,
-                            tackleConfig.peLineSize,
-                            'SURF',
-                            surf.m
-                          );
-                          setTackleConfig(updated);
-                        }}
-                        className={`py-1.5 px-0.5 rounded flex flex-col items-center justify-center transition ${
-                          Math.abs(tackleConfig.rodLengthM - surf.m) < 0.05
-                            ? 'bg-amber-500 text-slate-950 font-bold shadow ring-1 ring-amber-300'
-                            : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
-                        }`}
-                      >
-                        <span className="text-xs font-mono font-bold leading-tight">{surf.m}m</span>
-                        <span className="text-[9.5px] opacity-75 font-mono">{surf.sub}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="text-[10.5px] sm:text-xs text-amber-300/90 leading-tight">
-                    * 원투대는 휨·탄성의 왜곡보다 "추 무게(8~40호)"와 "로드 길이"가 비거리를 지배합니다.
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 2. 추 / 봉돌 무게 선택 (지그헤드, 온스, 주꾸미, 원투봉돌) */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center text-xs sm:text-sm">
-                <span className="text-slate-300">추/봉돌 무게:</span>
-                <span className="font-mono font-bold text-cyan-300">
-                  {tackleConfig.weightGrams}g
-                  <span className="text-[10.5px] sm:text-xs text-slate-400 font-normal ml-1">
-                    ({getWeightDescription(tackleConfig.weightGrams)})
                   </span>
-                </span>
-              </div>
+                </div>
 
-              {/* 카테고리 탭 (4개) */}
-              <div className="grid grid-cols-4 gap-1 p-0.5 bg-slate-900 rounded-lg border border-slate-800">
-                {[
-                  { cat: 'JIG' as WeightCategory, label: '지그헤드', desc: '1~5g' },
-                  { cat: 'OZ' as WeightCategory, label: '온스(oz)', desc: '1/32~1oz' },
-                  { cat: 'JUKKUMI' as WeightCategory, label: '주꾸미', desc: '3~7호' },
-                  { cat: 'SURF' as WeightCategory, label: '원투봉돌', desc: '8~40호' },
-                ].map((tab) => (
+                {/* 미끼 종류 탭 (생미끼 vs 루어) */}
+                <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800">
                   <button
-                    key={tab.cat}
-                    type="button"
-                    onClick={() => setSelectedWeightCategory(tab.cat)}
-                    className={`py-1.5 rounded text-center transition ${
-                      selectedWeightCategory === tab.cat
-                        ? 'bg-slate-800 text-cyan-300 font-bold border border-cyan-500/50 shadow-xs'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <div className="text-xs leading-tight">{tab.label}</div>
-                    <div className="text-[9.5px] opacity-75 font-mono leading-tight">{tab.desc}</div>
-                  </button>
-                ))}
-              </div>
-
-              {/* 프리셋 버튼 목록 */}
-              <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1.5 bg-slate-900/70 rounded-lg border border-slate-800">
-                {WEIGHT_PRESETS.filter((p) => p.category === selectedWeightCategory).map((preset) => (
-                  <button
-                    key={preset.id}
                     type="button"
                     onClick={() => {
                       const updated = saveTackleConfig(
-                        preset.weightGrams,
+                        tackleConfig.weightGrams,
                         tackleConfig.peLineSize,
                         tackleConfig.rodPower,
-                        tackleConfig.rodLengthM
+                        tackleConfig.rodLengthM,
+                        'LIVE',
+                        2,
+                        'GRUB'
                       );
                       setTackleConfig(updated);
                     }}
-                    className={`px-2 py-1 rounded text-xs font-mono flex items-center gap-0.5 transition ${
-                      Math.abs(tackleConfig.weightGrams - preset.weightGrams) < 0.15
-                        ? 'bg-cyan-500 text-slate-950 font-bold shadow'
-                        : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                    className={`flex-1 py-1.5 text-center text-xs font-bold rounded-md transition ${
+                      tackleConfig.baitConfig?.type === 'LIVE'
+                        ? 'bg-cyan-500 text-slate-950 shadow'
+                        : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    <span>{preset.label}</span>
-                    <span className="text-[9.5px] opacity-75">({preset.subLabel})</span>
+                    🪱 생미끼
                   </button>
-                ))}
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = saveTackleConfig(
+                        tackleConfig.weightGrams,
+                        tackleConfig.peLineSize,
+                        tackleConfig.rodPower,
+                        tackleConfig.rodLengthM,
+                        'LURE',
+                        tackleConfig.baitConfig?.lengthInches || 2,
+                        tackleConfig.baitConfig?.shape || 'GRUB'
+                      );
+                      setTackleConfig(updated);
+                    }}
+                    className={`flex-1 py-1.5 text-center text-xs font-bold rounded-md transition ${
+                      tackleConfig.baitConfig?.type === 'LURE'
+                        ? 'bg-cyan-500 text-slate-950 shadow'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    🐟 루어
+                  </button>
+                </div>
 
-              {/* 슬라이더 1~150g */}
-              <input
-                type="range"
-                min={1}
-                max={150}
-                step={1}
-                value={Math.round(tackleConfig.weightGrams)}
-                onChange={(e) => {
-                  const w = Number(e.target.value);
-                  const updated = saveTackleConfig(
-                    w,
-                    tackleConfig.peLineSize,
-                    tackleConfig.rodPower,
-                    tackleConfig.rodLengthM
-                  );
-                  setTackleConfig(updated);
-                }}
-                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-              />
-              <div className="flex justify-between text-[10px] sm:text-[11px] text-slate-400 font-mono">
-                <span>1g (지그)</span>
-                <span>28g (1oz)</span>
-                <span>75g (20호)</span>
-                <span>150g (40호)</span>
-              </div>
-            </div>
+                {/* 루어 선택 시: 길이(1~4인치) 및 형상(그럽웜/쉐드웜/스트레이트/미노우) */}
+                {tackleConfig.baitConfig?.type === 'LURE' && (
+                  <div className="p-2.5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2">
+                    <div>
+                      <div className="text-[11px] text-slate-400 mb-1">루어 길이:</div>
+                      <div className="grid grid-cols-4 gap-1">
+                        {[1, 2, 3, 4].map((len) => (
+                          <button
+                            key={len}
+                            type="button"
+                            onClick={() => {
+                              const updated = saveTackleConfig(
+                                tackleConfig.weightGrams,
+                                tackleConfig.peLineSize,
+                                tackleConfig.rodPower,
+                                tackleConfig.rodLengthM,
+                                'LURE',
+                                len,
+                                tackleConfig.baitConfig?.shape || 'GRUB'
+                              );
+                              setTackleConfig(updated);
+                            }}
+                            className={`py-1 rounded text-xs font-mono transition ${
+                              tackleConfig.baitConfig?.lengthInches === len
+                                ? 'bg-cyan-500 text-slate-950 font-bold shadow'
+                                : 'bg-slate-900 text-slate-400 border border-slate-800'
+                            }`}
+                          >
+                            {len}인치
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-            {/* 3. 합사 라인 호수 슬라이더 (0.4~3.0호) */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center text-xs sm:text-sm">
-                <span className="text-slate-300">원줄 합사 (PE)</span>
-                <span className="font-mono font-bold text-cyan-300">{tackleConfig.peLineSize.toFixed(1)}호</span>
-              </div>
-              <input
-                type="range"
-                min={0.4}
-                max={3.0}
-                step={0.1}
-                value={tackleConfig.peLineSize}
-                onChange={(e) => {
-                  const pe = Number(e.target.value);
-                  const updated = saveTackleConfig(
-                    tackleConfig.weightGrams,
-                    pe,
-                    tackleConfig.rodPower,
-                    tackleConfig.rodLengthM
-                  );
-                  setTackleConfig(updated);
-                }}
-                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-              />
-              <div className="flex justify-between text-[10px] sm:text-[11px] text-slate-400 font-mono">
-                <span>0.4호 (아징)</span>
-                <span>1.0호 (에깅)</span>
-                <span>2.0호 (원투)</span>
-                <span>3.0호 (대물)</span>
-              </div>
-            </div>
-
-            {/* 4. 계산된 물리 기준 비거리 및 수중 침강 특성 */}
-            {(() => {
-              const demoDepth = 10;
-              const demoCur = marine?.currentVelocity ?? 0.3;
-              const sink = calculateSinkingPhysics(tackleConfig.weightGrams, demoDepth, demoCur);
-              return (
-                <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5 text-xs sm:text-sm">
-                  <div className="flex justify-between text-slate-300">
-                    <span>예상 비거리:</span>
-                    <strong className="font-mono text-cyan-300 text-sm font-bold">{tackleConfig.calibratedDistanceMeters}m</strong>
+                    <div>
+                      <div className="text-[11px] text-slate-400 mb-1">루어 형상:</div>
+                      <div className="grid grid-cols-4 gap-1">
+                        {(['GRUB', 'SHAD', 'STRAIGHT', 'MINNOW'] as LureShape[]).map((shp) => (
+                          <button
+                            key={shp}
+                            type="button"
+                            onClick={() => {
+                              const updated = saveTackleConfig(
+                                tackleConfig.weightGrams,
+                                tackleConfig.peLineSize,
+                                tackleConfig.rodPower,
+                                tackleConfig.rodLengthM,
+                                'LURE',
+                                tackleConfig.baitConfig?.lengthInches || 2,
+                                shp
+                              );
+                              setTackleConfig(updated);
+                            }}
+                            className={`py-1 rounded text-[11px] font-medium transition ${
+                              tackleConfig.baitConfig?.shape === shp
+                                ? 'bg-cyan-500 text-slate-950 font-bold shadow'
+                                : 'bg-slate-900 text-slate-400 border border-slate-800'
+                            }`}
+                          >
+                            {LURE_SHAPE_NAMES[shp]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-[11px] sm:text-xs text-slate-400 pt-1 border-t border-slate-800/80">
-                    <span>수심 10m 바닥 안착:</span>
-                    <span className="font-mono text-emerald-300 font-semibold">
-                      약 {sink.fallTimeSec}초 (유속 {demoCur}m/s 시)
+                )}
+              </div>
+
+              {/* 2. 추 / 봉돌 무게 선택 (지그헤드->그램, 온스, 주꾸미, 원투봉돌) */}
+              <div className="space-y-1.5 pt-3">
+                <div className="flex justify-between items-center text-xs sm:text-sm">
+                  <span className="text-slate-300 font-medium">추/봉돌 무게:</span>
+                  <span className="font-mono font-bold text-cyan-300">
+                    {tackleConfig.weightGrams}g
+                    <span className="text-[10.5px] sm:text-xs text-slate-400 font-normal ml-1">
+                      ({getWeightDescription(tackleConfig.weightGrams)})
                     </span>
-                  </div>
-                  <div className="flex justify-between text-[10.5px] sm:text-[11px] text-slate-500">
-                    <span>침강속도 / 조류흘림:</span>
-                    <span className="font-mono">
-                      {sink.effSinkSpeedMps}m/s · 흘림 +{sink.driftDistanceM}m
-                    </span>
+                  </span>
+                </div>
+
+                {/* [요구사항 2-6-5] 카테고리 탭: '지그헤드' -> '그램' */}
+                <div className="grid grid-cols-4 gap-1 p-0.5 bg-slate-900 rounded-lg border border-slate-800">
+                  {[
+                    { cat: 'JIG' as WeightCategory, label: '그램', desc: '1~5g' },
+                    { cat: 'OZ' as WeightCategory, label: '온스(oz)', desc: '1/32~2oz' },
+                    { cat: 'JUKKUMI' as WeightCategory, label: '주꾸미', desc: '3~7호' },
+                    { cat: 'SURF' as WeightCategory, label: '원투봉돌', desc: '16~40호' },
+                  ].map((tab) => (
+                    <button
+                      key={tab.cat}
+                      type="button"
+                      onClick={() => setSelectedWeightCategory(tab.cat)}
+                      className={`py-1.5 rounded text-center transition ${
+                        selectedWeightCategory === tab.cat
+                          ? 'bg-slate-800 text-cyan-300 font-bold border border-cyan-500/50 shadow-xs'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <div className="text-xs leading-tight">{tab.label}</div>
+                      <div className="text-[9.5px] opacity-75 font-mono leading-tight">{tab.desc}</div>
+                    </button>
+                  ))}
+                </div>
+
+                {/* [요구사항 2-6-6, 2-6-7] 프리셋 버튼 목록: 온스는 oz만, 주꾸미는 호수만 표기 */}
+                <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1.5 bg-slate-900/70 rounded-lg border border-slate-800">
+                  {WEIGHT_PRESETS.filter((p) => p.category === selectedWeightCategory).map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        const updated = saveTackleConfig(
+                          preset.weightGrams,
+                          tackleConfig.peLineSize,
+                          tackleConfig.rodPower,
+                          tackleConfig.rodLengthM,
+                          tackleConfig.baitConfig?.type,
+                          tackleConfig.baitConfig?.lengthInches,
+                          tackleConfig.baitConfig?.shape
+                        );
+                        setTackleConfig(updated);
+                      }}
+                      className={`px-2.5 py-1 rounded text-xs font-mono flex items-center gap-0.5 transition ${
+                        Math.abs(tackleConfig.weightGrams - preset.weightGrams) < 0.15
+                          ? 'bg-cyan-500 text-slate-950 font-bold shadow'
+                          : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                      }`}
+                    >
+                      <span>{preset.label}</span>
+                      {/* 그램 탭이나 원투일 때만 부가 레이블 표시, 온스와 주꾸미는 그램 표기 생략 */}
+                      {selectedWeightCategory !== 'OZ' && selectedWeightCategory !== 'JUKKUMI' && (
+                        <span className="text-[9.5px] opacity-75">({preset.subLabel})</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* [요구사항 10-1] 모바일 앱 스크롤 간섭 방지를 위해 슬라이더 안쪽 패딩 적용 */}
+                <div className="px-1 pt-1">
+                  <input
+                    type="range"
+                    min={1}
+                    max={150}
+                    step={1}
+                    value={Math.round(tackleConfig.weightGrams)}
+                    onChange={(e) => {
+                      const w = Number(e.target.value);
+                      const updated = saveTackleConfig(
+                        w,
+                        tackleConfig.peLineSize,
+                        tackleConfig.rodPower,
+                        tackleConfig.rodLengthM,
+                        tackleConfig.baitConfig?.type,
+                        tackleConfig.baitConfig?.lengthInches,
+                        tackleConfig.baitConfig?.shape
+                      );
+                      setTackleConfig(updated);
+                    }}
+                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                  />
+                  <div className="flex justify-between text-[10px] sm:text-[11px] text-slate-400 font-mono mt-0.5">
+                    <span>1g</span>
+                    <span>28g(1oz)</span>
+                    <span>75g(20호)</span>
+                    <span>150g(40호)</span>
                   </div>
                 </div>
-              );
-            })()}
+              </div>
+
+              {/* 3. 합사 라인 호수 슬라이더 (0.4~3.0호) */}
+              <div className="space-y-1.5 pt-3">
+                <div className="flex justify-between items-center text-xs sm:text-sm">
+                  <span className="text-slate-300 font-medium">원줄 합사 (PE):</span>
+                  <span className="font-mono font-bold text-cyan-300">{tackleConfig.peLineSize.toFixed(1)}호</span>
+                </div>
+                <div className="px-1">
+                  <input
+                    type="range"
+                    min={0.4}
+                    max={3.0}
+                    step={0.1}
+                    value={tackleConfig.peLineSize}
+                    onChange={(e) => {
+                      const pe = Number(e.target.value);
+                      const updated = saveTackleConfig(
+                        tackleConfig.weightGrams,
+                        pe,
+                        tackleConfig.rodPower,
+                        tackleConfig.rodLengthM,
+                        tackleConfig.baitConfig?.type,
+                        tackleConfig.baitConfig?.lengthInches,
+                        tackleConfig.baitConfig?.shape
+                      );
+                      setTackleConfig(updated);
+                    }}
+                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                  />
+                  <div className="flex justify-between text-[10px] sm:text-[11px] text-slate-400 font-mono mt-0.5">
+                    <span>0.4호 (아징)</span>
+                    <span>1.0호 (에깅)</span>
+                    <span>2.0호 (원투)</span>
+                    <span>3.0호 (대물)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -2180,13 +2533,12 @@ export const MapView: React.FC<MapViewProps> = ({
         </div>
       )}
 
-      {/* [요구사항 4-3] 캐스팅 방향 실시간 지도 설정 바텀 메뉴 */}
+      {/* [요구사항 2-3-1] 캐스팅 방향 실시간 지도 설정 바텀 메뉴 (포인트 이름 제거, '보기'로 변경) */}
       {castingConfigSpot && (
         <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 backdrop-blur-md border border-cyan-500/60 rounded-2xl shadow-2xl p-4 w-[92vw] max-w-lg text-slate-100 animate-in fade-in slide-in-from-bottom-4 duration-200">
           <div className="flex items-center justify-between pb-2 border-b border-slate-800">
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-cyan-400">🎯 캐스팅 방향 설정</span>
-              <span className="text-xs text-slate-400">({castingConfigSpot.name})</span>
             </div>
             <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
               <input
@@ -2195,7 +2547,7 @@ export const MapView: React.FC<MapViewProps> = ({
                 onChange={(e) => setTempCastingEnabled(e.target.checked)}
                 className="w-4 h-4 rounded text-cyan-500 bg-slate-800 border-slate-700 focus:ring-cyan-500"
               />
-              <span>캐스팅 방향 보기</span>
+              <span>보기</span>
             </label>
           </div>
 
@@ -2255,13 +2607,12 @@ export const MapView: React.FC<MapViewProps> = ({
         </div>
       )}
 
-      {/* [요구사항 4-4] 스윗 스폿 실시간 지도 설정 바텀 메뉴 */}
+      {/* [요구사항 2-1] 스윗 스폿 실시간 지도 설정 바텀 메뉴 (포인트명 제거, '보기' 표기, 취소/저장 대신 '닫기', 스팟 추가 시 노트+반지름+위치+취소+추가) */}
       {sweetSpotConfigSpot && (
         <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 backdrop-blur-md border border-amber-500/60 rounded-2xl shadow-2xl p-4 w-[92vw] max-w-lg text-slate-100 animate-in fade-in slide-in-from-bottom-4 duration-200">
           <div className="flex items-center justify-between pb-2 border-b border-slate-800">
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-amber-400">🎯 스윗 스팟 설정</span>
-              <span className="text-xs text-slate-400">({sweetSpotConfigSpot.name})</span>
               <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
                 {tempSweetSpots.length}/3개
               </span>
@@ -2270,70 +2621,94 @@ export const MapView: React.FC<MapViewProps> = ({
               <input
                 type="checkbox"
                 checked={tempUseSweetSpot}
-                onChange={(e) => setTempUseSweetSpot(e.target.checked)}
+                onChange={(e) => persistSweetSpots(tempSweetSpots, e.target.checked)}
                 className="w-4 h-4 rounded text-amber-500 bg-slate-800 border-slate-700 focus:ring-amber-500"
               />
-              <span>스윗 스팟 보기</span>
+              <span>보기</span>
             </label>
           </div>
 
           <div className="py-3 space-y-2.5">
             {isAddingSweetSpot ? (
-              <div className="p-2.5 bg-amber-950/40 border border-amber-500/40 rounded-xl space-y-2">
+              <div className="p-3 bg-amber-950/40 border border-amber-500/50 rounded-xl space-y-2.5">
                 <div className="text-xs text-amber-300 font-bold flex items-center justify-between">
-                  <span>📍 지도를 클릭하여 스팟을 지정하세요</span>
-                  <button
-                    type="button"
-                    onClick={() => setIsAddingSweetSpot(false)}
-                    className="text-[11px] text-slate-400 hover:text-white"
-                  >
-                    추가 취소
-                  </button>
+                  <span>📍 지도를 클릭하여 입질 위치를 지정하세요</span>
+                  {draftSweetPos ? (
+                    <span className="text-[10px] text-emerald-400 font-mono">
+                      선택됨 ({calculateDistanceAndBearing(sweetSpotConfigSpot.lat, sweetSpotConfigSpot.lng, draftSweetPos.lat, draftSweetPos.lng).distance}m)
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-amber-400 animate-pulse">위치 미지정</span>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-300">반지름:</span>
-                  {[10, 15, 20].map((r) => (
+
+                {/* [요구사항 2-1-1] 노트 입력 */}
+                <div>
+                  <input
+                    type="text"
+                    value={draftSweetNote}
+                    onChange={(e) => setDraftSweetNote(e.target.value)}
+                    placeholder="노트 입력 (예: 간출여 입질, 수중 턱 등)"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                    maxLength={30}
+                  />
+                </div>
+
+                {/* [요구사항 2-1-4] 반지름 선택 (기존 스팟에 영향 주지 않고 초안에만 적용) */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-slate-300">반지름:</span>
+                    {[10, 15, 20].map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setSelectedNewRadius(r)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition active:scale-95 ${
+                          selectedNewRadius === r
+                            ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                        }`}
+                      >
+                        {r}m
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* [요구사항 2-1-6] 취소 / 추가 버튼 */}
+                  <div className="flex items-center gap-1.5">
                     <button
-                      key={r}
                       type="button"
-                      onClick={() => {
-                        setSelectedNewRadius(r);
-                        // 최근 스팟이 있다면 해당 스팟의 반경도 실시간 업데이트
-                        if (tempSweetSpots.length > 0) {
-                          setTempSweetSpots((prev) => {
-                            const updated = [...prev];
-                            const lastIdx = updated.length - 1;
-                            updated[lastIdx] = { ...updated[lastIdx], radius: r };
-                            return updated;
-                          });
-                        }
-                      }}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition active:scale-95 ${
-                        selectedNewRadius === r
-                          ? 'bg-amber-500 text-slate-950 shadow-md font-black'
-                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      onClick={handleCancelAddSweetSpot}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition"
+                    >
+                      취소
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!draftSweetPos}
+                      onClick={handleConfirmAddSweetSpot}
+                      className={`px-3 py-1 rounded-lg text-xs font-black transition shadow ${
+                        draftSweetPos
+                          ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 active:scale-95'
+                          : 'bg-slate-800 text-slate-600 cursor-not-allowed'
                       }`}
                     >
-                      {r}m
+                      추가
                     </button>
-                  ))}
+                  </div>
                 </div>
               </div>
             ) : (
               <div className="flex items-center justify-between">
                 <span className="text-xs text-slate-400">
                   {tempSweetSpots.length >= 3
-                    ? '최대 개수(3개)에 도달했습니다. 핀의 삭제를 눌러 교체할 수 있습니다.'
+                    ? '최대 개수(3개)에 도달했습니다. 핀의 삭제를 눌러 교체하세요.'
                     : '스팟 추가를 누른 후 지도를 클릭하여 입질 스팟을 등록하세요.'}
                 </span>
                 <button
                   type="button"
                   disabled={tempSweetSpots.length >= 3}
-                  onClick={() => {
-                    if (tempSweetSpots.length < 3) {
-                      setIsAddingSweetSpot(true);
-                    }
-                  }}
+                  onClick={handleStartAddSweetSpot}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 ${
                     tempSweetSpots.length >= 3
                       ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
@@ -2346,25 +2721,100 @@ export const MapView: React.FC<MapViewProps> = ({
             )}
           </div>
 
-          <div className="flex gap-2 pt-2 border-t border-slate-800">
+          {/* [요구사항 2-1-2] 취소, 저장 제거하고 '닫기' 버튼만 배치 */}
+          <div className="pt-2 border-t border-slate-800 flex justify-end">
             <button
               type="button"
-              onClick={() => {
-                setSweetSpotConfigSpot(null);
-                setIsAddingSweetSpot(false);
-              }}
-              className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition active:scale-95"
+              onClick={handleCloseSweetSpotConfig}
+              className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition active:scale-95"
             >
-              취소
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveSweetSpotConfig}
-              className="flex-1 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition active:scale-95 shadow-lg shadow-amber-500/30"
-            >
-              저장
+              닫기
             </button>
           </div>
+        </div>
+      )}
+
+      {/* [요구사항 2-1-5] 인앱 커스텀 스윗 스팟 삭제 확인 모달 (네이티브 alert/confirm 중복 및 localhost 도메인 표기 제거) */}
+      {pendingDeleteSweetIdx !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 max-w-xs w-full shadow-2xl text-center space-y-3">
+            <div className="text-sm font-bold text-slate-100">
+              스윗 스팟 삭제
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              선택한 스윗 스팟을 삭제하시겠습니까?
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setPendingDeleteSweetIdx(null)}
+                className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition active:scale-95"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteTempSweetSpot(pendingDeleteSweetIdx)}
+                className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition active:scale-95 shadow-lg shadow-rose-600/30"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* [요구사항 1-3] 지도 좌측 상단 날씨·기온·풍향·풍속·수온·물때 미니 위젯 (컨텍스트 메뉴 활성화 시 표기 중단) */}
+      {!contextMenuSpot && (weather || marine || tide) && (
+        <div className="absolute top-4 left-4 z-20 bg-slate-900/85 backdrop-blur-md border border-slate-700/70 rounded-xl px-2.5 py-1.5 text-xs text-white shadow-xl flex items-center gap-2 select-none pointer-events-auto">
+          {/* 날씨 아이콘 */}
+          {weather && (
+            <span className="text-sm" title={weather.weatherText}>
+              {weather.weatherCode <= 1
+                ? '☀️'
+                : weather.weatherCode <= 3
+                ? '⛅'
+                : weather.weatherCode >= 51 && weather.weatherCode <= 67
+                ? '🌧️'
+                : '☁️'}
+            </span>
+          )}
+
+          {/* 기온 (온도만) */}
+          {weather && (
+            <span className="font-mono font-bold text-amber-300 text-xs">
+              {weather.temp.toFixed(1)}°
+            </span>
+          )}
+
+          {/* 풍향 (아이콘) + 풍속 (숫자와 단위만) */}
+          {weather && (
+            <div className="flex items-center gap-0.5 text-cyan-300" title={`풍향 ${Math.round(weather.windDirection)}°`}>
+              <div
+                className="w-3.5 h-3.5 flex items-center justify-center text-[10px] font-bold"
+                style={{ transform: `rotate(${weather.windDirection}deg)` }}
+              >
+                ↓
+              </div>
+              <span className="font-mono font-semibold text-[11px]">
+                {formatWindSpeed(weather.windSpeed, windUnit)}
+              </span>
+            </div>
+          )}
+
+          {/* 수온 */}
+          {marine?.seaSurfaceTemp !== undefined && (
+            <span className="text-[11px] font-mono text-rose-300 font-medium">
+              수온 {marine.seaSurfaceTemp.toFixed(1)}°
+            </span>
+          )}
+
+          {/* 물때 */}
+          {tide?.mulText && (
+            <span className="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/60 text-[10px] font-bold">
+              {tide.mulText}
+            </span>
+          )}
         </div>
       )}
 

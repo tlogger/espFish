@@ -55,17 +55,6 @@ import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeather
 import { generatePostMortemReport } from '../utils/postMortemEngine';
 import { playEvacuationBeep } from '../utils/tideAlertSound';
 import { sendEmergencyEvacuationNotification, requestNotificationPermission } from '../utils/nativeBridge';
-import {
-  getSavedTackleConfig,
-  saveTackleConfig,
-  calculateSinkingPhysics,
-  ROD_POWER_SPECS,
-  RodPower,
-  TackleRigConfig,
-  WEIGHT_PRESETS,
-  WeightCategory,
-  getWeightDescription,
-} from '../utils/tackleCalibration';
 
 interface SpotDetailPanelProps {
   spot: FishingSpot;
@@ -118,23 +107,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   const [isChecklistOpen, setIsChecklistOpen] = React.useState(false);
   const [isBiteScoreHelpOpen, setIsBiteScoreHelpOpen] = React.useState(false);
   const [expandedSpecies, setExpandedSpecies] = React.useState<string | null>(null);
-
-  // 채비 공기역학 캘리브레이션 동기화 상태
-  const [tackleConfig, setTackleConfig] = React.useState<TackleRigConfig>(() => getSavedTackleConfig());
-  const [panelWeightCategory, setPanelWeightCategory] = React.useState<WeightCategory>(() => {
-    const current = getSavedTackleConfig();
-    if (current.rodType === 'SURF' || current.weightGrams >= 30) return 'SURF';
-    if (current.weightGrams >= 11 && current.weightGrams <= 27) return 'JUKKUMI';
-    return 'JIG';
-  });
-
-  React.useEffect(() => {
-    const handleTackleUpdate = () => {
-      setTackleConfig(getSavedTackleConfig());
-    };
-    window.addEventListener('exfish_tackle_updated', handleTackleUpdate);
-    return () => window.removeEventListener('exfish_tackle_updated', handleTackleUpdate);
-  }, []);
 
   // 갯바위 들물 탈출 골든타임 비프 경보 활성화 상태 (Phase 3: 네이티브 푸시/알람 연동)
   const [isEvacAlarmEnabled, setIsEvacAlarmEnabled] = React.useState(false);
@@ -834,43 +806,36 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               );
             })()}
 
-            {/* [요구사항 1,2,3] 오늘 물때 & 일출/일몰, 현재 수위 두 줄 표기, 오늘 만조/간조 전체 표기 */}
+            {/* [요구사항 2-4B] 물때 & 일출/일몰/만조/간조 통합 직관적 시간표 테이블 (Line wrap 원천 방지) */}
             {tide && (
-              <div className="p-3.5 sm:p-4 bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-slate-950/95 border border-cyan-500/40 rounded-2xl shadow-xl space-y-2">
-                {/* 1행: 물때 명칭 & 일출/일몰 (아이콘 없이 텍스트로만 깔끔 표기) */}
+              <div className="p-3.5 sm:p-4 bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-slate-950/95 border border-cyan-500/40 rounded-2xl shadow-xl space-y-2.5">
+                {/* 1행: 물때 명칭 & 현재 수위 */}
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2">
                     <span className="font-extrabold text-base sm:text-lg text-cyan-300 drop-shadow">🌊 {tide.mulText}</span>
                     <span className="text-xs sm:text-sm text-slate-300 font-medium">({tide.lunarDateStr})</span>
                   </div>
-                  <div className="text-xs sm:text-sm font-semibold text-slate-300 flex items-center gap-2 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700/60 shadow-sm font-mono">
-                    <span className="text-amber-200">일출 {tide.sunrise}</span>
-                    <span className="text-slate-600">|</span>
-                    <span className="text-indigo-200">일몰 {tide.sunset}</span>
-                  </div>
+                  {currentTidePoint && (
+                    <div className="text-xs sm:text-sm text-cyan-200 font-mono font-bold bg-cyan-950/90 border border-cyan-700/70 px-2.5 py-1 rounded-lg shadow-inner flex items-center gap-1.5">
+                      <span className="text-slate-400 font-sans font-normal text-xs">현재:</span>
+                      <span className="text-white font-extrabold">{currentTidePoint.height}cm</span>
+                      <span className="text-cyan-300 font-sans text-xs">({currentTidePoint.stateText})</span>
+                    </div>
+                  )}
                 </div>
 
-                {/* 2행: 현재 수위 (두 번째 줄에 독립 표기) */}
-                {currentTidePoint && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs sm:text-sm text-cyan-200 font-mono font-bold bg-cyan-950/90 border border-cyan-700/70 px-2.5 py-1 rounded-lg shadow-inner flex items-center gap-1.5">
-                      <span className="text-slate-400 font-sans font-normal">현재 수위:</span>
-                      <span className="text-white font-extrabold">{currentTidePoint.height}cm</span>
-                      <span className="text-cyan-300 font-sans">({currentTidePoint.stateText})</span>
-                    </span>
-                  </div>
-                )}
-
-                {/* 3행: 오늘 만조 및 간조 목록 리스트 뷰 및 조위 변화 통합 (요구사항 6) */}
+                {/* 2행: 오늘 시간순 물때 & 태양 이벤트 시간표 테이블 */}
                 {(() => {
-                  interface TideExtremum {
-                    type: 'HIGH' | 'LOW';
+                  interface TideScheduleItem {
+                    type: 'HIGH' | 'LOW' | 'SUNRISE' | 'SUNSET';
+                    typeLabel: string;
                     time: string;
-                    height: number;
                     minutes: number;
+                    height?: number;
                     diff?: number;
                   }
-                  const allEvents: TideExtremum[] = [
+
+                  const rawExtremums: { type: 'HIGH' | 'LOW'; time: string; height: number; minutes: number; diff?: number }[] = [
                     ...(tide.highTides || []).map((h) => {
                       const [hh, mm] = h.time.split(':').map(Number);
                       return { type: 'HIGH' as const, time: h.time, height: h.height, minutes: (hh || 0) * 60 + (mm || 0) };
@@ -881,74 +846,136 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     }),
                   ].sort((a, b) => a.minutes - b.minutes);
 
-                  for (let i = 0; i < allEvents.length; i++) {
-                    const ev = allEvents[i];
-                    let prevOpp: TideExtremum | null = null;
+                  // 조위차 계산 (이전/이후 반대 극값과의 높이 차이)
+                  for (let i = 0; i < rawExtremums.length; i++) {
+                    const ev = rawExtremums[i];
+                    let prevOpp: typeof ev | null = null;
                     for (let j = i - 1; j >= 0; j--) {
-                      if (allEvents[j].type !== ev.type) {
-                        prevOpp = allEvents[j];
+                      if (rawExtremums[j].type !== ev.type) {
+                        prevOpp = rawExtremums[j];
                         break;
                       }
                     }
                     if (!prevOpp) {
-                      for (let j = i + 1; j < allEvents.length; j++) {
-                        if (allEvents[j].type !== ev.type) {
-                          prevOpp = allEvents[j];
+                      for (let j = i + 1; j < rawExtremums.length; j++) {
+                        if (rawExtremums[j].type !== ev.type) {
+                          prevOpp = rawExtremums[j];
                           break;
                         }
                       }
                     }
-                    if (prevOpp) {
-                      ev.diff = Math.abs(ev.height - prevOpp.height);
-                    } else {
-                      ev.diff = 300;
-                    }
+                    ev.diff = prevOpp ? Math.abs(ev.height - prevOpp.height) : 300;
                   }
 
-                  const highs = allEvents.filter((e) => e.type === 'HIGH');
-                  const lows = allEvents.filter((e) => e.type === 'LOW');
+                  const scheduleItems: TideScheduleItem[] = [
+                    ...rawExtremums.map((e) => ({
+                      type: e.type,
+                      typeLabel: e.type === 'HIGH' ? '만조' : '간조',
+                      time: e.time,
+                      minutes: e.minutes,
+                      height: e.height,
+                      diff: e.diff,
+                    })),
+                  ];
+
+                  if (tide.sunrise) {
+                    const [hh, mm] = tide.sunrise.split(':').map(Number);
+                    scheduleItems.push({
+                      type: 'SUNRISE',
+                      typeLabel: '일출',
+                      time: tide.sunrise,
+                      minutes: (hh || 0) * 60 + (mm || 0),
+                    });
+                  }
+
+                  if (tide.sunset) {
+                    const [hh, mm] = tide.sunset.split(':').map(Number);
+                    scheduleItems.push({
+                      type: 'SUNSET',
+                      typeLabel: '일몰',
+                      time: tide.sunset,
+                      minutes: (hh || 0) * 60 + (mm || 0),
+                    });
+                  }
+
+                  scheduleItems.sort((a, b) => a.minutes - b.minutes);
 
                   return (
-                    <div className="p-2.5 rounded-xl bg-slate-950/85 border border-slate-800 text-xs sm:text-sm font-mono shadow-xs space-y-2">
-                      {/* 만조 행 */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-rose-400 font-extrabold font-sans shrink-0 px-1.5 py-0.5 rounded bg-rose-950/80 border border-rose-800/60 text-xs">
-                          만조
-                        </span>
-                        {highs.length > 0 ? (
-                          highs.map((t, idx) => (
-                            <span key={idx} className="bg-rose-950/40 text-rose-200 px-2.5 py-0.5 rounded-lg border border-rose-800/40 font-semibold flex items-center gap-1.5">
-                              <span>{t.time}</span>
-                              <span className="text-white font-bold">{t.height}cm</span>
-                              <span className="text-rose-400 font-medium text-[11px] font-mono">
-                                (+{t.diff}cm)
-                              </span>
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-slate-500 font-sans text-xs">정보 없음</span>
-                        )}
-                      </div>
+                    <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/90 shadow-md">
+                      <table className="w-full text-xs text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-800 bg-slate-900/80 text-[11px] text-slate-400 font-semibold">
+                            <th className="py-1.5 px-3 w-16 text-center">시간</th>
+                            <th className="py-1.5 px-3 w-20 text-center">구분</th>
+                            <th className="py-1.5 px-3 text-right">조위 (수위 변화)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/70 font-mono">
+                          {scheduleItems.map((item, idx) => {
+                            const isHigh = item.type === 'HIGH';
+                            const isLow = item.type === 'LOW';
+                            const isSunrise = item.type === 'SUNRISE';
+                            const isSunset = item.type === 'SUNSET';
 
-                      {/* 간조 행 */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-blue-400 font-extrabold font-sans shrink-0 px-1.5 py-0.5 rounded bg-blue-950/80 border border-blue-800/60 text-xs">
-                          간조
-                        </span>
-                        {lows.length > 0 ? (
-                          lows.map((t, idx) => (
-                            <span key={idx} className="bg-blue-950/40 text-blue-200 px-2.5 py-0.5 rounded-lg border border-blue-800/40 font-semibold flex items-center gap-1.5">
-                              <span>{t.time}</span>
-                              <span className="text-white font-bold">{t.height}cm</span>
-                              <span className="text-blue-400 font-medium text-[11px] font-mono">
-                                (-{t.diff}cm)
-                              </span>
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-slate-500 font-sans text-xs">정보 없음</span>
-                        )}
-                      </div>
+                            return (
+                              <tr
+                                key={idx}
+                                className={`transition-colors ${
+                                  isHigh
+                                    ? 'hover:bg-rose-950/20'
+                                    : isLow
+                                    ? 'hover:bg-blue-950/20'
+                                    : 'hover:bg-slate-900/40'
+                                }`}
+                              >
+                                <td className="py-2 px-3 text-center font-bold text-slate-200">
+                                  {item.time}
+                                </td>
+                                <td className="py-2 px-3 text-center">
+                                  {isHigh && (
+                                    <span className="inline-block px-2 py-0.5 rounded text-[11px] font-sans font-extrabold bg-rose-950 text-rose-300 border border-rose-800/60 shadow-xs">
+                                      만조
+                                    </span>
+                                  )}
+                                  {isLow && (
+                                    <span className="inline-block px-2 py-0.5 rounded text-[11px] font-sans font-extrabold bg-blue-950 text-blue-300 border border-blue-800/60 shadow-xs">
+                                      간조
+                                    </span>
+                                  )}
+                                  {isSunrise && (
+                                    <span className="inline-block px-2 py-0.5 rounded text-[11px] font-sans font-bold bg-amber-950/80 text-amber-300 border border-amber-800/60 shadow-xs">
+                                      일출 ☀️
+                                    </span>
+                                  )}
+                                  {isSunset && (
+                                    <span className="inline-block px-2 py-0.5 rounded text-[11px] font-sans font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 shadow-xs">
+                                      일몰 🌙
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2 px-3 text-right">
+                                  {item.height !== undefined ? (
+                                    <span className="flex items-center justify-end gap-1.5">
+                                      <span className="font-extrabold text-white text-xs sm:text-sm">
+                                        {item.height}cm
+                                      </span>
+                                      <span
+                                        className={`text-[11px] font-semibold ${
+                                          isHigh ? 'text-rose-400' : 'text-blue-400'
+                                        }`}
+                                      >
+                                        ({isHigh ? '+' : '-'}{item.diff}cm)
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-600 font-sans text-[11px]">-</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   );
                 })()}
@@ -1925,8 +1952,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 목적지
               </span>
               <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 text-xs space-y-2">
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="truncate">
                     <strong className="text-slate-400">네비 검색 지명:</strong>{' '}
                     <a
                       href={kakaoNaviUrl}
@@ -1941,14 +1968,39 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       <ExternalLink size={12} className="text-amber-400" />
                     </a>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => openExternalUrl(kakaoNaviUrl)}
-                    className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold inline-flex items-center gap-1 shrink-0 transition cursor-pointer"
-                  >
-                    <span>카카오맵</span>
-                  </button>
+
+                  {/* [요구사항 2-5] 목적지의 '카카오맵'과 '로드뷰'를 같은 줄에 표시 */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => openExternalUrl(kakaoNaviUrl)}
+                      className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <span>카카오맵</span>
+                      <ExternalLink size={11} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openExternalUrl(`https://map.kakao.com/link/roadview/${spot.lat},${spot.lng}`)}
+                      className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <span>로드뷰</span>
+                      <ExternalLink size={11} />
+                    </button>
+                    {spot.related_url && (
+                      <button
+                        type="button"
+                        onClick={() => openExternalUrl(spot.related_url!)}
+                        className="px-2.5 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                        title={spot.related_url}
+                      >
+                        <span>관련 URL</span>
+                        <ExternalLink size={11} />
+                      </button>
+                    )}
+                  </div>
                 </div>
+
                 {spot.navi_url && (
                   <div className="truncate">
                     <strong className="text-slate-400">현장 네비 URL:</strong>{' '}
@@ -1964,29 +2016,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     </a>
                   </div>
                 )}
-                <div className="pt-0.5 flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openExternalUrl(`https://map.kakao.com/link/roadview/${spot.lat},${spot.lng}`)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs border border-amber-500/40 transition shadow cursor-pointer"
-                  >
-                    <span>로드뷰</span>
-                    <ExternalLink size={12} />
-                  </button>
-
-                  {/* [요구사항 10-6] 목적지에 관련 URL 표시 */}
-                  {spot.related_url && (
-                    <button
-                      type="button"
-                      onClick={() => openExternalUrl(spot.related_url!)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 font-bold text-xs border border-cyan-500/40 transition shadow cursor-pointer"
-                      title={spot.related_url}
-                    >
-                      <span>관련 URL</span>
-                      <ExternalLink size={12} />
-                    </button>
-                  )}
-                </div>
 
                 {/* 도보 진입로 및 팁 통합 */}
                 <div className="pt-2 border-t border-slate-800 space-y-1">
@@ -2056,375 +2085,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 <p className="text-xs text-slate-300 leading-relaxed">{spot.description}</p>
               </div>
             )}
-
-            {/* [항목 3] 유저 맞춤형 공기역학 채비 항력 계수(Cd) & 로드 탄성 캘리브레이터 */}
-            <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
-                  <Sliders size={14} className="text-cyan-400" />
-                  <span>장비·채비 공기역학 캘리브레이터</span>
-                </span>
-                <span className="text-[10.5px] font-mono text-cyan-400 font-bold bg-cyan-950/80 px-2 py-0.5 rounded-full border border-cyan-800/60">
-                  기준 비거리 {tackleConfig.calibratedDistanceMeters}m
-                </span>
-              </div>
-
-              <div className="space-y-2.5 text-xs">
-                {/* 1. 로드 구분 (루어대 vs 원투대) */}
-                <div className="space-y-1.5">
-                  <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newPower: RodPower = 'ML';
-                        const newLenM = 2.6;
-                        const updated = saveTackleConfig(tackleConfig.weightGrams, tackleConfig.peLineSize, newPower, newLenM);
-                        setTackleConfig(updated);
-                      }}
-                      className={`flex-1 py-1 text-center text-[11px] font-bold rounded-md transition ${
-                        tackleConfig.rodType === 'LURE'
-                          ? 'bg-cyan-500 text-slate-950 shadow'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      🎣 루어대 (UL ~ H)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newPower: RodPower = 'SURF';
-                        const newLenM = 4.2;
-                        const newW = tackleConfig.weightGrams < 20 ? 93.8 : tackleConfig.weightGrams;
-                        const updated = saveTackleConfig(newW, tackleConfig.peLineSize, newPower, newLenM);
-                        setTackleConfig(updated);
-                        setPanelWeightCategory('SURF');
-                      }}
-                      className={`flex-1 py-1 text-center text-[11px] font-bold rounded-md transition ${
-                        tackleConfig.rodType === 'SURF'
-                          ? 'bg-amber-500 text-slate-950 shadow'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      🌊 원투대 (서프 8~40호)
-                    </button>
-                  </div>
-
-                  {/* 루어대: 파워 6개 선택 & 1.6~3.0m 전장 */}
-                  {tackleConfig.rodType === 'LURE' ? (
-                    <div className="space-y-1.5 bg-slate-900/60 p-2 rounded-xl border border-slate-800">
-                      <div className="flex justify-between items-center text-[11px]">
-                        <span className="text-slate-300">루어대 파워 등급:</span>
-                        <span className="font-mono font-bold text-cyan-300">
-                          {tackleConfig.rodPower} (최적 {ROD_POWER_SPECS[tackleConfig.rodPower]?.optWeightG}g)
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-6 gap-1">
-                        {(['UL', 'L', 'ML', 'M', 'MH', 'H'] as RodPower[]).map((p) => (
-                          <button
-                            key={p}
-                            type="button"
-                            onClick={() => {
-                              const updated = saveTackleConfig(
-                                tackleConfig.weightGrams,
-                                tackleConfig.peLineSize,
-                                p,
-                                tackleConfig.rodLengthM
-                              );
-                              setTackleConfig(updated);
-                            }}
-                            className={`py-1 rounded text-[10.5px] font-bold font-mono transition ${
-                              tackleConfig.rodPower === p
-                                ? 'bg-cyan-500 text-slate-950 shadow ring-1 ring-cyan-300'
-                                : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
-                            }`}
-                          >
-                            {p}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="text-[9.5px] text-cyan-400/90 leading-tight">
-                        * {ROD_POWER_SPECS[tackleConfig.rodPower]?.description}
-                      </div>
-
-                      {/* 루어대 전장 1.6m ~ 3.0m (ft 동시 표기) */}
-                      <div className="space-y-1 pt-1 border-t border-slate-800/80">
-                        <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-slate-300">루어대 전장:</span>
-                          <span className="font-mono font-bold text-cyan-300">
-                            {tackleConfig.rodLengthM.toFixed(1)}m ({tackleConfig.rodLengthFt.toFixed(1)}ft)
-                          </span>
-                        </div>
-                        {/* [요구사항 10-1] 모바일 스크롤 간섭 방지를 위해 슬라이더 좌우 여백 축소 */}
-                        <div className="px-4 sm:px-1">
-                          <input
-                            type="range"
-                            min={1.6}
-                            max={3.0}
-                            step={0.1}
-                            value={tackleConfig.rodLengthM}
-                            onChange={(e) => {
-                              const lenM = Number(e.target.value);
-                              const updated = saveTackleConfig(
-                                tackleConfig.weightGrams,
-                                tackleConfig.peLineSize,
-                                tackleConfig.rodPower,
-                                lenM
-                              );
-                              setTackleConfig(updated);
-                            }}
-                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                          />
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {[
-                            { m: 1.8, label: '1.8m (5.9ft)' },
-                            { m: 2.1, label: '2.1m (6.9ft)' },
-                            { m: 2.4, label: '2.4m (7.9ft)' },
-                            { m: 2.6, label: '2.6m (8.6ft)' },
-                            { m: 3.0, label: '3.0m (9.8ft)' },
-                          ].map((item) => (
-                            <button
-                              key={item.m}
-                              type="button"
-                              onClick={() => {
-                                const updated = saveTackleConfig(
-                                  tackleConfig.weightGrams,
-                                  tackleConfig.peLineSize,
-                                  tackleConfig.rodPower,
-                                  item.m
-                                );
-                                setTackleConfig(updated);
-                              }}
-                              className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition ${
-                                Math.abs(tackleConfig.rodLengthM - item.m) < 0.05
-                                  ? 'bg-cyan-500/30 text-cyan-200 border border-cyan-400/80 font-bold'
-                                  : 'bg-slate-900/90 text-slate-400 hover:text-slate-200 border border-slate-800'
-                              }`}
-                            >
-                              {item.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    /* 원투대: 고정 규격 길이 (2.7, 3.3, 4.2, 4.5, 5.4m) */
-                    <div className="space-y-1.5 bg-slate-900/60 p-2 rounded-xl border border-slate-800">
-                      <div className="flex justify-between items-center text-[11px]">
-                        <span className="text-slate-300">원투대 규격 전장 (m/ft):</span>
-                        <span className="font-mono font-bold text-amber-300">
-                          {tackleConfig.rodLengthM.toFixed(1)}m ({tackleConfig.rodLengthFt.toFixed(1)}ft)
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-5 gap-1">
-                        {[
-                          { m: 2.7, sub: '8.9ft' },
-                          { m: 3.3, sub: '10.8ft' },
-                          { m: 4.2, sub: '13.8ft' },
-                          { m: 4.5, sub: '14.8ft' },
-                          { m: 5.4, sub: '17.7ft' },
-                        ].map((surf) => (
-                          <button
-                            key={surf.m}
-                            type="button"
-                            onClick={() => {
-                              const updated = saveTackleConfig(
-                                tackleConfig.weightGrams,
-                                tackleConfig.peLineSize,
-                                'SURF',
-                                surf.m
-                              );
-                              setTackleConfig(updated);
-                            }}
-                            className={`py-1.5 px-0.5 rounded flex flex-col items-center justify-center transition ${
-                              Math.abs(tackleConfig.rodLengthM - surf.m) < 0.05
-                                ? 'bg-amber-500 text-slate-950 font-bold shadow ring-1 ring-amber-300'
-                                : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
-                            }`}
-                          >
-                            <span className="text-[10px] font-mono font-bold leading-tight">{surf.m}m</span>
-                            <span className="text-[8px] opacity-75 font-mono">{surf.sub}</span>
-                          </button>
-                        ))}
-                      </div>
-                      <div className="text-[9px] text-amber-300/90 leading-tight">
-                        * 원투대는 휨·탄성의 왜곡보다 "추 무게(8~40호)"와 "로드 길이"가 비거리를 지배합니다.
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 2. 추 / 봉돌 무게 선택 (지그헤드, 온스, 주꾸미, 원투봉돌) */}
-                <div className="space-y-1.5">
-                  <div className="flex justify-between items-center text-[11px]">
-                    <span className="text-slate-300">추/봉돌 무게:</span>
-                    <span className="font-mono font-bold text-cyan-300">
-                      {tackleConfig.weightGrams}g
-                      <span className="text-[9.5px] text-slate-400 font-normal ml-1">
-                        ({getWeightDescription(tackleConfig.weightGrams)})
-                      </span>
-                    </span>
-                  </div>
-
-                  {/* 카테고리 탭 (4개) */}
-                  <div className="grid grid-cols-4 gap-1 p-0.5 bg-slate-900 rounded-lg border border-slate-800">
-                    {[
-                      { cat: 'JIG' as WeightCategory, label: '지그헤드', desc: '1~5g' },
-                      { cat: 'OZ' as WeightCategory, label: '온스(oz)', desc: '1/32~2oz' },
-                      { cat: 'JUKKUMI' as WeightCategory, label: '주꾸미', desc: '3~7호' },
-                      { cat: 'SURF' as WeightCategory, label: '원투봉돌', desc: '16~40호' },
-                    ].map((tab) => (
-                      <button
-                        key={tab.cat}
-                        type="button"
-                        onClick={() => setPanelWeightCategory(tab.cat)}
-                        className={`py-1 rounded text-center transition ${
-                          panelWeightCategory === tab.cat
-                            ? 'bg-slate-800 text-cyan-300 font-bold border border-cyan-500/50 shadow-xs'
-                            : 'text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        <div className="text-[10px] leading-tight">{tab.label}</div>
-                        <div className="text-[8px] opacity-75 font-mono leading-tight">{tab.desc}</div>
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* 프리셋 버튼 목록 */}
-                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1 bg-slate-900/70 rounded-lg border border-slate-800">
-                    {WEIGHT_PRESETS.filter((p) => p.category === panelWeightCategory).map((preset) => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => {
-                          const updated = saveTackleConfig(
-                            preset.weightGrams,
-                            tackleConfig.peLineSize,
-                            tackleConfig.rodPower,
-                            tackleConfig.rodLengthM
-                          );
-                          setTackleConfig(updated);
-                        }}
-                        className={`px-1.5 py-0.5 rounded text-[9.5px] font-mono flex items-center gap-0.5 transition ${
-                          Math.abs(tackleConfig.weightGrams - preset.weightGrams) < 0.15
-                            ? 'bg-cyan-500 text-slate-950 font-bold shadow'
-                            : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
-                        }`}
-                      >
-                        <span>{preset.label}</span>
-                        <span className="text-[8px] opacity-75">({preset.subLabel})</span>
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* [요구사항 10-1] 모바일 스크롤 간섭 방지를 위해 슬라이더 좌우 여백 축소 */}
-                  <div className="px-4 sm:px-1">
-                    <input
-                      type="range"
-                      min={1}
-                      max={150}
-                      step={1}
-                      value={Math.round(tackleConfig.weightGrams)}
-                      onChange={(e) => {
-                        const w = Number(e.target.value);
-                        const updated = saveTackleConfig(
-                          w,
-                          tackleConfig.peLineSize,
-                          tackleConfig.rodPower,
-                          tackleConfig.rodLengthM
-                        );
-                        setTackleConfig(updated);
-                      }}
-                      className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                    />
-                  </div>
-                  <div className="flex justify-between text-[8.5px] text-slate-500 font-mono">
-                    <span>1g (지그)</span>
-                    <span>28g (1oz)</span>
-                    <span>75g (20호)</span>
-                    <span>150g (40호)</span>
-                  </div>
-                </div>
-
-                {/* 3. 합사 라인 호수 슬라이더 (0.4~3.0호) */}
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center text-[11px]">
-                    <span className="text-slate-300">합사(PE) 라인 굵기:</span>
-                    <span className="font-mono font-bold text-cyan-300">{tackleConfig.peLineSize.toFixed(1)}호</span>
-                  </div>
-                  {/* [요구사항 10-1] 모바일 스크롤 간섭 방지를 위해 슬라이더 좌우 여백 축소 */}
-                  <div className="px-4 sm:px-1">
-                    <input
-                      type="range"
-                      min={0.4}
-                      max={3.0}
-                      step={0.1}
-                      value={tackleConfig.peLineSize}
-                      onChange={(e) => {
-                        const pe = Number(e.target.value);
-                        const updated = saveTackleConfig(
-                          tackleConfig.weightGrams,
-                          pe,
-                          tackleConfig.rodPower,
-                          tackleConfig.rodLengthM
-                        );
-                        setTackleConfig(updated);
-                      }}
-                      className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                    />
-                  </div>
-                  <div className="flex justify-between text-[8.5px] text-slate-500 font-mono">
-                    <span>0.4호 (아징)</span>
-                    <span>1.0호 (에깅)</span>
-                    <span>2.0호 (원투)</span>
-                    <span>3.0호 (대물)</span>
-                  </div>
-                </div>
-
-                {/* 4. 비거리 및 물리 특성 요약 */}
-                <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5 text-[11px]">
-                  <div className="flex justify-between text-slate-300">
-                    <span>예상 비거리:</span>
-                    <strong className="text-cyan-300 font-mono text-xs">{tackleConfig.calibratedDistanceMeters}m</strong>
-                  </div>
-                  <div className="flex justify-between text-slate-400 text-[10.5px]">
-                    <span>지도 동심원 눈금 링 반경:</span>
-                    <span className="text-emerald-400 font-mono font-semibold">{tackleConfig.radii.join('m · ')}m</span>
-                  </div>
-                </div>
-
-                {/* [요구사항 10-4, 10-5] 예상 바닥 안착 카운트 가이드 표 (수심 3m, 5m, 10m, 20m) */}
-                {(() => {
-                  const curVel = marine?.currentVelocity ?? 0.3;
-                  const sampleDepths = [3, 5, 10, 20];
-                  return (
-                    <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-800/50 space-y-1.5 text-xs">
-                      <div className="flex justify-between items-center font-bold text-cyan-300">
-                        <span>⏱️ 예상 바닥 안착 카운트</span>
-                        <span className="font-mono text-[11px] text-slate-400 font-normal">
-                          (현재 {curVel}m/s)
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-4 gap-1.5 text-center pt-1 font-mono">
-                        {sampleDepths.map((d) => {
-                          const p = calculateSinkingPhysics(tackleConfig.weightGrams, d, curVel);
-                          return (
-                            <div key={d} className="p-1.5 rounded-lg bg-slate-900/90 border border-slate-800 flex flex-col">
-                              <span className="text-slate-400 text-[10.5px]">수심 {d}m</span>
-                              <span className="font-black text-amber-300 text-sm sm:text-base">{p.fallTimeSec}초</span>
-                              <span className="text-[9.5px] text-slate-500">+{p.driftDistanceM}m</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <p className="text-[10px] text-slate-400 pt-0.5 leading-snug">
-                        💡 캐스팅 후 위 초만큼 카운트다운한 뒤 릴링/액션을 시작하면 밑걸림 없이 바닥권 입질을 유도할 수 있습니다.
-                      </p>
-                    </div>
-                  );
-                })()}
-              </div>
-            </div>
 
             {/* 유튜브 실시간 현장 조황 & 낚시 영상 링크 (최신순 검색) */}
             <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
