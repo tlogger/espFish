@@ -806,14 +806,24 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               );
             })()}
 
-            {/* [요구사항 2-4B] 물때 & 일출/일몰/만조/간조 통합 직관적 시간표 테이블 (Line wrap 원천 방지) */}
+            {/* [요구사항 2-4B, 3] 바다타임(badatime.com 149) 표준 스타일 물때·조위 테이블 및 기상 연동 */}
             {tide && (
-              <div className="p-3.5 sm:p-4 bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-slate-950/95 border border-cyan-500/40 rounded-2xl shadow-xl space-y-2.5">
-                {/* 1행: 물때 명칭 & 현재 수위 */}
+              <div className="p-3.5 sm:p-4 bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-slate-950/95 border border-cyan-500/40 rounded-2xl shadow-xl space-y-3">
+                {/* 1행: 물때 명칭 & 월령 & 현재 수위 & 바다타임 링크 */}
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2">
                     <span className="font-extrabold text-base sm:text-lg text-cyan-300 drop-shadow">🌊 {tide.mulText}</span>
                     <span className="text-xs sm:text-sm text-slate-300 font-medium">({tide.lunarDateStr})</span>
+                    <a
+                      href="https://www.badatime.com/149/graph/2026-10-25"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-cyan-400/80 hover:text-cyan-200 underline flex items-center gap-0.5 ml-1"
+                      title="바다타임 강릉(안인진) 조위관측소 물때표"
+                    >
+                      <span>바다타임 149</span>
+                      <span>↗</span>
+                    </a>
                   </div>
                   {currentTidePoint && (
                     <div className="text-xs sm:text-sm text-cyan-200 font-mono font-bold bg-cyan-950/90 border border-cyan-700/70 px-2.5 py-1 rounded-lg shadow-inner flex items-center gap-1.5">
@@ -824,7 +834,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   )}
                 </div>
 
-                {/* 2행: 오늘 시간순 물때 & 태양 이벤트 시간표 테이블 */}
+                {/* 2행: 오늘 시간순 물때 & 태양 이벤트 시간표 테이블 (바다타임 149 증감 표기 완전 호환) */}
                 {(() => {
                   interface TideScheduleItem {
                     type: 'HIGH' | 'LOW' | 'SUNRISE' | 'SUNSET';
@@ -864,7 +874,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         }
                       }
                     }
-                    ev.diff = prevOpp ? Math.abs(ev.height - prevOpp.height) : 300;
+                    ev.diff = prevOpp ? Math.abs(ev.height - prevOpp.height) : 20;
                   }
 
                   const scheduleItems: TideScheduleItem[] = [
@@ -933,13 +943,15 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                 </td>
                                 <td className="py-2 px-3 text-center">
                                   {isHigh && (
-                                    <span className="inline-block px-2 py-0.5 rounded text-[11px] font-sans font-extrabold bg-rose-950 text-rose-300 border border-rose-800/60 shadow-xs">
-                                      만조
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-sans font-extrabold bg-rose-950 text-rose-300 border border-rose-800/60 shadow-xs">
+                                      <span>▲</span>
+                                      <span>만조</span>
                                     </span>
                                   )}
                                   {isLow && (
-                                    <span className="inline-block px-2 py-0.5 rounded text-[11px] font-sans font-extrabold bg-blue-950 text-blue-300 border border-blue-800/60 shadow-xs">
-                                      간조
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-sans font-extrabold bg-blue-950 text-blue-300 border border-blue-800/60 shadow-xs">
+                                      <span>▼</span>
+                                      <span>간조</span>
                                     </span>
                                   )}
                                   {isSunrise && (
@@ -964,7 +976,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                           isHigh ? 'text-rose-400' : 'text-blue-400'
                                         }`}
                                       >
-                                        ({isHigh ? '+' : '-'}{item.diff}cm)
+                                        ({isHigh ? '▲ +' : '▼ -'}{item.diff}cm)
                                       </span>
                                     </span>
                                   ) : (

@@ -24,6 +24,8 @@ export const KOREA_HARBORS: HarborRef[] = [
   { name: '울산', lat: 35.503, lng: 129.382, meanRange: 50, highLagHours: 6.8 },
   { name: '포항', lat: 36.048, lng: 129.383, meanRange: 25, highLagHours: 5.2 },
   { name: '속초', lat: 38.204, lng: 128.601, meanRange: 20, highLagHours: 4.0 },
+  { name: '강릉(안인진)', lat: 37.736, lng: 128.986, meanRange: 20, highLagHours: 1.8 },
+  { name: '동해(묵호)', lat: 37.551, lng: 129.117, meanRange: 20, highLagHours: 1.8 },
   { name: '제주', lat: 33.528, lng: 126.543, meanRange: 230, highLagHours: 10.8 },
   { name: '서귀포', lat: 33.241, lng: 126.564, meanRange: 220, highLagHours: 10.1 },
 ];
@@ -113,7 +115,8 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
     const firstHighHour = (harbor.highLagHours + moonAge * 0.83) % tideCycle;
     const springFactor = 0.4 + 0.6 * (Math.sin(((mulNumber - 1) / 15) * Math.PI) ** 2);
     const amplitude = (harbor.meanRange * springFactor) / 2;
-    const meanSeaLevel = harbor.meanRange * 0.6;
+    // 동해안(조차 50cm 이하 소조차 해역)은 기준 해수면 16cm 기준, 서·남해안은 조차 비례 계산
+    const meanSeaLevel = harbor.meanRange <= 50 ? 16 : harbor.meanRange * 0.6;
 
     const highs: { time: string; height: number }[] = [];
     const lows: { time: string; height: number }[] = [];
@@ -148,7 +151,7 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
       const m = Math.floor((hr - h) * 60);
       lows.push({
         time: `${padZero(h)}:${padZero(m)}`,
-        height: Math.max(10, Math.round(meanSeaLevel - amplitude)),
+        height: Math.max(2, Math.round(meanSeaLevel - amplitude)),
       });
     });
 
@@ -274,7 +277,8 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
     const firstHighHour = (harbor.highLagHours + moonAge * 0.83) % tideCycle;
     const springFactor = 0.4 + 0.6 * (Math.sin(((mulNumber - 1) / 15) * Math.PI) ** 2);
     const amplitude = (harbor.meanRange * springFactor) / 2;
-    const meanSeaLevel = harbor.meanRange * 0.6;
+    // 동해안(조차 50cm 이하 소조차 해역)은 기준 해수면 16cm 기준, 서·남해안은 조차 비례 계산
+    const meanSeaLevel = harbor.meanRange <= 50 ? 16 : harbor.meanRange * 0.6;
 
     const t = pointDate.getHours() + pointDate.getMinutes() / 60;
     const phase = ((t - firstHighHour) * 2 * Math.PI) / tideCycle;
@@ -400,7 +404,8 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
     const firstHighHour = (harbor.highLagHours + moonAge * 0.83) % tideCycle;
     const springFactor = 0.4 + 0.6 * (Math.sin(((mulNumber - 1) / 15) * Math.PI) ** 2);
     const amplitude = (harbor.meanRange * springFactor) / 2;
-    const meanSeaLevel = harbor.meanRange * 0.6;
+    // 동해안(조차 50cm 이하 소조차 해역)은 기준 해수면 16cm 기준, 서·남해안은 조차 비례 계산
+    const meanSeaLevel = harbor.meanRange <= 50 ? 16 : harbor.meanRange * 0.6;
 
     // 현재 시각 기준 phase
     const t = curHourDate.getHours();

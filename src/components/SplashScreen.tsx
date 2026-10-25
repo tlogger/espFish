@@ -73,33 +73,31 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
         {/* 3. 모바일/PC 비네팅 오버레이 */}
         <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-transparent to-slate-950/85 pointer-events-none" />
 
-        {/* 4. 상단 브랜드 헤더 */}
+        {/* 4. 상단 브랜드 헤더 ([요구사항 1] 아이콘 백그라운드 제거, 타이틀 크기 2배 확대) */}
         <div
           className="absolute top-0 inset-x-0 z-10 flex flex-col items-center pt-8 sm:pt-14 px-6 text-center animate-fade-in"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2rem)' }}
         >
-          <div className="flex items-center gap-2 px-3.5 py-1 rounded-full bg-slate-950/60 backdrop-blur-md border border-cyan-500/30 shadow-lg">
+          <div className="flex items-center gap-3 drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)]">
             <img
               src={`${import.meta.env.BASE_URL}user-icon.png`}
               alt="ExFish Logo"
-              className="w-6 h-6 rounded-md object-contain"
+              className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
             />
-            <span className="text-xl sm:text-2xl font-black tracking-widest text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)] font-sans">
+            <span className="text-4xl sm:text-5xl font-black tracking-widest text-white drop-shadow-[0_4px_20px_rgba(0,0,0,0.95)] font-sans">
               ExFish
             </span>
           </div>
         </div>
 
-        {/* 5. 하단: 슬로건 "떠난 물고기를 기리며..." */}
+        {/* 5. 하단: 슬로건 "떠난 물고기를 기리며..." ([요구사항 1] 백그라운드 제거) */}
         <div
           className="absolute bottom-0 inset-x-0 z-10 flex flex-col items-center pb-10 sm:pb-16 px-6 text-center animate-fade-in"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 2.5rem)' }}
         >
-          <div className="px-6 py-2.5 rounded-full bg-slate-950/80 backdrop-blur-md border border-cyan-400/40 shadow-2xl">
-            <p className="text-sm sm:text-base font-bold tracking-wider text-cyan-200 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
-              떠난 물고기를 기리며...
-            </p>
-          </div>
+          <p className="text-sm sm:text-base font-bold tracking-wider text-cyan-200 drop-shadow-[0_2px_12px_rgba(0,0,0,0.98)] font-sans">
+            떠난 물고기를 기리며...
+          </p>
         </div>
       </div>
     </div>

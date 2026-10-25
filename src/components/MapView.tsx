@@ -194,21 +194,32 @@ export const MapView: React.FC<MapViewProps> = ({
   // 실수 터치 방지: 지도 빈 자리 클릭 시 임시 핀 & 미니 확인 팝업 상태
   const [pendingNewSpot, setPendingNewSpot] = React.useState<{ lat: number; lng: number } | null>(null);
 
+  // [요구사항 1] 카카오 기본 줌(Level 1)을 초과하는 2단계 추가 디지털 줌 (1.0x -> 1.8x -> 3.0x)
+  const [digitalZoom, setDigitalZoom] = React.useState<number>(1.0);
+
+  // 카카오 맵 인스턴스 참조
+  const mapRef = React.useRef<any>(null);
+
+  // [요구사항 4] 지도 최상위 뷰포트 컨테이너 ref
+  const mapContainerRef = React.useRef<HTMLDivElement>(null);
+
+
+
   // [요구사항 4] 포인트 더블클릭/롱클릭 컨텍스트 메뉴 상태
   const [contextMenuSpot, setContextMenuSpot] = React.useState<FishingSpot | null>(null);
   const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressTriggeredRef = React.useRef(false);
 
-  // [요구사항 4] 컨텍스트 메뉴 열기 헬퍼 (디지털 줌 상태에서도 메뉴가 화면 중앙에 완벽하게 보이도록 시야 확보)
+  // [요구사항 4] 컨텍스트 메뉴 열기 헬퍼 (디지털 줌 상태에서는 시야가 튀지 않도록 유지, 일반 상태에서는 중앙 배치)
   const handleOpenContextMenu = React.useCallback((spot: FishingSpot) => {
     setContextMenuSpot(spot);
-    if (mapRef.current && (window as any).kakao?.maps?.LatLng) {
+    if (digitalZoom <= 1.0 && mapRef.current && (window as any).kakao?.maps?.LatLng) {
       try {
         const targetLatLng = new (window as any).kakao.maps.LatLng(spot.lat, spot.lng);
         mapRef.current.panTo(targetLatLng);
       } catch {}
     }
-  }, []);
+  }, [digitalZoom]);
 
   // [요구사항 4-3] 캐스팅 방향 전용 설정 모드 상태
   const [castingConfigSpot, setCastingConfigSpot] = React.useState<FishingSpot | null>(null);
@@ -332,11 +343,7 @@ export const MapView: React.FC<MapViewProps> = ({
     }
   }, [mapMode]);
 
-  // [요구사항 1] 카카오 기본 줌(Level 1)을 초과하는 2단계 추가 디지털 줌 (1.0x -> 1.8x -> 3.0x)
-  const [digitalZoom, setDigitalZoom] = React.useState<number>(1.0);
 
-  // 카카오 맵 인스턴스 참조
-  const mapRef = React.useRef<any>(null);
 
   // [요구사항 4] 화면 클릭/터치 좌표 추적 (디지털 줌 역산 좌표 계산용)
   const lastClientPosRef = React.useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -358,10 +365,21 @@ export const MapView: React.FC<MapViewProps> = ({
       const rect = container.getBoundingClientRect();
       if (!rect.width || !rect.height) return null;
 
-      // rect는 transform: scale(digitalZoom)이 적용된 화면 바운딩 박스
-      // unscaled 컨테이너 기준 내부 CSS 픽셀 좌표 역산
-      const unscaledX = (clientX - rect.left) / digitalZoom;
-      const unscaledY = (clientY - rect.top) / digitalZoom;
+      if (digitalZoom <= 1.0) {
+        const point = new (window as any).kakao.maps.Point(clientX - rect.left, clientY - rect.top);
+        const coords = proj.coordsFromContainerPoint(point);
+        if (!coords) return null;
+        return { lat: coords.getLat(), lng: coords.getLng() };
+      }
+
+      // transform: scale(digitalZoom) 적용 시 화면 중심 기준 역산
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const unscaledW = rect.width / digitalZoom;
+      const unscaledH = rect.height / digitalZoom;
+
+      const unscaledX = unscaledW / 2 + (clientX - cx) / digitalZoom;
+      const unscaledY = unscaledH / 2 + (clientY - cy) / digitalZoom;
 
       const point = new (window as any).kakao.maps.Point(unscaledX, unscaledY);
       const coords = proj.coordsFromContainerPoint(point);
@@ -371,7 +389,49 @@ export const MapView: React.FC<MapViewProps> = ({
     [digitalZoom]
   );
 
-  // [요구사항 2, 4] 디지털 슈퍼 줌(1.8x, 3.0x) 상태에서 픽셀 드래그 오차 100% 정밀 보정
+  // [요구사항 4] 지도 좌표(LatLng)를 뷰포트(mapContainerRef) 기준의 정확한 스크린 픽셀 좌표(x, y)로 변환
+  const getScreenPosFromLatLng = React.useCallback(
+    (lat: number, lng: number): { x: number; y: number } | null => {
+      if (!mapRef.current) return null;
+      const map = mapRef.current;
+      const proj = map.getProjection ? map.getProjection() : null;
+      if (!proj || !(window as any).kakao?.maps?.LatLng) return null;
+
+      const container = map.getNode ? map.getNode() : null;
+      if (!container) return null;
+      const rect = container.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+
+      const latLng = new (window as any).kakao.maps.LatLng(lat, lng);
+      const containerPoint = proj.containerPointFromCoords(latLng);
+      if (!containerPoint) return null;
+
+      const rootRect = mapContainerRef.current ? mapContainerRef.current.getBoundingClientRect() : rect;
+
+      if (digitalZoom <= 1.0) {
+        return {
+          x: rect.left - rootRect.left + containerPoint.x,
+          y: rect.top - rootRect.top + containerPoint.y,
+        };
+      }
+
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const unscaledW = rect.width / digitalZoom;
+      const unscaledH = rect.height / digitalZoom;
+
+      const screenX = cx + (containerPoint.x - unscaledW / 2) * digitalZoom;
+      const screenY = cy + (containerPoint.y - unscaledH / 2) * digitalZoom;
+
+      return {
+        x: screenX - rootRect.left,
+        y: screenY - rootRect.top,
+      };
+    },
+    [digitalZoom]
+  );
+
+  // [요구사항 2, 4, 5] 디지털 슈퍼 줌(1.8x, 3.0x) 상태에서 픽셀 드래그 오차 100% 정밀 보정
   const dragTrackerRef = React.useRef<{
     isDragging: boolean;
     lastX: number;
@@ -414,29 +474,29 @@ export const MapView: React.FC<MapViewProps> = ({
     dragTrackerRef.current.lastX = clientX;
     dragTrackerRef.current.lastY = clientY;
 
-    // 드래그 거리가 생기면 혹시 실행 중인 롱프레스 타이머 취소 (지도 이동 중 롱클릭 오작동 방지)
-    if (dragTrackerRef.current.totalDist > 8 && longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
+    // 드래그 거리가 생기면 롱프레스 취소 및 열려있는 팝업/컨텍스트 메뉴 닫기 (지도 이동 방해 방지)
+    if (dragTrackerRef.current.totalDist > 8) {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      if (contextMenuSpot) setContextMenuSpot(null);
+      if (pendingNewSpot) setPendingNewSpot(null);
     }
 
     try {
       const map = mapRef.current;
-      // [요구사항 4] 픽셀 단위 뷰포트 이동: panBy(-dx / digitalZoom, -dy / digitalZoom)를 사용하여 1:1 완벽 추종
-      if (map.panBy) {
-        map.panBy(-dx / digitalZoom, -dy / digitalZoom);
-      } else {
-        const proj = map.getProjection ? map.getProjection() : null;
-        if (proj && (window as any).kakao?.maps?.Point) {
-          const curCenter = map.getCenter();
-          const curPoint = proj.pointFromCoords(curCenter);
-          const newPoint = new (window as any).kakao.maps.Point(
-            curPoint.x - dx / digitalZoom,
-            curPoint.y - dy / digitalZoom
-          );
-          const newCenter = proj.coordsFromPoint(newPoint);
-          map.setCenter(newCenter);
-        }
+      // [요구사항 5] 애니메이션 지연 없는 즉시 좌표 이동(setCenter)으로 60fps 마우스/터치 드래그 추종
+      const proj = map.getProjection ? map.getProjection() : null;
+      if (proj && (window as any).kakao?.maps?.Point) {
+        const curCenter = map.getCenter();
+        const curPoint = proj.pointFromCoords(curCenter);
+        const newPoint = new (window as any).kakao.maps.Point(
+          curPoint.x - dx / digitalZoom,
+          curPoint.y - dy / digitalZoom
+        );
+        const newCenter = proj.coordsFromPoint(newPoint);
+        map.setCenter(newCenter);
       }
     } catch (err) {
       console.warn('Superzoom drag pan error:', err);
@@ -800,12 +860,13 @@ export const MapView: React.FC<MapViewProps> = ({
 
   return (
     <div
+      ref={mapContainerRef}
       data-digital-zoom={digitalZoom.toFixed(1)}
       className={`relative w-full h-full bg-slate-950 overflow-hidden kakao-map-container ${
         isDarkMode ? 'kakao-dark-mode' : ''
       } ${isSunMode ? 'exfish-sun-mode' : ''}`}
     >
-      {/* [요구사항 1, 2] Level 1 상태에서 2단계 추가 디지털 줌 (1.8x, 3.0x) 지원 래퍼 및 픽셀 드래그 오차 100% 정밀 보정 */}
+      {/* [요구사항 1, 2, 5] Level 1 상태에서 2단계 추가 디지털 줌 (1.8x, 3.0x) 지원 래퍼 및 픽셀 드래그 오차 100% 정밀 보정 */}
       <div
         className="w-full h-full transition-transform duration-200 origin-center select-none"
         style={{
@@ -814,14 +875,35 @@ export const MapView: React.FC<MapViewProps> = ({
           touchAction: digitalZoom > 1.0 ? 'none' : 'auto',
           cursor: digitalZoom > 1.0 ? (dragTrackerRef.current.isDragging ? 'grabbing' : 'grab') : 'default',
         }}
-        onMouseDown={(e) => {
-          if (e.button === 0) handlePointerDown(e.clientX, e.clientY);
+        onDragStart={(e) => e.preventDefault()}
+        onPointerDown={(e) => {
+          if (e.button !== 0 && e.pointerType === 'mouse') return;
+          if (digitalZoom > 1.0) {
+            try {
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            } catch {}
+          }
+          handlePointerDown(e.clientX, e.clientY);
         }}
-        onMouseMove={(e) => {
+        onPointerMove={(e) => {
           handlePointerMove(e.clientX, e.clientY);
         }}
-        onMouseUp={handlePointerUp}
-        onMouseLeave={handlePointerUp}
+        onPointerUp={(e) => {
+          try {
+            if ((e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) {
+              (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+            }
+          } catch {}
+          handlePointerUp();
+        }}
+        onPointerCancel={(e) => {
+          try {
+            if ((e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) {
+              (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+            }
+          } catch {}
+          handlePointerUp();
+        }}
         onTouchStart={(e) => {
           activeTouchCountRef.current = e.touches.length;
           if (e.touches.length > 1) {
@@ -896,14 +978,16 @@ export const MapView: React.FC<MapViewProps> = ({
             let clickedLng = latLng.getLng();
 
             // [요구사항 4] 디지털 줌 상태에서는 CSS scale 역산을 통해 실제 클릭/터치한 정확한 위경도 산출
-            if (digitalZoom > 1.0 && lastClientPosRef.current.x > 0) {
-              const corrected = getCorrectLatLngFromClient(
-                lastClientPosRef.current.x,
-                lastClientPosRef.current.y
-              );
-              if (corrected) {
-                clickedLat = corrected.lat;
-                clickedLng = corrected.lng;
+            if (digitalZoom > 1.0) {
+              const domEv = (mouseEvent as any).domEvent;
+              const clickX = domEv?.clientX ?? lastClientPosRef.current.x;
+              const clickY = domEv?.clientY ?? lastClientPosRef.current.y;
+              if (clickX > 0) {
+                const corrected = getCorrectLatLngFromClient(clickX, clickY);
+                if (corrected) {
+                  clickedLat = corrected.lat;
+                  clickedLng = corrected.lng;
+                }
               }
             }
 
@@ -1336,6 +1420,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   strokeWeight={2.2}
                   strokeColor="#06b6d4"
                   strokeOpacity={0.9}
+                  strokeStyle="shortdash"
                   zIndex={46}
                 />
                 <CustomOverlayMap
@@ -1531,72 +1616,22 @@ export const MapView: React.FC<MapViewProps> = ({
           </React.Fragment>
         )}
 
-        {/* 지도 빈 공간 클릭 시: 새 포인트 등록 확인 미니 팝업 (실수 터치 완벽 방지) */}
+        {/* 지도 빈 공간 클릭 시: 새 포인트 등록 위치 표시 핑 마커 */}
         {pendingNewSpot && (
-          <React.Fragment key="pending-new-spot">
-            <CustomOverlayMap
-              position={pendingNewSpot}
-              yAnchor={0.5}
-              xAnchor={0.5}
-              zIndex={290}
-              clickable={true}
-            >
-              <div className="relative flex items-center justify-center pointer-events-none kakao-invert-restore">
-                <div className="w-9 h-9 rounded-full bg-cyan-400/40 animate-ping absolute" />
-                <div className="w-7 h-7 rounded-full bg-cyan-500 border-2 border-white shadow-2xl flex items-center justify-center text-sm">
-                  📍
-                </div>
+          <CustomOverlayMap
+            position={pendingNewSpot}
+            yAnchor={0.5}
+            xAnchor={0.5}
+            zIndex={290}
+            clickable={false}
+          >
+            <div className="relative flex items-center justify-center pointer-events-none kakao-invert-restore">
+              <div className="w-9 h-9 rounded-full bg-cyan-400/40 animate-ping absolute" />
+              <div className="w-7 h-7 rounded-full bg-cyan-500 border-2 border-white shadow-2xl flex items-center justify-center text-sm">
+                📍
               </div>
-            </CustomOverlayMap>
-
-            <CustomOverlayMap
-              position={pendingNewSpot}
-              yAnchor={1.3}
-              zIndex={300}
-              clickable={true}
-            >
-              <div
-                onClick={(e) => {
-                  e.stopPropagation();
-                  isMarkerClickRef.current = true;
-                }}
-                className="p-3 bg-slate-900/95 backdrop-blur-md border border-cyan-500/60 rounded-xl shadow-2xl text-white text-xs font-sans space-y-2 animate-in fade-in zoom-in-95 duration-150 kakao-invert-restore min-w-[210px]"
-              >
-                <div className="flex items-center gap-1.5 font-bold text-cyan-300">
-                  <span>📍 새 포인트 등록</span>
-                </div>
-                <div className="text-[11px] text-slate-300 font-mono">
-                  위도 {pendingNewSpot.lat.toFixed(4)}, 경도 {pendingNewSpot.lng.toFixed(4)}
-                </div>
-                <p className="text-[10px] text-slate-400">
-                  이 해안/갯바위 위치를 새 낚시 포인트로 등록하시겠습니까?
-                </p>
-                <div className="flex items-center gap-1.5 pt-1">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      isMarkerClickRef.current = true;
-                      setPendingNewSpot(null);
-                    }}
-                    className="flex-1 py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition text-[11px]"
-                  >
-                    취소
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      isMarkerClickRef.current = true;
-                      onMapClickForNewSpot(pendingNewSpot.lat, pendingNewSpot.lng);
-                      setPendingNewSpot(null);
-                    }}
-                    className="flex-1 py-1.5 px-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold transition shadow text-[11px]"
-                  >
-                    포인트 등록
-                  </button>
-                </div>
-              </div>
-            </CustomOverlayMap>
-          </React.Fragment>
+            </div>
+          </CustomOverlayMap>
         )}
 
         {/* 등록된 포인트 커스텀 핀 오버레이 (요구사항: 아이콘 하단 미세조정/상세보기 아이콘 제거, 짧은클릭=상세보기, 더블/롱클릭=컨텍스트메뉴) */}
@@ -1707,103 +1742,7 @@ export const MapView: React.FC<MapViewProps> = ({
           );
         })}
 
-        {/* [요구사항 4] 포인트 더블클릭/롱클릭 시 나타나는 플로팅 컨텍스트 메뉴 */}
-        {contextMenuSpot && (
-          <CustomOverlayMap
-            position={{ lat: contextMenuSpot.lat, lng: contextMenuSpot.lng }}
-            yAnchor={1.25}
-            zIndex={250}
-            clickable={true}
-          >
-            <div
-              onClick={(e) => {
-                e.stopPropagation();
-                isMarkerClickRef.current = true;
-              }}
-              className="p-2.5 bg-slate-900/95 backdrop-blur-md border border-cyan-500/70 rounded-2xl shadow-2xl text-white text-xs font-sans space-y-1.5 animate-in fade-in zoom-in-95 duration-150 min-w-[190px] kakao-invert-restore select-none"
-            >
-              <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 px-1">
-                <span className="font-bold text-cyan-300 text-xs truncate max-w-[140px]">
-                  {contextMenuSpot.name}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setContextMenuSpot(null)}
-                  className="text-slate-400 hover:text-white text-xs p-0.5 rounded cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
 
-              <div className="flex flex-col gap-1 pt-0.5">
-                {/* PC 웹 보기에서는 '상세 보기'가 항상 나타나 있으므로 생략 (모바일 화면 < 768px 일 때만 노출) */}
-                {(typeof window === 'undefined' || window.innerWidth < 768) && onOpenDetail && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onOpenDetail(contextMenuSpot);
-                      setContextMenuSpot(null);
-                    }}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-cyan-300 transition flex items-center gap-2 cursor-pointer text-xs font-medium"
-                  >
-                    <span>📋</span>
-                    <span>상세 보기</span>
-                  </button>
-                )}
-
-                {/* 위치 조정 */}
-                {onStartMicroAdjust && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onStartMicroAdjust(contextMenuSpot);
-                      setContextMenuSpot(null);
-                    }}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-emerald-300 transition flex items-center gap-2 cursor-pointer text-xs font-medium"
-                  >
-                    <span>🎯</span>
-                    <span>위치 조정</span>
-                  </button>
-                )}
-
-                {/* 포인트 수정 */}
-                {onEditSpot && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onEditSpot(contextMenuSpot);
-                      setContextMenuSpot(null);
-                    }}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-amber-300 transition flex items-center gap-2 cursor-pointer text-xs font-medium"
-                  >
-                    <span>✏️</span>
-                    <span>포인트 수정</span>
-                  </button>
-                )}
-
-                {/* 캐스팅 방향 설정 */}
-                <button
-                  type="button"
-                  onClick={() => handleOpenCastingConfig(contextMenuSpot)}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-cyan-950/60 text-cyan-300 border border-cyan-800/40 transition flex items-center gap-2 cursor-pointer text-xs font-bold"
-                >
-                  <span>📐</span>
-                  <span>캐스팅 방향 설정</span>
-                </button>
-
-                {/* 스윗 스폿 설정 */}
-                <button
-                  type="button"
-                  onClick={() => handleOpenSweetSpotConfig(contextMenuSpot)}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-amber-950/60 text-amber-300 border border-amber-800/40 transition flex items-center gap-2 cursor-pointer text-xs font-bold"
-                >
-                  <span>🎯</span>
-                  <span>스윗 스폿 설정</span>
-                </button>
-              </div>
-            </div>
-          </CustomOverlayMap>
-        )}
 
         {/* [요구사항 2] 위성지도 기반 2D 평면 포인트 마커 드래깅 미세조정 */}
         {microAdjustSpot && (
@@ -1898,6 +1837,168 @@ export const MapView: React.FC<MapViewProps> = ({
         )}
       </Map>
       </div>
+
+      {/* [요구사항 4] 새 포인트 등록 확인 미니 팝업 (디지털 줌 왜곡 방지를 위해 비스케일 뷰포트 레이어에서 정확한 1:1 픽셀 배치) */}
+      {pendingNewSpot && (() => {
+        const pos = getScreenPosFromLatLng(pendingNewSpot.lat, pendingNewSpot.lng);
+        if (!pos) return null;
+        const rootW = mapContainerRef.current?.offsetWidth || (typeof window !== 'undefined' ? window.innerWidth : 400);
+        const clampedX = Math.max(115, Math.min(rootW - 115, pos.x));
+        const isNearTop = pos.y < 220;
+        const transform = isNearTop ? 'translate(-50%, 20px)' : 'translate(-50%, -115%)';
+
+        return (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${clampedX}px`,
+              top: `${pos.y}px`,
+              transform,
+              zIndex: 35,
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              isMarkerClickRef.current = true;
+            }}
+            className="p-3 bg-slate-900/95 backdrop-blur-md border border-cyan-500/60 rounded-xl shadow-2xl text-white text-xs font-sans space-y-2 animate-in fade-in zoom-in-95 duration-150 min-w-[210px] pointer-events-auto select-none"
+          >
+            <div className="flex items-center gap-1.5 font-bold text-cyan-300">
+              <span>📍 새 포인트 등록</span>
+            </div>
+            <div className="text-[11px] text-slate-300 font-mono">
+              위도 {pendingNewSpot.lat.toFixed(4)}, 경도 {pendingNewSpot.lng.toFixed(4)}
+            </div>
+            <p className="text-[10px] text-slate-400">
+              이 해안/갯바위 위치를 새 낚시 포인트로 등록하시겠습니까?
+            </p>
+            <div className="flex items-center gap-1.5 pt-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  isMarkerClickRef.current = true;
+                  setPendingNewSpot(null);
+                }}
+                className="flex-1 py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition text-[11px] cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  isMarkerClickRef.current = true;
+                  onMapClickForNewSpot(pendingNewSpot.lat, pendingNewSpot.lng);
+                  setPendingNewSpot(null);
+                }}
+                className="flex-1 py-1.5 px-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold transition shadow text-[11px] cursor-pointer"
+              >
+                포인트 등록
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* [요구사항 4] 포인트 더블클릭/롱클릭 컨텍스트 메뉴 (디지털 줌 상태에서도 100% 정상 크기와 클릭한 핀 바로 위에 밀착 배치) */}
+      {contextMenuSpot && (() => {
+        const pos = getScreenPosFromLatLng(contextMenuSpot.lat, contextMenuSpot.lng);
+        if (!pos) return null;
+        const rootW = mapContainerRef.current?.offsetWidth || (typeof window !== 'undefined' ? window.innerWidth : 400);
+        const clampedX = Math.max(105, Math.min(rootW - 105, pos.x));
+        const isNearTop = pos.y < 230;
+        const transform = isNearTop ? 'translate(-50%, 20px)' : 'translate(-50%, -105%)';
+
+        return (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${clampedX}px`,
+              top: `${pos.y}px`,
+              transform,
+              zIndex: 36,
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              isMarkerClickRef.current = true;
+            }}
+            className="p-2.5 bg-slate-900/95 backdrop-blur-md border border-cyan-500/70 rounded-2xl shadow-2xl text-white text-xs font-sans space-y-1.5 animate-in fade-in zoom-in-95 duration-150 min-w-[190px] select-none pointer-events-auto"
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 px-1">
+              <span className="font-bold text-cyan-300 text-xs truncate max-w-[140px]">
+                {contextMenuSpot.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => setContextMenuSpot(null)}
+                className="text-slate-400 hover:text-white text-xs p-0.5 rounded cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-1 pt-0.5">
+              {(typeof window === 'undefined' || window.innerWidth < 768) && onOpenDetail && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenDetail(contextMenuSpot);
+                    setContextMenuSpot(null);
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-cyan-300 transition flex items-center gap-2 cursor-pointer text-xs font-medium"
+                >
+                  <span>📋</span>
+                  <span>상세 보기</span>
+                </button>
+              )}
+
+              {onStartMicroAdjust && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onStartMicroAdjust(contextMenuSpot);
+                    setContextMenuSpot(null);
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-emerald-300 transition flex items-center gap-2 cursor-pointer text-xs font-medium"
+                >
+                  <span>🎯</span>
+                  <span>위치 조정</span>
+                </button>
+              )}
+
+              {onEditSpot && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onEditSpot(contextMenuSpot);
+                    setContextMenuSpot(null);
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-amber-300 transition flex items-center gap-2 cursor-pointer text-xs font-medium"
+                >
+                  <span>✏️</span>
+                  <span>포인트 수정</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => handleOpenCastingConfig(contextMenuSpot)}
+                className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-cyan-950/60 text-cyan-300 border border-cyan-800/40 transition flex items-center gap-2 cursor-pointer text-xs font-bold"
+              >
+                <span>📐</span>
+                <span>캐스팅 방향 설정</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleOpenSweetSpotConfig(contextMenuSpot)}
+                className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-amber-950/60 text-amber-300 border border-amber-800/40 transition flex items-center gap-2 cursor-pointer text-xs font-bold"
+              >
+                <span>🎯</span>
+                <span>스윗 스폿 설정</span>
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 지도 우상단 플로팅 컨트롤: 모드 3단 전환 & 찜한 포인트 필터 & GPS 내 위치 (모바일 드로어 열림 시에만 모바일에서 숨김, PC는 상시 flex 유지) */}
       <div

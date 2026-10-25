@@ -149,3 +149,11 @@ input, textarea {
   transform: scale(0.3333);
   transform-origin: center center;
 }
+
+/* 디지털 줌 및 마우스 드래그 시 브라우저 기본 이미지 드래깅(ghost drag) 및 텍스트 선택 차단 */
+.kakao-map-container img {
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
