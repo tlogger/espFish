@@ -199,6 +199,17 @@ export const MapView: React.FC<MapViewProps> = ({
   const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressTriggeredRef = React.useRef(false);
 
+  // [요구사항 4] 컨텍스트 메뉴 열기 헬퍼 (디지털 줌 상태에서도 메뉴가 화면 중앙에 완벽하게 보이도록 시야 확보)
+  const handleOpenContextMenu = React.useCallback((spot: FishingSpot) => {
+    setContextMenuSpot(spot);
+    if (mapRef.current && (window as any).kakao?.maps?.LatLng) {
+      try {
+        const targetLatLng = new (window as any).kakao.maps.LatLng(spot.lat, spot.lng);
+        mapRef.current.panTo(targetLatLng);
+      } catch {}
+    }
+  }, []);
+
   // [요구사항 4-3] 캐스팅 방향 전용 설정 모드 상태
   const [castingConfigSpot, setCastingConfigSpot] = React.useState<FishingSpot | null>(null);
   const [tempCastingEnabled, setTempCastingEnabled] = React.useState(true);
@@ -327,7 +338,40 @@ export const MapView: React.FC<MapViewProps> = ({
   // 카카오 맵 인스턴스 참조
   const mapRef = React.useRef<any>(null);
 
-  // [요구사항 2] 디지털 슈퍼 줌(1.8x, 3.0x) 상태에서 픽셀 드래그 오차 100% 정밀 보정
+  // [요구사항 4] 화면 클릭/터치 좌표 추적 (디지털 줌 역산 좌표 계산용)
+  const lastClientPosRef = React.useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // [요구사항 4] 위치 조정(미세 조정) 핀 드래그 추적 플래그
+  const isDraggingAdjustMarkerRef = React.useRef<boolean>(false);
+
+  // [요구사항 4] 디지털 줌 상태(CSS scale)에서 브라우저 화면 좌표(clientX, clientY)를 정확한 카카오 LatLng로 역산
+  const getCorrectLatLngFromClient = React.useCallback(
+    (clientX: number, clientY: number): { lat: number; lng: number } | null => {
+      if (!mapRef.current) return null;
+      const map = mapRef.current;
+      const proj = map.getProjection ? map.getProjection() : null;
+      if (!proj || !(window as any).kakao?.maps?.Point) return null;
+
+      const container = map.getNode ? map.getNode() : null;
+      if (!container) return null;
+
+      const rect = container.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+
+      // rect는 transform: scale(digitalZoom)이 적용된 화면 바운딩 박스
+      // unscaled 컨테이너 기준 내부 CSS 픽셀 좌표 역산
+      const unscaledX = (clientX - rect.left) / digitalZoom;
+      const unscaledY = (clientY - rect.top) / digitalZoom;
+
+      const point = new (window as any).kakao.maps.Point(unscaledX, unscaledY);
+      const coords = proj.coordsFromContainerPoint(point);
+      if (!coords) return null;
+      return { lat: coords.getLat(), lng: coords.getLng() };
+    },
+    [digitalZoom]
+  );
+
+  // [요구사항 2, 4] 디지털 슈퍼 줌(1.8x, 3.0x) 상태에서 픽셀 드래그 오차 100% 정밀 보정
   const dragTrackerRef = React.useRef<{
     isDragging: boolean;
     lastX: number;
@@ -341,6 +385,7 @@ export const MapView: React.FC<MapViewProps> = ({
   });
 
   const handlePointerDown = (clientX: number, clientY: number) => {
+    lastClientPosRef.current = { x: clientX, y: clientY };
     if (digitalZoom <= 1.0) return;
     dragTrackerRef.current = {
       isDragging: true,
@@ -351,6 +396,17 @@ export const MapView: React.FC<MapViewProps> = ({
   };
 
   const handlePointerMove = (clientX: number, clientY: number) => {
+    lastClientPosRef.current = { x: clientX, y: clientY };
+
+    // [요구사항 4] 위치 조정 핀 드래그 중인 경우: 지도 이동 대신 핀 위치를 손가락/마우스 위치로 정밀 이동
+    if (isDraggingAdjustMarkerRef.current) {
+      const corrected = getCorrectLatLngFromClient(clientX, clientY);
+      if (corrected) {
+        setAdjustedPos(corrected);
+      }
+      return;
+    }
+
     if (digitalZoom <= 1.0 || !dragTrackerRef.current.isDragging || !mapRef.current) return;
     const dx = clientX - dragTrackerRef.current.lastX;
     const dy = clientY - dragTrackerRef.current.lastY;
@@ -358,21 +414,29 @@ export const MapView: React.FC<MapViewProps> = ({
     dragTrackerRef.current.lastX = clientX;
     dragTrackerRef.current.lastY = clientY;
 
+    // 드래그 거리가 생기면 혹시 실행 중인 롱프레스 타이머 취소 (지도 이동 중 롱클릭 오작동 방지)
+    if (dragTrackerRef.current.totalDist > 8 && longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+
     try {
       const map = mapRef.current;
-      const proj = map.getProjection ? map.getProjection() : null;
-      if (proj && (window as any).kakao?.maps?.Point) {
-        const curCenter = map.getCenter();
-        const curPoint = proj.pointFromCoords(curCenter);
-        // 부모 transform scale(digitalZoom)으로 인한 픽셀 이동 왜곡 보정: 화면에서 움직인 만큼 지도 1:1 동기화
-        const newPoint = new (window as any).kakao.maps.Point(
-          curPoint.x - dx / digitalZoom,
-          curPoint.y - dy / digitalZoom
-        );
-        const newCenter = proj.coordsFromPoint(newPoint);
-        map.setCenter(newCenter);
-      } else if (map.panBy) {
+      // [요구사항 4] 픽셀 단위 뷰포트 이동: panBy(-dx / digitalZoom, -dy / digitalZoom)를 사용하여 1:1 완벽 추종
+      if (map.panBy) {
         map.panBy(-dx / digitalZoom, -dy / digitalZoom);
+      } else {
+        const proj = map.getProjection ? map.getProjection() : null;
+        if (proj && (window as any).kakao?.maps?.Point) {
+          const curCenter = map.getCenter();
+          const curPoint = proj.pointFromCoords(curCenter);
+          const newPoint = new (window as any).kakao.maps.Point(
+            curPoint.x - dx / digitalZoom,
+            curPoint.y - dy / digitalZoom
+          );
+          const newCenter = proj.coordsFromPoint(newPoint);
+          map.setCenter(newCenter);
+        }
       }
     } catch (err) {
       console.warn('Superzoom drag pan error:', err);
@@ -380,6 +444,9 @@ export const MapView: React.FC<MapViewProps> = ({
   };
 
   const handlePointerUp = () => {
+    if (isDraggingAdjustMarkerRef.current) {
+      isDraggingAdjustMarkerRef.current = false;
+    }
     if (dragTrackerRef.current.isDragging) {
       dragTrackerRef.current.isDragging = false;
       if (mapRef.current) {
@@ -825,8 +892,20 @@ export const MapView: React.FC<MapViewProps> = ({
             }
 
             const latLng = mouseEvent.latLng;
-            const clickedLat = latLng.getLat();
-            const clickedLng = latLng.getLng();
+            let clickedLat = latLng.getLat();
+            let clickedLng = latLng.getLng();
+
+            // [요구사항 4] 디지털 줌 상태에서는 CSS scale 역산을 통해 실제 클릭/터치한 정확한 위경도 산출
+            if (digitalZoom > 1.0 && lastClientPosRef.current.x > 0) {
+              const corrected = getCorrectLatLngFromClient(
+                lastClientPosRef.current.x,
+                lastClientPosRef.current.y
+              );
+              if (corrected) {
+                clickedLat = corrected.lat;
+                clickedLng = corrected.lng;
+              }
+            }
 
             // [요구사항 2-1-6] 스윗 스팟 추가 모드: 지도를 누를 때마다 초안 위치 변경 ('추가' 버튼으로 최종 승인)
             if (sweetSpotConfigSpot && isAddingSweetSpot) {
@@ -1106,16 +1185,16 @@ export const MapView: React.FC<MapViewProps> = ({
 
             windElements = (
               <React.Fragment key={`wind-physics-${selectedSpot.id}`}>
-                {/* 1. 바람 진행 벡터 화살표 */}
+                {/* 1. 바람 진행 벡터 화살표 ([요구사항 7] 바람 화살표 두께 축소 3.5 -> 2.2) */}
                 <Polyline
                   path={[
                     { lat: selectedSpot.lat, lng: selectedSpot.lng },
                     { lat: windTip[0], lng: windTip[1] },
                   ]}
                   endArrow={true}
-                  strokeWeight={3.5}
+                  strokeWeight={2.2}
                   strokeColor="#38bdf8"
-                  strokeOpacity={0.85}
+                  strokeOpacity={0.9}
                   zIndex={45}
                 />
                 <CustomOverlayMap
@@ -1231,38 +1310,43 @@ export const MapView: React.FC<MapViewProps> = ({
           }
 
           // 3. 실시간 조류 흘림선 (Drift Path)
+          // [요구사항 6] 조류 흘림은 바람 화살표 끝(windTip)에서 합성 벡터로 이어서 표시
           let currentElements = null;
           if (marine && (marine.currentVelocity ?? 0) > 0.05) {
-            const landing = hasCasting
-              ? calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, 50)
-              : [selectedSpot.lat, selectedSpot.lng];
+            let driftStartPt: [number, number];
+            if (weather) {
+              const wDeg = (weather.windDirection + 180) % 360;
+              driftStartPt = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, wDeg, 45);
+            } else {
+              driftStartPt = [selectedSpot.lat, selectedSpot.lng];
+            }
+
             const driftDist = Math.max(18, Math.min(45, (marine.currentVelocity ?? 0.3) * 65));
-            const driftEnd = calculateDestinationPoint(landing[0], landing[1], marine.currentDirection, driftDist);
-            const driftMid = calculateDestinationPoint(landing[0], landing[1], marine.currentDirection, driftDist * 0.5);
+            const driftEnd = calculateDestinationPoint(driftStartPt[0], driftStartPt[1], marine.currentDirection, driftDist);
+            const driftMid = calculateDestinationPoint(driftStartPt[0], driftStartPt[1], marine.currentDirection, driftDist * 0.5);
 
             currentElements = (
               <React.Fragment key={`drift-path-${selectedSpot.id}`}>
                 <Polyline
                   path={[
-                    { lat: landing[0], lng: landing[1] },
+                    { lat: driftStartPt[0], lng: driftStartPt[1] },
                     { lat: driftEnd[0], lng: driftEnd[1] },
                   ]}
                   endArrow={true}
-                  strokeWeight={3}
+                  strokeWeight={2.2}
                   strokeColor="#06b6d4"
-                  strokeOpacity={0.85}
-                  strokeStyle="dash"
-                  zIndex={34}
+                  strokeOpacity={0.9}
+                  zIndex={46}
                 />
                 <CustomOverlayMap
                   position={{ lat: driftMid[0], lng: driftMid[1] }}
                   yAnchor={0.5}
                   xAnchor={0.5}
-                  zIndex={37}
+                  zIndex={56}
                   clickable={false}
                 >
                   <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-cyan-300 border border-cyan-500/70 text-[9px] font-bold shadow-md pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                    🌊 조류 흘림 ({formatCurrentVelocity(marine.currentVelocity, currentUnit)}, {getCompassDirection(marine.currentDirection)})
+                    🌊 조류 ({formatCurrentVelocity(marine.currentVelocity, currentUnit)}, {getCompassDirection(marine.currentDirection)})
                   </div>
                 </CustomOverlayMap>
               </React.Fragment>
@@ -1547,7 +1631,7 @@ export const MapView: React.FC<MapViewProps> = ({
                       if (activeTouchCountRef.current > 1 || Date.now() - lastMultiTouchAtRef.current < 600) return;
                       isLongPressTriggeredRef.current = true;
                       isMarkerClickRef.current = true;
-                      setContextMenuSpot(spot);
+                      handleOpenContextMenu(spot);
                       triggerHaptic('medium');
                     }, 500);
                   }}
@@ -1581,7 +1665,7 @@ export const MapView: React.FC<MapViewProps> = ({
                     // [요구사항 1-2] 터치 기기(모바일)는 더블클릭 대신 롱프레스만 사용 → 핀치 줌 오작동 방지
                     if (isCoarsePointer) return;
                     isMarkerClickRef.current = true;
-                    setContextMenuSpot(spot);
+                    handleOpenContextMenu(spot);
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1667,7 +1751,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   </button>
                 )}
 
-                {/* 미세 조정 */}
+                {/* 위치 조정 */}
                 {onStartMicroAdjust && (
                   <button
                     type="button"
@@ -1678,7 +1762,7 @@ export const MapView: React.FC<MapViewProps> = ({
                     className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-emerald-300 transition flex items-center gap-2 cursor-pointer text-xs font-medium"
                   >
                     <span>🎯</span>
-                    <span>미세 조정</span>
+                    <span>위치 조정</span>
                   </button>
                 )}
 
@@ -1759,13 +1843,46 @@ export const MapView: React.FC<MapViewProps> = ({
             {/* 2차원 평면 드래그 가능한 마커 (사용자가 위성지도에서 마우스/터치로 직접 발판으로 드래깅) */}
             <MapMarker
               position={adjustedPos}
-              draggable={true}
+              draggable={digitalZoom === 1.0}
               onDragEnd={(marker) => {
-                const pos = marker.getPosition();
-                setAdjustedPos({ lat: pos.getLat(), lng: pos.getLng() });
+                if (digitalZoom === 1.0) {
+                  const pos = marker.getPosition();
+                  setAdjustedPos({ lat: pos.getLat(), lng: pos.getLng() });
+                }
               }}
               zIndex={150}
             />
+
+            {/* [요구사항 4] 디지털 줌 상태에서도 1:1 오차 없이 드래깅 가능한 커스텀 오버레이 핸들러 */}
+            <CustomOverlayMap
+              position={adjustedPos}
+              yAnchor={1.0}
+              xAnchor={0.5}
+              zIndex={155}
+            >
+              <div
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  isMarkerClickRef.current = true;
+                  isDraggingAdjustMarkerRef.current = true;
+                  lastClientPosRef.current = { x: e.clientX, y: e.clientY };
+                }}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  isMarkerClickRef.current = true;
+                  isDraggingAdjustMarkerRef.current = true;
+                  if (e.touches.length > 0) {
+                    lastClientPosRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                  }
+                }}
+                className="w-10 h-10 -m-5 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+                title="발판 위치로 드래그"
+              >
+                <div className="w-5 h-5 rounded-full bg-emerald-400 border-2 border-white shadow-xl flex items-center justify-center text-[10px] animate-pulse">
+                  🎯
+                </div>
+              </div>
+            </CustomOverlayMap>
 
             {/* 마커 상단 드래그 가이드 툴팁 배지 */}
             <CustomOverlayMap
@@ -2798,17 +2915,18 @@ export const MapView: React.FC<MapViewProps> = ({
             </div>
           )}
 
-          {/* 2행: 수온 + 물때 (배경 없는 투명 텍스트 줄바꿈) */}
+          {/* 2행: 수온 + 물때 (수온 앞 온도계 아이콘 및 수온/물때 동일한 크기 통일) */}
           {(marine?.seaSurfaceTemp !== undefined || tide?.mulText) && (
             <div className="flex items-center gap-1.5 leading-none mt-0.5">
               {marine?.seaSurfaceTemp !== undefined && (
-                <span className="text-[11px] font-mono text-rose-300 font-bold leading-none">
-                  수온 {marine.seaSurfaceTemp.toFixed(1)}°
+                <span className="text-[11px] font-mono text-rose-300 font-bold leading-none flex items-center gap-0.5">
+                  <span className="text-[10px]">🌡️</span>
+                  <span>수온 {marine.seaSurfaceTemp.toFixed(1)}°</span>
                 </span>
               )}
 
               {tide?.mulText && (
-                <span className="text-[10.5px] font-bold text-cyan-200 leading-none">
+                <span className="text-[11px] font-bold text-cyan-200 leading-none">
                   {marine?.seaSurfaceTemp !== undefined ? `· ${tide.mulText}` : tide.mulText}
                 </span>
               )}

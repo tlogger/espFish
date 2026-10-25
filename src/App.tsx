@@ -416,6 +416,12 @@ export function App() {
 
   // 지도 클릭을 통한 새 포인트 추가 트리거
   const handleMapClickForNewSpot = (lat: number, lng: number) => {
+    // [요구사항 5] 주소 검색한 상태에서 포인트 추가 시 검색 결과 필터를 해제하여 신규 포인트 아이콘이 즉시 정상 노출되도록 보장
+    if (searchQuery.trim()) {
+      setSearchQuery('');
+      setShowPoiDropdown(false);
+      setPoiResults([]);
+    }
     setEditingSpot(null);
     setNewSpotLat(lat);
     setNewSpotLng(lng);
@@ -425,6 +431,12 @@ export function App() {
   // 새 포인트 저장 및 수정 핸들러 (오직 Supabase DB에 직접 저장)
   const handleSaveSpot = async (spotData: Omit<FishingSpot, 'id' | 'user_id' | 'author_name' | 'created_at'>) => {
     try {
+      // 포인트 저장 시에도 검색 필터를 초기화하여 지도에 저장된 포인트가 즉시 표시되도록 보장
+      if (searchQuery.trim()) {
+        setSearchQuery('');
+        setShowPoiDropdown(false);
+        setPoiResults([]);
+      }
       if (editingSpot) {
         const updatedSpot: FishingSpot = { ...editingSpot, ...spotData };
         await saveCloudSpot(updatedSpot);
@@ -983,6 +995,11 @@ export function App() {
           <div className="fixed bottom-4 md:bottom-6 right-4 md:right-6 z-30 block">
             <button
               onClick={() => {
+                if (searchQuery.trim()) {
+                  setSearchQuery('');
+                  setShowPoiDropdown(false);
+                  setPoiResults([]);
+                }
                 setEditingSpot(null);
                 setNewSpotLat(37.2541);
                 setNewSpotLng(126.4982);
