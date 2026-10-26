@@ -2991,12 +2991,12 @@ export const MapView: React.FC<MapViewProps> = ({
         </div>
       )}
 
-      {/* [요구사항 1-3] 지도 좌측 상단 날씨·기온 & 수온·물때 미니 표시 (배경 완전 제거 및 투명 2줄 분리 배치로 지도 조작 아이콘 간섭 방지) */}
+      {/* 지도 좌측 상단 날씨·기온 & 수온·물때 미니 표시 (블러 배경 없이 낮 지도에서도 선명한 단순 외곽 그림자 처리) */}
       {!contextMenuSpot && (weather || marine || tide) && (
-        <div className="absolute top-2.5 left-3 z-20 flex flex-col gap-0.5 select-none pointer-events-none drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.95)]">
+        <div className="absolute top-2.5 left-3 z-20 flex flex-col gap-0.5 select-none pointer-events-none [text-shadow:_1px_1px_0_#000,_-1px_-1px_0_#000,_1px_-1px_0_#000,_-1px_1px_0_#000]">
           {/* 1행: 날씨 아이콘 + 기온 + 풍향/풍속 */}
           {weather && (
-            <div className="flex items-center gap-1.5 leading-none">
+            <div className="flex items-center gap-1.5 leading-none font-bold">
               <span className="text-sm leading-none" title={weather.weatherText}>
                 {weather.weatherCode <= 1
                   ? '☀️'
@@ -3011,14 +3011,14 @@ export const MapView: React.FC<MapViewProps> = ({
                 {weather.temp.toFixed(1)}°
               </span>
 
-              <div className="flex items-center gap-0.5 text-cyan-300 leading-none" title={`풍향 ${Math.round(weather.windDirection)}°`}>
+              <div className="flex items-center gap-0.5 text-cyan-300 leading-none font-bold" title={`풍향 ${Math.round(weather.windDirection)}°`}>
                 <div
                   className="w-3.5 h-3.5 flex items-center justify-center text-[10px] font-bold"
                   style={{ transform: `rotate(${weather.windDirection}deg)` }}
                 >
                   ↓
                 </div>
-                <span className="font-mono font-semibold text-[11px] leading-none">
+                <span className="font-mono font-bold text-[11px] leading-none">
                   {formatWindSpeed(weather.windSpeed, windUnit)}
                 </span>
               </div>
@@ -3027,7 +3027,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
           {/* 2행: 수온 + 물때 (수온 앞 온도계 아이콘 및 수온/물때 동일한 크기 통일) */}
           {(marine?.seaSurfaceTemp !== undefined || tide?.mulText) && (
-            <div className="flex items-center gap-1.5 leading-none mt-0.5">
+            <div className="flex items-center gap-1.5 leading-none mt-0.5 font-bold">
               {marine?.seaSurfaceTemp !== undefined && (
                 <span className="text-[11px] font-mono text-rose-300 font-bold leading-none flex items-center gap-0.5">
                   <span className="text-[10px]">🌡️</span>

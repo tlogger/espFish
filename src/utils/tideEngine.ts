@@ -60,13 +60,16 @@ export function findNearestHarbor(lat: number, lng: number): HarborRef {
   return nearest;
 }
 
-/** 양력 기준 달의 일령(Moon Age) 및 음력 일수 계산 (정밀 근사치) */
+/** 양력 기준 달의 일령(Moon Age) 및 음력 일수 계산 (한국 표준시 정밀 천문 역법 기준) */
 export function getMoonAge(date: Date): number {
-  // 기준 신월(New Moon): 2000년 1월 6일 18:14 UTC
-  const synodicMonth = 29.53058867; // 삭망월 주기(일)
-  const baseTime = new Date(Date.UTC(2000, 0, 6, 18, 14, 0)).getTime();
-  const diffDays = (date.getTime() - baseTime) / (1000 * 60 * 60 * 24);
-  const moonAge = (diffDays % synodicMonth + synodicMonth) % synodicMonth;
+  // 기준 신월(New Moon / 합삭): 2026년 10월 11일 00:50:00 KST (한국천문연구원 공식 합삭 시각)
+  const synodicMonth = 29.530588853; // 정밀 삭망월 주기(일)
+  const baseTime = new Date('2026-10-11T00:50:00+09:00').getTime();
+
+  // 한국 표준시(KST) 정오(12:00) 기준 일수로 계산하여 날짜 경계 오차 원천 차단
+  const kstTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0).getTime();
+  const diffDays = (kstTarget - baseTime) / (1000 * 60 * 60 * 24);
+  const moonAge = ((diffDays % synodicMonth) + synodicMonth) % synodicMonth;
   return moonAge;
 }
 

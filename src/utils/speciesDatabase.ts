@@ -642,7 +642,7 @@ export const SPECIES_ENCYCLOPEDIA: Record<string, SpeciesEcology> = {
     lengthStandard: 'NONE',
     prohibitedPeriod: '5월 11일 ~ 8월 31일',
     prohibitedNote: '5/11~8/31 전국 공통 산란기 금어기 (9월 1일 자정 해제). 금지체장은 없음.',
-    recommendedBait: '소형 왕눈이 에기 + 봉돌 8~14호 직결 채비',
+    recommendedBait: '소형 왕눈이 에기 + 봉돌 4~6호 직결 채비',
   },
   갑오징어: {
     name: '갑오징어',
@@ -668,7 +668,7 @@ export const SPECIES_ENCYCLOPEDIA: Record<string, SpeciesEcology> = {
     lengthStandard: 'NONE',
     prohibitedPeriod: null,
     prohibitedNote: '전국 공통 법정 금어기/금지체장 없음. (일부 지자체 산란기 권고 확인)',
-    recommendedBait: '수평 에기 2.2~2.5호 + 가지줄 단차 채비',
+    recommendedBait: '수평 에기 2.2~2.5호 + 봉돌 6~10호 (단차 15~25cm 가짓줄 다운샷)',
   },
   무늬오징어: {
     name: '무늬오징어',

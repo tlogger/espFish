@@ -155,7 +155,11 @@ export async function getKhoaTideForecast(
     !d || isNaN(d.getTime()) ? '--:--' : `${padZero(d.getHours())}:${padZero(d.getMinutes())}`;
   const sunrise = formatTime(sunTimes.sunrise);
   const sunset = formatTime(sunTimes.sunset);
-  const lunarMonth = ((baseDate.getMonth() + 1 + 10) % 12) || 12;
+  // 한국 표준시 기준 음력 월 근사 계산 (10월 기준 음력 9월)
+  const monthDiff = baseDate.getDate() >= (lunarDay) ? 1 : 2;
+  let lunarMonth = baseDate.getMonth() + 2 - monthDiff;
+  if (lunarMonth <= 0) lunarMonth += 12;
+  if (lunarMonth > 12) lunarMonth -= 12;
   const lunarDateStr = `음력 ${lunarMonth}.${lunarDay}`;
 
   // 3. KHOA surveyTideLevel 공식 1일 시계열 데이터 취득 시도

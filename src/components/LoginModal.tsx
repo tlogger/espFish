@@ -44,7 +44,54 @@ interface LoginModalProps {
 
 const STORAGE_KEY_AUTH_USER = 'exfish_auth_user_v2';
 const LEGACY_STORAGE_KEY = 'espfish_auth_user';
+const STORAGE_SAVED_CREDS = 'exfish_saved_login_credentials';
+const COOKIE_LOGIN_EMAIL = 'exfish_saved_email';
+const COOKIE_LOGIN_NICKNAME = 'exfish_saved_nickname';
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** 쿠키 저장 헬퍼 (로그아웃 후에도 보전) */
+export function setCookie(name: string, value: string, days: number = 365) {
+  if (typeof document === 'undefined') return;
+  const expires = new Date(Date.now() + days * 864e5).toUTCString();
+  document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+}
+
+/** 쿠키 취득 헬퍼 */
+export function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const matches = document.cookie.match(
+    new RegExp('(?:^|; )' + encodeURIComponent(name).replace(/[\-\.\+\*]/g, '\\$&') + '=([^;]*)')
+  );
+  return matches ? decodeURIComponent(matches[1]) : null;
+}
+
+/** 이메일 & 닉네임 쿠키 및 로컬스토리지 영구 보전 */
+export function saveRememberedCredentials(email: string, nickname: string) {
+  try {
+    if (email) setCookie(COOKIE_LOGIN_EMAIL, email, 365);
+    if (nickname) setCookie(COOKIE_LOGIN_NICKNAME, nickname, 365);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_SAVED_CREDS, JSON.stringify({ email, nickname }));
+    }
+  } catch (e) {}
+}
+
+/** 보전된 이메일 & 닉네임 취득 */
+export function getRememberedCredentials(): { email: string; nickname: string } {
+  let email = getCookie(COOKIE_LOGIN_EMAIL) || '';
+  let nickname = getCookie(COOKIE_LOGIN_NICKNAME) || '';
+  if ((!email || !nickname) && typeof localStorage !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(STORAGE_SAVED_CREDS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (!email && parsed.email) email = parsed.email;
+        if (!nickname && (parsed.nickname || parsed.name)) nickname = parsed.nickname || parsed.name;
+      }
+    } catch (e) {}
+  }
+  return { email, nickname };
+}
 
 export function getSavedAuthUser(): AuthUser | null {
   try {
@@ -74,6 +121,8 @@ export function saveAuthUser(user: AuthUser): void {
       user.expiresAt = Date.now() + THIRTY_DAYS_MS;
     }
     localStorage.setItem(STORAGE_KEY_AUTH_USER, JSON.stringify(user));
+    // 이메일 및 닉네임 쿠키 영구 보전
+    saveRememberedCredentials(user.email, user.name || user.id);
   } catch (e) {
     console.error('Failed to save auth user:', e);
   }
@@ -81,6 +130,7 @@ export function saveAuthUser(user: AuthUser): void {
 
 export function clearAuthUser(): void {
   try {
+    // 세션만 삭제하고, 이메일과 닉네임 쿠키/스토리지는 재로그인을 위해 보전
     localStorage.removeItem(STORAGE_KEY_AUTH_USER);
     localStorage.removeItem(LEGACY_STORAGE_KEY);
   } catch (e) {
@@ -100,8 +150,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   onChangeWindUnit,
   onChangeCurrentUnit,
 }) => {
-  const [email, setEmail] = React.useState('');
-  const [userId, setUserId] = React.useState('');
+  const [email, setEmail] = React.useState(() => getRememberedCredentials().email);
+  const [userId, setUserId] = React.useState(() => getRememberedCredentials().nickname);
   const [error, setError] = React.useState('');
 
   // 프로필 및 설정 상태
@@ -123,8 +173,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         setLocalWindUnit(currentUser.windUnit || windUnit);
         setLocalCurrentUnit(currentUser.currentUnit || currentUnit);
       } else {
-        setEmail('');
-        setUserId('');
+        // 로그아웃 상태에서 로그인 모달 열릴 때: 쿠키/로컬스토리지에 보전된 이메일과 닉네임 자동 복원
+        const remembered = getRememberedCredentials();
+        setEmail(remembered.email || '');
+        setUserId(remembered.nickname || '');
         setSelectedSpecies(['우럭', '광어']);
         setLocalWindUnit(windUnit);
         setLocalCurrentUnit(currentUnit);

@@ -59,6 +59,8 @@ import { findNearestKhoaStation } from '../utils/tideService';
 import { getCachedKhoaDepth } from '../utils/khoaCache';
 import { calculateRealWaterDepth, calculateSinkTimeToBottom } from '../utils/depthSinkEngine';
 import { KhoaDepthRecord } from '../utils/khoaApi';
+import { Share } from '@capacitor/share';
+import { Capacitor } from '@capacitor/core';
 
 interface SpotDetailPanelProps {
   spot: FishingSpot;
@@ -302,45 +304,54 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   }
 
   // 시뮬레이션 시각에 따른 기상 / 해양 지표
-  const simWindSpeed =
-    weatherIdx >= 0 && weather?.hourly?.windSpeed && weather.hourly.windSpeed[weatherIdx] != null
-      ? weather.hourly.windSpeed[weatherIdx]
-      : weather?.windSpeed ?? 0;
+  // isNow(현재 시각)일 때는 KHOA 실측치가 주입된 최신 실시간 데이터를 사용하여 맵 화면과 100% 일치 보장
+  const simWindSpeed = isNow
+    ? weather?.windSpeed ?? 0
+    : weatherIdx >= 0 && weather?.hourly?.windSpeed && weather.hourly.windSpeed[weatherIdx] != null
+    ? weather.hourly.windSpeed[weatherIdx]
+    : weather?.windSpeed ?? 0;
 
-  const simWindDir =
-    weatherIdx >= 0 && weather?.hourly?.windDirection && weather.hourly.windDirection[weatherIdx] != null
-      ? weather.hourly.windDirection[weatherIdx]
-      : weather?.windDirection ?? 0;
+  const simWindDir = isNow
+    ? weather?.windDirection ?? 0
+    : weatherIdx >= 0 && weather?.hourly?.windDirection && weather.hourly.windDirection[weatherIdx] != null
+    ? weather.hourly.windDirection[weatherIdx]
+    : weather?.windDirection ?? 0;
 
-  const simTemp =
-    weatherIdx >= 0 && weather?.hourly?.temp && weather.hourly.temp[weatherIdx] != null
-      ? weather.hourly.temp[weatherIdx]
-      : weather?.temp ?? 0;
+  const simTemp = isNow
+    ? weather?.temp ?? 0
+    : weatherIdx >= 0 && weather?.hourly?.temp && weather.hourly.temp[weatherIdx] != null
+    ? weather.hourly.temp[weatherIdx]
+    : weather?.temp ?? 0;
 
-  const simWaterTemp =
-    marineIdx >= 0 && marine?.hourly?.seaSurfaceTemp && marine.hourly.seaSurfaceTemp[marineIdx] != null
-      ? marine.hourly.seaSurfaceTemp[marineIdx]
-      : marine?.seaSurfaceTemp ?? 0;
+  const simWaterTemp = isNow
+    ? marine?.seaSurfaceTemp ?? 0
+    : marineIdx >= 0 && marine?.hourly?.seaSurfaceTemp && marine.hourly.seaSurfaceTemp[marineIdx] != null
+    ? marine.hourly.seaSurfaceTemp[marineIdx]
+    : marine?.seaSurfaceTemp ?? 0;
 
-  const simCurrentVel =
-    marineIdx >= 0 && marine?.hourly?.currentVelocity && marine.hourly.currentVelocity[marineIdx] != null
-      ? marine.hourly.currentVelocity[marineIdx]
-      : marine?.currentVelocity ?? 0;
+  const simCurrentVel = isNow
+    ? marine?.currentVelocity ?? 0
+    : marineIdx >= 0 && marine?.hourly?.currentVelocity && marine.hourly.currentVelocity[marineIdx] != null
+    ? marine.hourly.currentVelocity[marineIdx]
+    : marine?.currentVelocity ?? 0;
 
-  const simCurrentDir =
-    marineIdx >= 0 && marine?.hourly?.currentDirection && marine.hourly.currentDirection[marineIdx] != null
-      ? marine.hourly.currentDirection[marineIdx]
-      : marine?.currentDirection ?? 0;
+  const simCurrentDir = isNow
+    ? marine?.currentDirection ?? 0
+    : marineIdx >= 0 && marine?.hourly?.currentDirection && marine.hourly.currentDirection[marineIdx] != null
+    ? marine.hourly.currentDirection[marineIdx]
+    : marine?.currentDirection ?? 0;
 
-  const simWaveHeight =
-    marineIdx >= 0 && marine?.hourly?.waveHeight && marine.hourly.waveHeight[marineIdx] != null
-      ? marine.hourly.waveHeight[marineIdx]
-      : marine?.waveHeight ?? 0;
+  const simWaveHeight = isNow
+    ? marine?.waveHeight ?? 0
+    : marineIdx >= 0 && marine?.hourly?.waveHeight && marine.hourly.waveHeight[marineIdx] != null
+    ? marine.hourly.waveHeight[marineIdx]
+    : marine?.waveHeight ?? 0;
 
-  const simWeatherText =
-    weatherIdx >= 0 && weather?.hourly?.weatherCode && weather.hourly.weatherCode[weatherIdx] != null
-      ? getWeatherText(weather.hourly.weatherCode[weatherIdx])
-      : weather?.weatherText ?? '--';
+  const simWeatherText = isNow
+    ? weather?.weatherText ?? '--'
+    : weatherIdx >= 0 && weather?.hourly?.weatherCode && weather.hourly.weatherCode[weatherIdx] != null
+    ? getWeatherText(weather.hourly.weatherCode[weatherIdx])
+    : weather?.weatherText ?? '--';
 
   const simPop =
     weatherIdx >= 0 && weather?.hourly?.pop && weather.hourly.pop[weatherIdx] != null
@@ -405,16 +416,42 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   </button>
                 )}
                 <button
-                  onClick={() => {
-                    if (navigator.share) {
-                      navigator.share({
-                        title: `ExFish - ${spot.name}`,
-                        text: `현재 입질 지수 ${biteScore?.totalScore ?? 0}점!`,
-                        url: window.location.href,
-                      }).catch(() => {});
-                    } else {
-                      navigator.clipboard.writeText(window.location.href);
-                      alert('포인트 링크가 클립보드에 복사되었습니다.');
+                  onClick={async () => {
+                    const shareTitle = `ExFish - ${spot.name}`;
+                    const shareText = `[ExFish 낚시 포인트] ${spot.name}\n${spot.navi_name ? `목적지: ${spot.navi_name}\n` : ''}실시간 수심: ${realDepthResult.realDepthM.toFixed(1)}m · 입질 지수: ${biteScore?.totalScore ?? 0}점!`;
+                    const shareUrl = window.location.href;
+
+                    // 모바일 네이티브 앱 환경: 다른 앱(카카오톡, 메시지 등)으로 공유 다이얼로그 호출
+                    if (Capacitor.isNativePlatform()) {
+                      try {
+                        await Share.share({
+                          title: shareTitle,
+                          text: shareText,
+                          url: shareUrl,
+                          dialogTitle: `${spot.name} 포인트 공유하기`,
+                        });
+                        return;
+                      } catch (e: any) {
+                        if (e?.message?.includes('canceled') || e?.message?.includes('dismissed')) return;
+                      }
+                    }
+
+                    // 웹 브라우저 환경: 포인트 링크 클립보드 복사
+                    try {
+                      if (navigator.clipboard) {
+                        await navigator.clipboard.writeText(shareUrl);
+                        alert('포인트 링크가 클립보드에 복사되었습니다.');
+                      } else {
+                        const ta = document.createElement('textarea');
+                        ta.value = shareUrl;
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                        alert('포인트 링크가 클립보드에 복사되었습니다.');
+                      }
+                    } catch {
+                      alert(`포인트 링크: ${shareUrl}`);
                     }
                   }}
                   className="p-1.5 rounded-lg bg-black/60 backdrop-blur-sm text-slate-200 hover:text-cyan-400 border border-white/10 transition"
