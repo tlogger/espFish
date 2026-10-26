@@ -1,4 +1,7 @@
 import { MarineData, WeatherData } from '../types';
+import { findNearestKhoaStation } from './tideService';
+import { getCachedKhoaWind, getCachedKhoaWaterTemp } from './khoaCache';
+import { fetchKhoaRoms } from './khoaApi';
 
 /** WMO Weather Code를 사람이 읽기 쉬운 한국어 텍스트 및 이모지로 변환 */
 export function getWeatherText(code: number): string {
@@ -38,15 +41,40 @@ export function getCompassDirection(deg: number): string {
   return directions[index];
 }
 
-/** Open-Meteo Weather Forecast API 호출 */
+/** Open-Meteo Weather Forecast API 호출 및 국립해양조사원(KHOA) 조위관측소 실측 풍향/풍속 융합 */
 export async function fetchWeatherData(lat: number, lng: number): Promise<WeatherData> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&forecast_days=4&timezone=Asia%2FSeoul`;
 
+  // 1. 최근접 국립해양조사원 관측소 실측 풍향/풍속 병렬 조회
+  const nearest = findNearestKhoaStation(lat, lng);
+  const khoaWindPromise = getCachedKhoaWind(nearest.station.code).catch(() => null);
+
   try {
-    const res = await fetch(url);
+    const [res, khoaWind] = await Promise.all([
+      fetch(url),
+      khoaWindPromise,
+    ]);
+
     if (!res.ok) throw new Error(`Weather fetch failed: ${res.statusText}`);
     const data = await res.json();
     const current = data.current;
+
+    // KHOA 실측 풍향/풍속 우선 반영 (실측치가 존재할 경우)
+    let finalWindSpeed = Math.round(current.wind_speed_10m * 10) / 10;
+    let finalWindDir = current.wind_direction_10m;
+    let isObserved = false;
+    let observedStationName: string | undefined = undefined;
+    let observedDistanceKm: number | undefined = undefined;
+    let observedTime: string | undefined = undefined;
+
+    if (khoaWind && typeof khoaWind.wspd === 'number' && !isNaN(khoaWind.wspd) && typeof khoaWind.wndrct === 'number') {
+      finalWindSpeed = Math.round(khoaWind.wspd * 10) / 10;
+      finalWindDir = Math.round(khoaWind.wndrct);
+      isObserved = true;
+      observedStationName = nearest.station.name;
+      observedDistanceKm = nearest.distanceKm;
+      observedTime = khoaWind.obsrvnDt?.split(' ')[1]?.slice(0, 5) || undefined;
+    }
 
     return {
       temp: Math.round(current.temperature_2m * 10) / 10,
@@ -54,9 +82,13 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
       humidity: Math.round(current.relative_humidity_2m ?? 65),
       weatherCode: current.weather_code,
       weatherText: getWeatherText(current.weather_code),
-      windSpeed: Math.round(current.wind_speed_10m * 10) / 10,
-      windDirection: current.wind_direction_10m,
+      windSpeed: finalWindSpeed,
+      windDirection: finalWindDir,
       windGust: Math.round(current.wind_gusts_10m * 10) / 10,
+      isObserved,
+      observedStationName,
+      observedDistanceKm,
+      observedTime,
       hourly: {
         time: data.hourly?.time?.slice(0, 96) || [],
         temp: data.hourly?.temperature_2m?.slice(0, 96) || [],
@@ -68,16 +100,21 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
     };
   } catch (err) {
     console.warn('Weather API fallback used:', err);
-    // 오프라인 폴백 목(Mock) 데이터
+    // KHOA 실측 풍향/풍속이라도 있으면 적용
+    const khoaWind = await khoaWindPromise.catch(() => null);
+
     return {
       temp: 18.5,
       apparentTemp: 17.8,
       humidity: 68,
       weatherCode: 1,
       weatherText: '대체로 맑음 🌤️',
-      windSpeed: 2.8,
-      windDirection: 315, // 북서풍
+      windSpeed: (khoaWind && typeof khoaWind.wspd === 'number') ? Math.round(khoaWind.wspd * 10) / 10 : 2.8,
+      windDirection: (khoaWind && typeof khoaWind.wndrct === 'number') ? Math.round(khoaWind.wndrct) : 315, // 북서풍
       windGust: 4.5,
+      isObserved: !!khoaWind,
+      observedStationName: khoaWind ? nearest.station.name : undefined,
+      observedDistanceKm: khoaWind ? nearest.distanceKm : undefined,
       hourly: {
         time: Array.from({ length: 24 }, (_, i) => `${i}:00`),
         temp: Array.from({ length: 24 }, () => 18),
@@ -89,24 +126,58 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
   }
 }
 
-/** Open-Meteo Marine API 호출 (수온, 파고, 해류) */
+/** Open-Meteo Marine API 호출 및 국립해양조사원 실측 수온 & ROMS 해류 융합 */
 export async function fetchMarineData(lat: number, lng: number): Promise<MarineData> {
   const url = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction,sea_surface_temperature&hourly=wave_height,sea_surface_temperature,ocean_current_velocity,ocean_current_direction&forecast_days=4&timezone=Asia%2FSeoul`;
 
+  const nearest = findNearestKhoaStation(lat, lng);
+  const khoaTempPromise = getCachedKhoaWaterTemp(nearest.station.code).catch(() => null);
+  const romsPromise = fetchKhoaRoms(lat, lng).catch(() => null);
+
   try {
-    const res = await fetch(url);
+    const [res, khoaTemp, roms] = await Promise.all([
+      fetch(url),
+      khoaTempPromise,
+      romsPromise,
+    ]);
+
     if (!res.ok) throw new Error(`Marine fetch failed: ${res.statusText}`);
     const data = await res.json();
     const current = data.current;
     const hourly = data.hourly;
 
+    // 실측 수온 우선 반영
+    let finalSst = current.sea_surface_temperature != null ? Math.round(current.sea_surface_temperature * 10) / 10 : 17.2;
+    let isObservedTemp = false;
+    let observedTempStationName: string | undefined = undefined;
+
+    if (khoaTemp && typeof khoaTemp.wtem === 'number' && !isNaN(khoaTemp.wtem)) {
+      finalSst = Math.round(khoaTemp.wtem * 10) / 10;
+      isObservedTemp = true;
+      observedTempStationName = nearest.station.name;
+    }
+
+    // ROMS 수치예측모델 유향/유속 우선 반영
+    let finalCurrentVel = current.ocean_current_velocity != null ? Math.round(current.ocean_current_velocity * 100) / 100 : 0.35;
+    let finalCurrentDir = current.ocean_current_direction ?? 135;
+    let isRomsCurrent = false;
+
+    if (roms && typeof roms.crsp === 'number' && !isNaN(roms.crsp) && typeof roms.crdir === 'number') {
+      finalCurrentVel = Math.round(roms.crsp * 100) / 100;
+      finalCurrentDir = Math.round(roms.crdir);
+      isRomsCurrent = true;
+    }
+
     return {
-      seaSurfaceTemp: current.sea_surface_temperature != null ? Math.round(current.sea_surface_temperature * 10) / 10 : 17.2,
+      seaSurfaceTemp: finalSst,
       waveHeight: current.wave_height != null ? Math.round(current.wave_height * 10) / 10 : 0.6,
       waveDirection: current.wave_direction ?? 180,
       wavePeriod: current.wave_period != null ? Math.round(current.wave_period) : 5,
-      currentVelocity: current.ocean_current_velocity != null ? Math.round(current.ocean_current_velocity * 100) / 100 : 0.35, // m/s
-      currentDirection: current.ocean_current_direction ?? 135, // 남동류
+      currentVelocity: finalCurrentVel,
+      currentDirection: finalCurrentDir,
+      isObservedTemp,
+      observedTempStationName,
+      isRomsCurrent,
       hourly: {
         time: hourly?.time?.slice(0, 96) || [],
         seaSurfaceTemp: hourly?.sea_surface_temperature?.slice(0, 96) || [],
@@ -117,13 +188,17 @@ export async function fetchMarineData(lat: number, lng: number): Promise<MarineD
     };
   } catch (err) {
     console.warn('Marine API fallback used:', err);
+    const khoaTemp = await khoaTempPromise.catch(() => null);
+
     return {
-      seaSurfaceTemp: 17.4,
+      seaSurfaceTemp: khoaTemp && typeof khoaTemp.wtem === 'number' ? Math.round(khoaTemp.wtem * 10) / 10 : 17.4,
       waveHeight: 0.5,
       waveDirection: 210,
       wavePeriod: 6,
       currentVelocity: 0.4,
       currentDirection: 140,
+      isObservedTemp: !!khoaTemp,
+      observedTempStationName: khoaTemp ? nearest.station.name : undefined,
       hourly: {
         time: Array.from({ length: 24 }, (_, i) => `${i}:00`),
         seaSurfaceTemp: Array.from({ length: 24 }, () => 17.4),

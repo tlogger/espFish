@@ -91,14 +91,18 @@ export interface WeatherData {
   windSpeed: number; // m/s
   windDirection: number; // 0-360°
   windGust: number; // m/s
-    hourly: {
-      time: string[];
-      temp: number[];
-      windSpeed: number[];
-      windDirection: number[];
-      pop: number[]; // 강수확률
-      weatherCode?: number[];
-    };
+  isObserved?: boolean; // 국립해양조사원 실측 여부
+  observedStationName?: string; // 관측소 명칭 (예: '영흥도')
+  observedDistanceKm?: number; // 관측소 거리 (km)
+  observedTime?: string; // 관측 시각 (예: '14:20')
+  hourly: {
+    time: string[];
+    temp: number[];
+    windSpeed: number[];
+    windDirection: number[];
+    pop: number[]; // 강수확률
+    weatherCode?: number[];
+  };
 }
 
 export interface MarineData {
@@ -108,6 +112,9 @@ export interface MarineData {
   wavePeriod: number; // 파주기 (s)
   currentVelocity: number; // 해류/조류 속도 (m/s)
   currentDirection: number; // 해류/조류 방향 (0-360°)
+  isObservedTemp?: boolean; // 국립해양조사원 실측 수온 여부
+  observedTempStationName?: string; // 수온 관측소 명칭
+  isRomsCurrent?: boolean; // ROMS 수치예측모델 조류 여부
   hourly?: {
     time: string[];
     seaSurfaceTemp: number[];

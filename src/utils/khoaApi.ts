@@ -1,0 +1,234 @@
+/**
+ * 국립해양조사원(KHOA) 공공데이터 OpenAPI 연동 모듈
+ * 제공 서비스:
+ * 1. surveyTideLevel: 조위관측소 실측·예측 조위
+ * 2. surveyWind: 조위관측소 실측 풍향/풍속
+ * 3. surveyWaterTemp: 조위관측소 실측 수온
+ * 4. waterDepth: 자연과학용 150m 격자 수심 (평균해면하 dpwt)
+ * 5. roms: ROMS 수치예측모델 유향/유속/수온
+ */
+
+export const KHOA_SERVICE_KEY =
+  '7Q54Z6DQ%2B9wH23fR%2FAlrOSh4XgQ9xyA8I%2F69h1tmrlCwtFqMG8zdR01z0h8%2Bo%2Ft1Uvt%2BwoN947y1ts5Maeoy%2Bg%3D%3D';
+
+export interface KhoaTideRecord {
+  obsvtrNm: string;
+  lat: number;
+  lot: number;
+  obsrvnDt: string; // YYYY-MM-DD HH:mm
+  bscTdlvHgt?: number; // 예측 조위 (cm)
+  tdlvHgt?: number; // 실측 조위 (cm)
+}
+
+export interface KhoaWindRecord {
+  obsvtrNm: string;
+  lat: number;
+  lot: number;
+  obsrvnDt: string; // YYYY-MM-DD HH:mm:ss
+  wndrct: number; // 풍향 (0~360 deg)
+  wspd: number; // 풍속 (m/s)
+}
+
+export interface KhoaWaterTempRecord {
+  obsvtrNm: string;
+  lat: number;
+  lot: number;
+  obsrvnDt: string; // YYYY-MM-DD HH:mm:ss
+  wtem: number; // 실측 수온 (°C)
+}
+
+export interface KhoaDepthRecord {
+  lat: number;
+  lot: number;
+  dpwt: number; // 수심 (m, 평균해면하 Mean Sea Level)
+}
+
+export interface KhoaRomsRecord {
+  lat: number;
+  lot: number;
+  predcDt: string;
+  crdir: number; // 유향 (deg)
+  crsp: number; // 유속 (m/s)
+  wtem: number; // 수온 (°C)
+}
+
+function getTodayString(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}${m}${d}`;
+}
+
+/** 1. 조위관측소 실측·예측 조위 조회 (1일 시계열 데이터) */
+export async function fetchKhoaTideLevel(
+  obsCode: string,
+  dateStr: string = getTodayString()
+): Promise<KhoaTideRecord[]> {
+  const cleanDate = dateStr.replace(/-/g, '');
+  const url = `https://apis.data.go.kr/1192136/surveyTideLevel/GetSurveyTideLevelApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&obsCode=${obsCode}&date=${cleanDate}&numOfRows=1440`;
+
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const items = json?.body?.items?.item;
+    if (!Array.isArray(items) || items.length === 0) return [];
+
+    return items.map((it: any) => ({
+      obsvtrNm: it.obsvtrNm,
+      lat: Number(it.lat),
+      lot: Number(it.lot),
+      obsrvnDt: it.obsrvnDt,
+      bscTdlvHgt: it.bscTdlvHgt != null ? Number(it.bscTdlvHgt) : undefined,
+      tdlvHgt: it.tdlvHgt != null ? Number(it.tdlvHgt) : undefined,
+    }));
+  } catch (e) {
+    console.warn(`[KHOA API] fetchKhoaTideLevel failed (${obsCode}):`, e);
+    return [];
+  }
+}
+
+/** 2. 조위관측소 실측 풍향/풍속 조회 (가장 최근 실측치 반환) */
+export async function fetchKhoaWind(
+  obsCode: string,
+  dateStr: string = getTodayString()
+): Promise<KhoaWindRecord | null> {
+  const cleanDate = dateStr.replace(/-/g, '');
+  const url = `https://apis.data.go.kr/1192136/surveyWind/GetSurveyWindApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&obsCode=${obsCode}&date=${cleanDate}&numOfRows=60`;
+
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const items = json?.body?.items?.item;
+    if (!Array.isArray(items) || items.length === 0) return null;
+
+    // 가장 최근 유효 관측치 (마지막 인덱스 또는 뒤에서 유효값 탐색)
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (it.wspd != null && it.wndrct != null && !isNaN(Number(it.wspd))) {
+        return {
+          obsvtrNm: it.obsvtrNm,
+          lat: Number(it.lat),
+          lot: Number(it.lot),
+          obsrvnDt: it.obsrvnDt,
+          wndrct: Math.round(Number(it.wndrct)),
+          wspd: Math.round(Number(it.wspd) * 10) / 10,
+        };
+      }
+    }
+    return null;
+  } catch (e) {
+    console.warn(`[KHOA API] fetchKhoaWind failed (${obsCode}):`, e);
+    return null;
+  }
+}
+
+/** 3. 조위관측소 실측 수온 조회 (가장 최근 실측치 반환) */
+export async function fetchKhoaWaterTemp(
+  obsCode: string,
+  dateStr: string = getTodayString()
+): Promise<KhoaWaterTempRecord | null> {
+  const cleanDate = dateStr.replace(/-/g, '');
+  const url = `https://apis.data.go.kr/1192136/surveyWaterTemp/GetSurveyWaterTempApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&obsCode=${obsCode}&date=${cleanDate}&numOfRows=60`;
+
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const items = json?.body?.items?.item;
+    if (!Array.isArray(items) || items.length === 0) return null;
+
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (it.wtem != null && !isNaN(Number(it.wtem))) {
+        return {
+          obsvtrNm: it.obsvtrNm,
+          lat: Number(it.lat),
+          lot: Number(it.lot),
+          obsrvnDt: it.obsrvnDt,
+          wtem: Math.round(Number(it.wtem) * 10) / 10,
+        };
+      }
+    }
+    return null;
+  } catch (e) {
+    console.warn(`[KHOA API] fetchKhoaWaterTemp failed (${obsCode}):`, e);
+    return null;
+  }
+}
+
+/** 4. 자연과학용 150m 격자 수심 조회 (주어진 lat, lng 반경 300m 바운딩 박스) */
+export async function fetchKhoaWaterDepth(lat: number, lng: number): Promise<KhoaDepthRecord | null> {
+  // 약 300m Bounding Box (0.003도)
+  const ymin = (lat - 0.002).toFixed(4);
+  const ymax = (lat + 0.002).toFixed(4);
+  const xmin = (lng - 0.0025).toFixed(4);
+  const xmax = (lng + 0.0025).toFixed(4);
+
+  const url = `https://apis.data.go.kr/1192136/waterDepth/GetWaterDepthApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&ymin=${ymin}&ymax=${ymax}&xmin=${xmin}&xmax=${xmax}&numOfRows=10`;
+
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const items = json?.body?.items?.item;
+    if (!Array.isArray(items) || items.length === 0) return null;
+
+    // 포인트 좌표와 가장 유클리드 거리가 가까운 격자점 선택
+    let nearest: KhoaDepthRecord | null = null;
+    let minD = Infinity;
+
+    for (const it of items) {
+      if (it.dpwt == null) continue;
+      const dLat = Number(it.lat) - lat;
+      const dLot = Number(it.lot) - lng;
+      const d = dLat * dLat + dLot * dLot;
+      if (d < minD) {
+        minD = d;
+        nearest = {
+          lat: Number(it.lat),
+          lot: Number(it.lot),
+          dpwt: Math.round(Number(it.dpwt) * 10) / 10,
+        };
+      }
+    }
+    return nearest;
+  } catch (e) {
+    console.warn(`[KHOA API] fetchKhoaWaterDepth failed (${lat}, ${lng}):`, e);
+    return null;
+  }
+}
+
+/** 5. ROMS 수치예측모델 유향/유속/수온 조회 */
+export async function fetchKhoaRoms(lat: number, lng: number): Promise<KhoaRomsRecord | null> {
+  const ymin = (lat - 0.02).toFixed(4);
+  const ymax = (lat + 0.02).toFixed(4);
+  const xmin = (lng - 0.025).toFixed(4);
+  const xmax = (lng + 0.025).toFixed(4);
+
+  const url = `https://apis.data.go.kr/1192136/roms/GetRomsApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&ymin=${ymin}&ymax=${ymax}&xmin=${xmin}&xmax=${xmax}&numOfRows=5`;
+
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const items = json?.body?.items?.item;
+    if (!Array.isArray(items) || items.length === 0) return null;
+
+    const it = items[0];
+    if (it.crdir == null || it.crsp == null) return null;
+
+    return {
+      lat: Number(it.lat),
+      lot: Number(it.lot),
+      predcDt: it.predcDt,
+      crdir: Math.round(Number(it.crdir)),
+      crsp: Math.round(Number(it.crsp) * 100) / 100,
+      wtem: it.wtem != null ? Math.round(Number(it.wtem) * 10) / 10 : 0,
+    };
+  } catch (e) {
+    return null;
+  }
+}

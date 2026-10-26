@@ -56,6 +56,9 @@ import { generatePostMortemReport } from '../utils/postMortemEngine';
 import { playEvacuationBeep } from '../utils/tideAlertSound';
 import { sendEmergencyEvacuationNotification, requestNotificationPermission } from '../utils/nativeBridge';
 import { findNearestKhoaStation } from '../utils/tideService';
+import { getCachedKhoaDepth } from '../utils/khoaCache';
+import { calculateRealWaterDepth, calculateSinkTimeToBottom } from '../utils/depthSinkEngine';
+import { KhoaDepthRecord } from '../utils/khoaApi';
 
 interface SpotDetailPanelProps {
   spot: FishingSpot;
@@ -155,6 +158,37 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   const [newMemoTag, setNewMemoTag] = React.useState<SpotMemoTag>('GENERAL');
   const [memoFilterTag, setMemoFilterTag] = React.useState<string>('ALL');
   const [isSubmittingMemo, setIsSubmittingMemo] = React.useState(false);
+
+  // 국립해양조사원 150m 격자 자연과학 수심 비동기 취득
+  const [khoaDepthRecord, setKhoaDepthRecord] = React.useState<KhoaDepthRecord | null>(null);
+
+  React.useEffect(() => {
+    let isCancelled = false;
+    getCachedKhoaDepth(spot.lat, spot.lng)
+      .then((rec) => {
+        if (!isCancelled) {
+          setKhoaDepthRecord(rec);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isCancelled = true;
+    };
+  }, [spot.lat, spot.lng]);
+
+  const nearestStationInfo = React.useMemo(() => {
+    return findNearestKhoaStation(spot.lat, spot.lng);
+  }, [spot.lat, spot.lng]);
+
+  const realDepthResult = React.useMemo(() => {
+    const mslDepth = khoaDepthRecord?.dpwt != null ? khoaDepthRecord.dpwt : 8.5;
+    const datumZ0 = nearestStationInfo.station.datumZ0 ?? 3.5;
+    const nowHour = new Date().getHours();
+    const curPoint = tide?.hourlyCurve?.find((c) => c.hour === nowHour) || tide?.hourlyCurve?.[0];
+    const currentTideCm = curPoint?.height ?? 350;
+
+    return calculateRealWaterDepth(mslDepth, datumZ0, currentTideCm);
+  }, [khoaDepthRecord, nearestStationInfo, tide?.hourlyCurve]);
 
   // 포인트 변경 시 해당 포인트의 현장 메모 로드
   React.useEffect(() => {
@@ -1228,6 +1262,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           {weather ? formatWindSpeed(weather.windGust, windUnit) : '--'}
                         </span>
                       </div>
+                      {weather?.isObserved && (
+                        <div className="text-[9px] text-cyan-300 font-bold bg-cyan-950/70 px-1.5 py-0.5 rounded border border-cyan-800/60 flex items-center justify-between">
+                          <span>실측 ({weather.observedStationName} {weather.observedDistanceKm}km)</span>
+                          {weather.observedTime && <span>{weather.observedTime}</span>}
+                        </div>
+                      )}
                     </div>
 
                     {/* 2. 조류 방향 / 유속 위젯 (풍향풍속 바로 옆에 배치) */}
@@ -1292,6 +1332,11 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           {simCurrentVel > 0.8 ? '급류 (위험)' : simCurrentVel > 0.5 ? '빠른 본류대' : simCurrentVel > 0.2 ? '완만한 조류' : '정조/약류'}
                         </span>
                       </div>
+                      {marine?.isRomsCurrent && (
+                        <div className="text-[9px] text-indigo-300 font-bold bg-indigo-950/70 px-1.5 py-0.5 rounded border border-indigo-800/60">
+                          ROMS 수치모델 예측
+                        </div>
+                      )}
                     </div>
 
                     {/* 3. 표층 수온 및 기온 위젯 */}
@@ -1313,6 +1358,11 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         <span>강수확률:</span>
                         <span className="text-cyan-300 font-medium">{simPop}%</span>
                       </div>
+                      {marine?.isObservedTemp && (
+                        <div className="text-[9px] text-rose-300 font-bold bg-rose-950/70 px-1.5 py-0.5 rounded border border-rose-800/60">
+                          관측소 실측 ({marine.observedTempStationName})
+                        </div>
+                      )}
                     </div>
 
                     {/* 4. 파고 / 날씨 위젯 (표층수온 바로 옆에 배치) */}
@@ -1364,6 +1414,89 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         </span>
                       </div>
                     </div>
+                  </div>
+
+                  {/* 2-1. [KHOA 연동] 실시간 현장 유효 수심 및 채비 착저 시간 (Sink Time) 카드 */}
+                  <div className="p-3 bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950/40 border border-cyan-800/60 rounded-2xl space-y-2.5 shadow-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-base">🌊</span>
+                        <span className="font-bold text-xs text-slate-100">
+                          실시간 현장 수심 및 안착 시간
+                        </span>
+                      </div>
+                      <span className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                        {khoaDepthRecord ? 'KHOA 150m 정밀 격자' : '해안 수심 추정'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
+                      <div>
+                        <div className="text-[10px] text-slate-400">실시간 유효 수심</div>
+                        <div className="text-lg font-black text-cyan-300 font-mono tracking-tight flex items-baseline gap-1">
+                          <span>{realDepthResult.realDepthM.toFixed(1)}</span>
+                          <span className="text-xs font-normal text-slate-400">m</span>
+                        </div>
+                        <div className="text-[9.5px] text-slate-400 truncate">
+                          기준면 보정: 해도 {realDepthResult.chartedDepth.toFixed(1)}m + 조위 {(realDepthResult.tideHeightCm / 100).toFixed(2)}m
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] text-slate-400">기준 관측소 (Z₀)</div>
+                        <div className="text-xs font-bold text-slate-200 mt-1 truncate">
+                          {nearestStationInfo.station.name} 관측소
+                        </div>
+                        <div className="text-[9.5px] text-slate-400">
+                          거리 {nearestStationInfo.distanceKm}km · 성과값 {nearestStationInfo.station.datumZ0}m
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 봉돌별 착저 예상 시간 (Sink Time) 3단 그리드 */}
+                    <div className="space-y-1">
+                      <div className="text-[10px] font-bold text-slate-300 flex items-center justify-between">
+                        <span>채비 바닥 안착 시간 (착저 카운트다운)</span>
+                        <span className="text-[9px] text-slate-400 font-normal">유속 {simCurrentVel.toFixed(1)}m/s 기준</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5 text-center">
+                        <div className="p-1.5 bg-slate-900/90 rounded-lg border border-amber-900/40">
+                          <div className="text-[9.5px] text-amber-300 font-bold">25호 원투 (94g)</div>
+                          <div className="text-xs font-mono font-bold text-amber-200">
+                            {calculateSinkTimeToBottom(realDepthResult.realDepthM, 1.35, simCurrentVel).sinkSeconds.toFixed(1)}초
+                          </div>
+                          <div className="text-[9px] text-slate-400">
+                            밀림 {calculateSinkTimeToBottom(realDepthResult.realDepthM, 1.35, simCurrentVel).driftOffsetM.toFixed(1)}m
+                          </div>
+                        </div>
+
+                        <div className="p-1.5 bg-slate-900/90 rounded-lg border border-cyan-900/40">
+                          <div className="text-[9.5px] text-cyan-300 font-bold">1/2oz 지그헤드</div>
+                          <div className="text-xs font-mono font-bold text-cyan-200">
+                            {calculateSinkTimeToBottom(realDepthResult.realDepthM, 0.8, simCurrentVel).sinkSeconds.toFixed(1)}초
+                          </div>
+                          <div className="text-[9px] text-slate-400">
+                            밀림 {calculateSinkTimeToBottom(realDepthResult.realDepthM, 0.8, simCurrentVel).driftOffsetM.toFixed(1)}m
+                          </div>
+                        </div>
+
+                        <div className="p-1.5 bg-slate-900/90 rounded-lg border border-purple-900/40">
+                          <div className="text-[9.5px] text-purple-300 font-bold">3.5호 에기 (20g)</div>
+                          <div className="text-xs font-mono font-bold text-purple-200">
+                            {calculateSinkTimeToBottom(realDepthResult.realDepthM, 0.33, simCurrentVel).sinkSeconds.toFixed(1)}초
+                          </div>
+                          <div className="text-[9px] text-slate-400">
+                            밀림 {calculateSinkTimeToBottom(realDepthResult.realDepthM, 0.33, simCurrentVel).driftOffsetM.toFixed(1)}m
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {realDepthResult.isExposed && (
+                      <div className="text-[10px] text-rose-300 bg-rose-950/40 p-1.5 rounded-lg border border-rose-800/50">
+                        {realDepthResult.statusText}
+                      </div>
+                    )}
                   </div>
                 </>
               );
@@ -1768,19 +1901,33 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               onClick={(e) => e.stopPropagation()}
                               className="mt-2.5 pt-2.5 border-t border-slate-800/80 space-y-2 animate-in fade-in duration-150"
                             >
-                              <div className="p-2.5 bg-slate-950/80 rounded-xl border border-cyan-900/50 space-y-1.5 text-[11px]">
-                                <div className="font-bold text-cyan-300 flex items-center justify-between">
-                                  <span>맞춤 추천 채비 ({name})</span>
+                              <div className="p-2.5 bg-slate-950/80 rounded-xl border border-cyan-900/50 space-y-2 text-[11px]">
+                                <div className="font-bold text-cyan-300 flex items-center justify-between flex-wrap gap-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span>맞춤 추천 채비 ({name})</span>
+                                    <span
+                                      className={`px-1.5 py-0.2 rounded text-[9.5px] font-bold border ${rigInfo.methodBadgeColor?.bg || 'bg-cyan-500/20'} ${rigInfo.methodBadgeColor?.text || 'text-cyan-300'} ${rigInfo.methodBadgeColor?.border || 'border-cyan-500/40'}`}
+                                    >
+                                      {rigInfo.primaryMethodName}
+                                    </span>
+                                  </div>
                                   <span className="text-[10px] text-slate-400">
                                     수온 {simWaterTemp.toFixed(1)}°C · 조류 {simCurrentVel.toFixed(1)}m/s 기준
                                   </span>
                                 </div>
+
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-slate-300 text-[10px]">
+                                  {rigInfo.rig?.isLureApplicable ? (
+                                    <div>
+                                      <strong className="text-cyan-400">· 루어/에기:</strong> {rigInfo.recommendedRig.lure}
+                                    </div>
+                                  ) : (
+                                    <div>
+                                      <strong className="text-amber-400">· 원투/채비:</strong> {rigInfo.rig?.hookRig || rigInfo.recommendedRig.hookWeight}
+                                    </div>
+                                  )}
                                   <div>
-                                    <strong className="text-slate-400">· 루어:</strong> {rigInfo.recommendedRig.lure}
-                                  </div>
-                                  <div>
-                                    <strong className="text-slate-400">· 생미끼:</strong> {rigInfo.recommendedRig.bait}
+                                    <strong className="text-slate-400">· 주력 생미끼:</strong> {rigInfo.recommendedRig.bait}
                                   </div>
                                   <div>
                                     <strong className="text-slate-400">· 원줄/목줄:</strong> {rigInfo.recommendedRig.line}
@@ -1788,7 +1935,19 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                   <div>
                                     <strong className="text-slate-400">· 봉돌/싱커:</strong> {rigInfo.recommendedRig.hookWeight}
                                   </div>
+                                  {rigInfo.rig?.rodReel && (
+                                    <div className="sm:col-span-2 text-[9.5px] text-slate-400">
+                                      <strong className="text-slate-300">· 추천 낚싯대/릴:</strong> {rigInfo.rig.rodReel}
+                                    </div>
+                                  )}
                                 </div>
+
+                                {!rigInfo.rig?.isLureApplicable && rigInfo.rig?.lureAltText && (
+                                  <div className="text-[9.5px] text-rose-300 bg-rose-950/40 px-2 py-1 rounded border border-rose-900/50">
+                                    ⚠️ <strong>주의:</strong> {rigInfo.rig.lureAltText}
+                                  </div>
+                                )}
+
                                 <div className="text-[10px] text-amber-200/90 bg-amber-950/40 p-1.5 rounded-lg border border-amber-900/40">
                                   <strong>핵심 액션:</strong> {rigInfo.recommendedRig.action}
                                 </div>

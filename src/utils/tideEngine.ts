@@ -121,7 +121,11 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
     const highs: { time: string; height: number }[] = [];
     const lows: { time: string; height: number }[] = [];
 
-    // 당일 00:00~23:59 사이에 발생하는 모든 만조 시각 산출 (반일주조 12.42시간 간격)
+    // 일조부등(Diurnal Inequality): 태음일주조(O1)와 일월일주조(K1)에 의한 일중 고조·저조 조위차
+    const diurnalFactor = 0.22 * Math.sin(((moonAge - 3) / 14.76) * Math.PI);
+    const diurnalDiff = Math.round(amplitude * diurnalFactor);
+
+    // 당일 00:00~23:59 사이에 발생하는 모든 만조 시각 산출 (반일주조 12.42시간 간격 + 일조부등 반영)
     const highHours: number[] = [];
     for (let k = -1; k <= 2; k++) {
       const hr = firstHighHour + k * tideCycle;
@@ -129,16 +133,17 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
         highHours.push(hr);
       }
     }
-    highHours.sort((a, b) => a - b).forEach((hr) => {
+    highHours.sort((a, b) => a - b).forEach((hr, idx) => {
       const h = Math.floor(hr);
       const m = Math.floor((hr - h) * 60);
+      const ineq = idx % 2 === 0 ? diurnalDiff : -diurnalDiff;
       highs.push({
         time: `${padZero(h)}:${padZero(m)}`,
-        height: Math.round(meanSeaLevel + amplitude),
+        height: Math.max(10, Math.round(meanSeaLevel + amplitude + ineq)),
       });
     });
 
-    // 당일 00:00~23:59 사이에 발생하는 모든 간조 시각 산출 (만조 대비 6.21시간 위상차)
+    // 당일 00:00~23:59 사이에 발생하는 모든 간조 시각 산출 (만조 대비 6.21시간 위상차 + 일조부등 반영)
     const lowHours: number[] = [];
     for (let k = -2; k <= 2; k++) {
       const hr = firstHighHour + (k + 0.5) * tideCycle;
@@ -146,12 +151,13 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
         lowHours.push(hr);
       }
     }
-    lowHours.sort((a, b) => a - b).forEach((hr) => {
+    lowHours.sort((a, b) => a - b).forEach((hr, idx) => {
       const h = Math.floor(hr);
       const m = Math.floor((hr - h) * 60);
+      const ineq = idx % 2 === 0 ? -diurnalDiff * 0.8 : diurnalDiff * 0.8;
       lows.push({
         time: `${padZero(h)}:${padZero(m)}`,
-        height: Math.max(2, Math.round(meanSeaLevel - amplitude)),
+        height: Math.max(2, Math.round(meanSeaLevel - amplitude + ineq)),
       });
     });
 
@@ -282,7 +288,10 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
 
     const t = pointDate.getHours() + pointDate.getMinutes() / 60;
     const phase = ((t - firstHighHour) * 2 * Math.PI) / tideCycle;
-    const height = Math.round(meanSeaLevel + amplitude * Math.cos(phase));
+    const diurnalFactor = 0.22 * Math.sin(((moonAge - 3) / 14.76) * Math.PI);
+    const diurnalDiff = Math.round(amplitude * diurnalFactor);
+    const phaseDiurnal = ((t - (firstHighHour + 3)) * Math.PI) / 12;
+    const height = Math.max(2, Math.round(meanSeaLevel + amplitude * Math.cos(phase) + diurnalDiff * Math.cos(phaseDiurnal)));
 
     const slope = -Math.sin(phase);
     let stateText = '물돌이(정조)';
