@@ -977,8 +977,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               const curvePoints: { x: number; y: number; hour: number }[] = [];
               for (let hr = 0; hr <= 24; hr++) {
                 const x = (hr / 24) * svgW;
-                // 당일 0~24시간의 시간대별 정확한 조위 취득 (24시는 다음날 0시)
-                const targetPt = tide.hourly72Curve?.[hr] || (hr === 24 ? tide.hourly72Curve?.[23] : tide.hourlyCurve?.[hr]);
+                // 당일 0~24시간의 시간대별 정확한 조위 취득 (마스터 시계열 기반 100% 동기화)
+                const targetPt = tide.hourlyCurve?.[hr] ?? tide.hourly72Curve?.[hr];
                 let estHeight = targetPt?.height;
                 if (estHeight === undefined) {
                   if (rawExtremums.length >= 2) {

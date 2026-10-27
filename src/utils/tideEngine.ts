@@ -1,5 +1,6 @@
 import * as SunCalc from 'suncalc';
 import type { TideCurvePoint, TideDayInfo, TideDaySummary } from '../types';
+import type { KhoaSwtcWeeklyResult } from './khoaSwtcApi';
 
 // 한국 연안 주요 표준항 좌표 및 대략적 조차(Harmonic Constant M2, S2 근사치)
 export interface HarborRef {
@@ -121,6 +122,7 @@ export function calculateTideDay(
   khoaOverride?: {
     events?: { type: 'HIGH' | 'LOW'; time: string; height: number; diff?: number }[];
     hourlyCurve?: { hour: number; time: string; height: number }[];
+    swtcWeekly?: KhoaSwtcWeeklyResult | null;
   }
 ): TideDayInfo {
   const harbor = findNearestHarbor(lat, lng);
@@ -139,10 +141,61 @@ export function calculateTideDay(
   const todayMul = getMulInfo(todayMoonAge, harbor.region);
   const todayTimes = SunCalc.getTimes(new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 12, 0, 0), lat, lng);
 
-  // KHOA 공식 발표치(관측소) 위상 보정계수 산출:
-  // KHOA 공식 첫 고조 시각이 있으면 자체 모델과의 위상차(Phase Shift)를 계산하여 72시간 전 구간에 일괄 동기화
+  const useSwtc = Boolean(khoaOverride?.swtcWeekly && khoaOverride.swtcWeekly.allExtremums && khoaOverride.swtcWeekly.allExtremums.length >= 2);
+  const swtc = khoaOverride?.swtcWeekly;
+
+  // KHOA 모바일 공식 극점 관통 Hermite Cosine Spline 보간 함수
+  const interpolateSwtc = (totalMinutes: number) => {
+    const list = swtc!.allExtremums;
+    let prevExt: (typeof list)[0] | null = null;
+    let nextExt: (typeof list)[0] | null = null;
+
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].totalMinutesFromStart <= totalMinutes) {
+        prevExt = list[i];
+      } else {
+        nextExt = list[i];
+        break;
+      }
+    }
+
+    if (!prevExt && nextExt) {
+      const secondNext = list[1] || nextExt;
+      const dt = Math.max(300, secondNext.totalMinutesFromStart - nextExt.totalMinutesFromStart);
+      prevExt = {
+        ...nextExt,
+        totalMinutesFromStart: nextExt.totalMinutesFromStart - dt,
+        height: secondNext.height,
+        type: nextExt.type === 'HIGH' ? 'LOW' : 'HIGH',
+      };
+    } else if (prevExt && !nextExt) {
+      const secondPrev = list[list.length - 2] || prevExt;
+      const dt = Math.max(300, prevExt.totalMinutesFromStart - secondPrev.totalMinutesFromStart);
+      nextExt = {
+        ...prevExt,
+        totalMinutesFromStart: prevExt.totalMinutesFromStart + dt,
+        height: secondPrev.height,
+        type: prevExt.type === 'HIGH' ? 'LOW' : 'HIGH',
+      };
+    }
+
+    if (!prevExt || !nextExt) return { height: 100, slope: 0 };
+    const dt = nextExt.totalMinutesFromStart - prevExt.totalMinutesFromStart;
+    if (dt <= 0) return { height: prevExt.height, slope: 0 };
+
+    const ratio = (totalMinutes - prevExt.totalMinutesFromStart) / dt;
+    const phase = ratio * Math.PI;
+    const height = Math.round(
+      (prevExt.height + nextExt.height) / 2 +
+      ((prevExt.height - nextExt.height) / 2) * Math.cos(phase)
+    );
+    const slope = -((prevExt.height - nextExt.height) / 2) * Math.sin(phase);
+    return { height, slope };
+  };
+
+  // KHOA 공식 발표치(관측소) 위상 보정계수 산출 (폴백용)
   let phaseShiftHours = 0;
-  if (khoaOverride?.events && khoaOverride.events.length >= 2) {
+  if (!useSwtc && khoaOverride?.events && khoaOverride.events.length >= 2) {
     const firstKhoaHigh = khoaOverride.events.find((e) => e.type === 'HIGH');
     if (firstKhoaHigh) {
       const [kh, km] = firstKhoaHigh.time.split(':').map(Number);
@@ -166,34 +219,44 @@ export function calculateTideDay(
     const dayLabel = dayDiff === 0 ? '오늘' : dayDiff === 1 ? '내일' : dayDiff === -1 ? '어제' : '모레';
     const hourInDay = ((totalHour % 24) + 24) % 24;
 
-    const pMoonAge = getMoonAge(pointDate);
-    const { mulNumber: pMulNumber } = getMulInfo(pMoonAge, harbor.region);
-
-    const firstHighHour = (harbor.highLagHours + pMoonAge * 0.83 + phaseShiftHours) % tideCycle;
-    const springFactor = 0.4 + 0.6 * (Math.sin(((pMulNumber - 1) / 15) * Math.PI) ** 2);
-    const amplitude = (harbor.meanRange * springFactor) / 2;
-    const meanSeaLevel = harbor.meanRange <= 50 ? 16 : harbor.meanRange * 0.6;
-
-    const t = hourInDay;
-    const phase = ((t - firstHighHour) * 2 * Math.PI) / tideCycle;
-    const diurnalFactor = 0.22 * Math.sin(((pMoonAge - 3) / 14.76) * Math.PI);
-    const diurnalDiff = Math.round(amplitude * diurnalFactor);
-    const phaseDiurnal = ((t - (firstHighHour + 3)) * Math.PI) / 12;
-
-    let height = Math.max(2, Math.round(meanSeaLevel + amplitude * Math.cos(phase) + diurnalDiff * Math.cos(phaseDiurnal)));
-
-    // 당일(0~23시) KHOA 실제 관측/예보 시계열이 오버라이드로 제공된 경우 100% 실측치로 교체
-    if (dayDiff === 0 && khoaOverride?.hourlyCurve && khoaOverride.hourlyCurve.length >= 24) {
-      const kPt = khoaOverride.hourlyCurve.find((k) => k.hour === hourInDay);
-      if (kPt && kPt.height != null) {
-        height = kPt.height;
-      }
-    }
-
-    const slope = -Math.sin(phase);
+    let height = 0;
     let stateText = '물돌이(정조)';
-    if (slope > 0.3) stateText = '들물';
-    else if (slope < -0.3) stateText = '날물';
+
+    if (useSwtc) {
+      const { height: sHgt, slope: sSlope } = interpolateSwtc(totalHour * 60);
+      height = sHgt;
+      if (Math.abs(sSlope) < 30) stateText = '물돌이(정조)';
+      else if (sSlope > 30) stateText = '들물';
+      else stateText = '날물';
+    } else {
+      const pMoonAge = getMoonAge(pointDate);
+      const { mulNumber: pMulNumber } = getMulInfo(pMoonAge, harbor.region);
+
+      const firstHighHour = (harbor.highLagHours + pMoonAge * 0.83 + phaseShiftHours) % tideCycle;
+      const springFactor = 0.4 + 0.6 * (Math.sin(((pMulNumber - 1) / 15) * Math.PI) ** 2);
+      const amplitude = (harbor.meanRange * springFactor) / 2;
+      const meanSeaLevel = harbor.meanRange <= 50 ? 16 : harbor.meanRange * 0.6;
+
+      const t = hourInDay;
+      const phase = ((t - firstHighHour) * 2 * Math.PI) / tideCycle;
+      const diurnalFactor = 0.22 * Math.sin(((pMoonAge - 3) / 14.76) * Math.PI);
+      const diurnalDiff = Math.round(amplitude * diurnalFactor);
+      const phaseDiurnal = ((t - (firstHighHour + 3)) * Math.PI) / 12;
+
+      height = Math.max(2, Math.round(meanSeaLevel + amplitude * Math.cos(phase) + diurnalDiff * Math.cos(phaseDiurnal)));
+
+      // 당일(0~23시) KHOA 실제 관측/예보 시계열이 오버라이드로 제공된 경우 실측치 반영
+      if (dayDiff === 0 && khoaOverride?.hourlyCurve && khoaOverride.hourlyCurve.length >= 24) {
+        const kPt = khoaOverride.hourlyCurve.find((k) => k.hour === hourInDay);
+        if (kPt && kPt.height != null) {
+          height = kPt.height;
+        }
+      }
+
+      const slope = -Math.sin(phase);
+      if (slope > 0.3) stateText = '들물';
+      else if (slope < -0.3) stateText = '날물';
+    }
 
     const pTimes = SunCalc.getTimes(new Date(pointDate.getFullYear(), pointDate.getMonth(), pointDate.getDate(), 12, 0, 0), lat, lng);
     const isSunrise = pTimes.sunrise ? Math.abs(pointDate.getTime() - pTimes.sunrise.getTime()) <= 35 * 60000 : false;
@@ -217,9 +280,9 @@ export function calculateTideDay(
   }
 
   // =========================================================================
-  // 2. 단일 마스터 시계열 곡선 상에서 극대(만조)/극소(간조) 수학적 정밀 검출
+  // 2. 단일 마스터 시계열 곡선 상의 극대(만조)/극소(간조) 목록 확정
   // =========================================================================
-  const allExtremums: {
+  let allExtremums: {
     type: 'HIGH' | 'LOW';
     time: string;
     height: number;
@@ -227,38 +290,60 @@ export function calculateTideDay(
     dayDiff: number;
   }[] = [];
 
-  for (let i = 1; i < masterSeries.length - 1; i++) {
-    const prev = masterSeries[i - 1];
-    const curr = masterSeries[i];
-    const next = masterSeries[i + 1];
+  if (useSwtc && swtc?.allExtremums) {
+    // KHOA 공식 모바일 극점을 100% 그대로 극치로 채택 (0분, 0cm 오차 없음)
+    allExtremums = swtc.allExtremums.map((e) => ({
+      type: e.type,
+      time: e.time,
+      height: e.height,
+      exactMinutes: e.totalMinutesFromStart,
+      dayDiff: e.dayIdx,
+    }));
 
-    const isPeakHigh = curr.height >= prev.height && curr.height >= next.height && (curr.height > prev.height || curr.height > next.height);
-    const isPeakLow = curr.height <= prev.height && curr.height <= next.height && (curr.height < prev.height || curr.height < next.height);
+    // 마스터 시계열 정시 포인트 중 가장 가까운 포인트에 플래그 설정
+    allExtremums.forEach((ext) => {
+      const nearHour = Math.round(ext.exactMinutes / 60);
+      const pt = masterSeries.find((p) => p.hour === nearHour);
+      if (pt) {
+        if (ext.type === 'HIGH') pt.isHighTide = true;
+        if (ext.type === 'LOW') pt.isLowTide = true;
+      }
+    });
+  } else {
+    // 수치적 극치 탐색 (폴백용)
+    for (let i = 1; i < masterSeries.length - 1; i++) {
+      const prev = masterSeries[i - 1];
+      const curr = masterSeries[i];
+      const next = masterSeries[i + 1];
 
-    if (isPeakHigh || isPeakLow) {
-      const denom = prev.height - 2 * curr.height + next.height;
-      const xPeak = denom !== 0 ? (prev.height - next.height) / (2 * denom) : 0;
-      const boundedX = Math.max(-0.5, Math.min(0.5, xPeak));
+      const isPeakHigh = curr.height >= prev.height && curr.height >= next.height && (curr.height > prev.height || curr.height > next.height);
+      const isPeakLow = curr.height <= prev.height && curr.height <= next.height && (curr.height < prev.height || curr.height < next.height);
 
-      const peakExactHours = curr.hour + boundedX;
-      const peakMinutesTotal = Math.round(peakExactHours * 60);
-      const dayDiff = Math.floor(peakMinutesTotal / 1440);
-      const minInDay = ((peakMinutesTotal % 1440) + 1440) % 1440;
-      const hh = Math.floor(minInDay / 60);
-      const mm = minInDay % 60;
+      if (isPeakHigh || isPeakLow) {
+        const denom = prev.height - 2 * curr.height + next.height;
+        const xPeak = denom !== 0 ? (prev.height - next.height) / (2 * denom) : 0;
+        const boundedX = Math.max(-0.5, Math.min(0.5, xPeak));
 
-      const interpolatedHeight = Math.round(curr.height - (denom * boundedX * boundedX) / 2);
+        const peakExactHours = curr.hour + boundedX;
+        const peakMinutesTotal = Math.round(peakExactHours * 60);
+        const dayDiff = Math.floor(peakMinutesTotal / 1440);
+        const minInDay = ((peakMinutesTotal % 1440) + 1440) % 1440;
+        const hh = Math.floor(minInDay / 60);
+        const mm = minInDay % 60;
 
-      allExtremums.push({
-        type: isPeakHigh ? 'HIGH' : 'LOW',
-        time: `${padZero(hh)}:${padZero(mm)}`,
-        height: Math.max(2, interpolatedHeight),
-        exactMinutes: peakMinutesTotal,
-        dayDiff,
-      });
+        const interpolatedHeight = Math.round(curr.height - (denom * boundedX * boundedX) / 2);
 
-      if (isPeakHigh) curr.isHighTide = true;
-      if (isPeakLow) curr.isLowTide = true;
+        allExtremums.push({
+          type: isPeakHigh ? 'HIGH' : 'LOW',
+          time: `${padZero(hh)}:${padZero(mm)}`,
+          height: Math.max(2, interpolatedHeight),
+          exactMinutes: peakMinutesTotal,
+          dayDiff,
+        });
+
+        if (isPeakHigh) curr.isHighTide = true;
+        if (isPeakLow) curr.isLowTide = true;
+      }
     }
   }
 
@@ -277,43 +362,62 @@ export function calculateTideDay(
     }
   }
 
-  // 3일간 요약 데이터 (threeDays) 구축 (마스터 시계열 극치와 100% 동기화)
+  // 3일간 요약 데이터 (threeDays) 구축 (공식 데이터 100% 매핑)
   const threeDays: TideDaySummary[] = [];
 
   for (let d = 0; d < 3; d++) {
     const curDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() + d, 12, 0, 0);
     const moonAge = getMoonAge(curDate);
-    const { mulText } = getMulInfo(moonAge, harbor.region);
+    const fallbackMul = getMulInfo(moonAge, harbor.region);
     const times = SunCalc.getTimes(curDate, lat, lng);
-
-    let dayHighs = allExtremums
-      .filter((e) => e.dayDiff === d && e.type === 'HIGH')
-      .map((e) => ({ time: e.time, height: e.height }));
-    let dayLows = allExtremums
-      .filter((e) => e.dayDiff === d && e.type === 'LOW')
-      .map((e) => ({ time: e.time, height: e.height }));
-
-    // 오늘(d === 0) KHOA 공식 극점이 제공된 경우 최우선 적용
-    if (d === 0 && khoaOverride?.events && khoaOverride.events.length >= 2) {
-      dayHighs = khoaOverride.events
-        .filter((e) => e.type === 'HIGH')
-        .map((e) => ({ time: e.time, height: e.height, diff: e.diff }));
-      dayLows = khoaOverride.events
-        .filter((e) => e.type === 'LOW')
-        .map((e) => ({ time: e.time, height: e.height, diff: e.diff }));
-    }
-
     const dayName = `${padZero(curDate.getMonth() + 1)}/${padZero(curDate.getDate())} (${['일', '월', '화', '수', '목', '금', '토'][curDate.getDay()]})`;
 
-    threeDays.push({
-      dateStr: dayName,
-      dayLabel: dayLabels[d],
-      mulText,
-      sunrise: formatTime(times.sunrise),
-      sunset: formatTime(times.sunset),
-      highTides: dayHighs,
-      lowTides: dayLows,
-    });
+    if (useSwtc && swtc?.days && swtc.days[d]) {
+      const swDay = swtc.days[d];
+      const dayHighs = swDay.events
+        .filter((e) => e.type === 'HIGH')
+        .map((e) => ({ time: e.time, height: e.height, diff: e.diff }));
+      const dayLows = swDay.events
+        .filter((e) => e.type === 'LOW')
+        .map((e) => ({ time: e.time, height: e.height, diff: e.diff }));
+
+      threeDays.push({
+        dateStr: dayName,
+        dayLabel: dayLabels[d],
+        mulText: fallbackMul.mulText,
+        sunrise: swDay.sunrise || formatTime(times.sunrise),
+        sunset: swDay.sunset || formatTime(times.sunset),
+        highTides: dayHighs,
+        lowTides: dayLows,
+      });
+    } else {
+      let dayHighs = allExtremums
+        .filter((e) => e.dayDiff === d && e.type === 'HIGH')
+        .map((e) => ({ time: e.time, height: e.height }));
+      let dayLows = allExtremums
+        .filter((e) => e.dayDiff === d && e.type === 'LOW')
+        .map((e) => ({ time: e.time, height: e.height }));
+
+      // 오늘(d === 0) KHOA 공식 극점이 제공된 경우 최우선 적용
+      if (d === 0 && khoaOverride?.events && khoaOverride.events.length >= 2) {
+        dayHighs = khoaOverride.events
+          .filter((e) => e.type === 'HIGH')
+          .map((e) => ({ time: e.time, height: e.height, diff: e.diff }));
+        dayLows = khoaOverride.events
+          .filter((e) => e.type === 'LOW')
+          .map((e) => ({ time: e.time, height: e.height, diff: e.diff }));
+      }
+
+      threeDays.push({
+        dateStr: dayName,
+        dayLabel: dayLabels[d],
+        mulText: fallbackMul.mulText,
+        sunrise: formatTime(times.sunrise),
+        sunset: formatTime(times.sunset),
+        highTides: dayHighs,
+        lowTides: dayLows,
+      });
+    }
   }
 
   // =========================================================================

@@ -16,6 +16,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api-khoa/, ''),
       },
+      '/api-swtc': {
+        target: 'https://www.khoa.go.kr',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-swtc/, ''),
+      },
     },
   },
 })

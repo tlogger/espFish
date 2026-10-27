@@ -410,16 +410,9 @@ export function App() {
     const intervalId = setInterval(async () => {
       try {
         const now = new Date();
-        const tideData = calculateTideDay(selectedSpot.lat, selectedSpot.lng, now);
+        const kForecast = await getKhoaTideForecast(selectedSpot.lat, selectedSpot.lng, now);
+        const tideData = kForecast?.tideDayInfo || calculateTideDay(selectedSpot.lat, selectedSpot.lng, now);
         setTide(tideData);
-
-        getKhoaTideForecast(selectedSpot.lat, selectedSpot.lng, now)
-          .then((kForecast) => {
-            if (kForecast?.tideDayInfo) {
-              setTide(kForecast.tideDayInfo);
-            }
-          })
-          .catch(() => {});
 
         const [weatherData, marineData] = await Promise.all([
           fetchWeatherData(selectedSpot.lat, selectedSpot.lng),

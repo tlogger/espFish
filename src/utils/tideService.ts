@@ -2,6 +2,7 @@ import * as SunCalc from 'suncalc';
 import { getDistanceKm, getMulInfo, getMoonAge } from './tideEngine';
 import { getCachedKhoaTideSeries } from './khoaCache';
 import { calculateTideDay } from './tideEngine';
+import { fetchKhoaSwtcWeekly, KhoaSwtcWeeklyResult } from './khoaSwtcApi';
 import type { TideDayInfo } from '../types';
 
 /** 국립해양조사원(KHOA) 전국 52개 공식 조위관측소 메타데이터 */
@@ -169,16 +170,97 @@ export async function getKhoaTideForecast(
   const sunTimes = SunCalc.getTimes(noonDate, lat, lng);
   const formatTime = (d: Date | null | undefined) =>
     !d || isNaN(d.getTime()) ? '--:--' : `${padZero(d.getHours())}:${padZero(d.getMinutes())}`;
-  const sunrise = formatTime(sunTimes.sunrise);
-  const sunset = formatTime(sunTimes.sunset);
+  let sunrise = formatTime(sunTimes.sunrise);
+  let sunset = formatTime(sunTimes.sunset);
   // 한국 표준시 기준 음력 월 근사 계산 (10월 기준 음력 9월)
   const monthDiff = baseDate.getDate() >= (lunarDay) ? 1 : 2;
   let lunarMonth = baseDate.getMonth() + 2 - monthDiff;
   if (lunarMonth <= 0) lunarMonth += 12;
   if (lunarMonth > 12) lunarMonth -= 12;
-  const lunarDateStr = `음력 ${lunarMonth}.${lunarDay}`;
+  let lunarDateStr = `음력 ${lunarMonth}.${lunarDay}`;
 
-  // 3. KHOA surveyTideLevel 공식 1일 시계열 데이터 취득 시도
+  // 3. 국립해양조사원(KHOA) 스마트조석예보 공식 시스템(swtc) 주간 7일치 공식 극점 데이터 연동 (Supabase DB 캐시)
+  try {
+    const swtcWeekly = await fetchKhoaSwtcWeekly(station.code, baseDate);
+    if (swtcWeekly && swtcWeekly.days && swtcWeekly.days.length >= 1 && swtcWeekly.allExtremums.length >= 2) {
+      const todaySw = swtcWeekly.days[0];
+
+      // KHOA 공식 만조/간조 이벤트 (오차 0분, 0cm)
+      const officialEvents: TideForecastEvent[] = todaySw.events.map((e) => ({
+        type: e.type,
+        typeLabel: e.typeLabel,
+        time: e.time,
+        height: e.height,
+        diff: e.diff,
+      }));
+
+      if (todaySw.sunrise) sunrise = todaySw.sunrise;
+      if (todaySw.sunset) sunset = todaySw.sunset;
+      if (todaySw.dateMoon) lunarDateStr = `음력 ${todaySw.dateMoon}`;
+
+      // 마스터 시계열 엔진 호출 (KHOA 공식 스플라인 일원화)
+      const unifiedTide = calculateTideDay(lat, lng, baseDate, {
+        swtcWeekly,
+      });
+
+      // 24시간 곡선은 마스터 시계열의 오늘(0~23시)에서 100% 일치하게 추출
+      const officialHourlyCurve: TideHourlyPoint[] = unifiedTide.hourlyCurve.slice(0, 24).map((p) => ({
+        hour: p.hour,
+        time: p.timeStr,
+        height: p.height,
+      }));
+
+      // 현재 시각 조위 산출
+      const nowH = baseDate.getHours();
+      const curPt = unifiedTide.hourlyCurve.find((p) => p.hour === nowH) || unifiedTide.hourlyCurve[0];
+      const currentHeight = curPt.height;
+
+      // 조석 상태 판정
+      const nowMins = baseDate.getHours() * 60 + baseDate.getMinutes();
+      const nextEv = officialEvents.find((e) => {
+        const [eh, em] = e.time.split(':').map(Number);
+        return eh * 60 + em >= nowMins;
+      });
+      const currentStateText = nextEv
+        ? (nextEv.type === 'HIGH' ? `${nextEv.time} 만조 향해 들물 진행 중` : `${nextEv.time} 간조 향해 날물 진행 중`)
+        : '조석 안정기';
+
+      const result: KhoaTideForecastResult = {
+        station,
+        distanceKm,
+        targetDateStr: dateKey,
+        mulText: unifiedTide.mulText || mulText,
+        lunarDateStr: unifiedTide.lunarDateStr || lunarDateStr,
+        sunrise,
+        sunset,
+        events: officialEvents,
+        hourlyCurve: officialHourlyCurve,
+        currentHeight,
+        currentStateText,
+        source: 'KHOA_API',
+        tideDayInfo: unifiedTide,
+      };
+
+      // 4. 로컬 캐시 저장
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(
+            cacheKey,
+            JSON.stringify({
+              expireAt: Date.now() + 24 * 60 * 60 * 1000,
+              data: result,
+            })
+          );
+        } catch (e) {}
+      }
+
+      return result;
+    }
+  } catch (err) {
+    console.warn('[tideService] fetchKhoaSwtcWeekly error:', err);
+  }
+
+  // 4. KHOA surveyTideLevel 공식 1일 시계열 데이터 취득 시도 (2차 폴백)
   const series = await getCachedKhoaTideSeries(station.code, dateKey);
 
   let events: TideForecastEvent[] = [];
