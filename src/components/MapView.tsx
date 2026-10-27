@@ -1829,7 +1829,7 @@ export const MapView: React.FC<MapViewProps> = ({
               yAnchor={2.3}
               zIndex={160}
             >
-              <div className="px-3 py-1 rounded-full bg-slate-950/95 border-2 border-emerald-400 text-emerald-300 font-bold text-xs shadow-2xl flex items-center gap-1.5 whitespace-nowrap animate-bounce pointer-events-none">
+              <div className="px-3 py-1 rounded-full bg-slate-950/95 border-2 border-emerald-400 text-emerald-300 font-bold text-xs shadow-2xl flex items-center gap-1.5 whitespace-nowrap animate-pulse pointer-events-none">
                 <span>👆 핀을 드래그하여 정확한 발판으로 옮기세요</span>
               </div>
             </CustomOverlayMap>

@@ -1276,7 +1276,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         <span className="flex items-center gap-1 font-semibold truncate">
                           <Wind
                             size={13}
-                            className={isWindDanger ? 'text-rose-400 shrink-0 animate-bounce' : isWindWarning ? 'text-amber-400 shrink-0' : 'text-cyan-400 shrink-0'}
+                            className={isWindDanger ? 'text-rose-400 shrink-0 animate-pulse' : isWindWarning ? 'text-amber-400 shrink-0' : 'text-cyan-400 shrink-0'}
                           />{' '}
                           <span className={isWindDanger ? 'text-rose-200 font-bold' : isWindWarning ? 'text-amber-200 font-bold' : ''}>
                             풍향·풍속
@@ -1346,7 +1346,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         <span className="flex items-center gap-1 font-semibold truncate">
                           <Compass
                             size={13}
-                            className={isCurrentDanger ? 'text-rose-400 shrink-0 animate-bounce' : isCurrentWarning ? 'text-amber-400 shrink-0' : 'text-emerald-400 shrink-0'}
+                            className={isCurrentDanger ? 'text-rose-400 shrink-0 animate-pulse' : isCurrentWarning ? 'text-amber-400 shrink-0' : 'text-emerald-400 shrink-0'}
                           />{' '}
                           <span className={isCurrentDanger ? 'text-rose-200 font-bold' : isCurrentWarning ? 'text-amber-200 font-bold' : ''}>
                             조류·해류
@@ -1441,7 +1441,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         <span className="flex items-center gap-1 font-semibold truncate">
                           <Waves
                             size={13}
-                            className={isWaveDanger ? 'text-rose-400 shrink-0 animate-bounce' : isWaveWarning ? 'text-amber-400 shrink-0' : 'text-blue-400 shrink-0'}
+                            className={isWaveDanger ? 'text-rose-400 shrink-0 animate-pulse' : isWaveWarning ? 'text-amber-400 shrink-0' : 'text-blue-400 shrink-0'}
                           />{' '}
                           <span className={isWaveDanger ? 'text-rose-200 font-bold' : isWaveWarning ? 'text-amber-200 font-bold' : ''}>
                             파고 · 날씨
@@ -2768,7 +2768,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   <button
                     type="submit"
                     disabled={isSubmittingMemo || !newMemoContent.trim()}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold transition shadow cursor-pointer"
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:opacity-40 text-white font-bold transition shadow cursor-pointer"
                   >
                     <Send size={12} />
                     <span>{isSubmittingMemo ? '등록 중...' : '등록'}</span>

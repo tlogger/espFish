@@ -667,7 +667,7 @@ export function App() {
             <img src={`${import.meta.env.BASE_URL}user-icon.png`} alt="ExFish Logo" className="w-full h-full object-cover rounded-md" />
           </div>
           <div className="flex flex-col">
-            <span className="text-base sm:text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500 bg-clip-text text-transparent leading-none">
+            <span className="text-base sm:text-lg font-black tracking-tight text-cyan-400 leading-none">
               ExFish
             </span>
             <span className="hidden md:inline-block text-[10px] text-slate-400 font-medium tracking-tight mt-0.5">

@@ -303,7 +303,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
         <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <span className="text-2xl">{isHitless ? '❌' : '🐟'}</span>
-            <h2 className="text-xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-500 bg-clip-text text-transparent">
+            <h2 className="text-xl font-bold text-emerald-400">
               {editingLog ? '조과(Catch Log) 수정하기' : '새 조과(Catch Log) 기록하기'}
             </h2>
           </div>

@@ -207,7 +207,7 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
         <div className="flex justify-between items-center mb-5 pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <span className="text-2xl">🎣</span>
-            <h2 className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+            <h2 className="text-xl font-bold text-cyan-400">
               {editingSpot ? '낚시 포인트 수정' : '새 낚시 포인트 등록'}
             </h2>
           </div>
@@ -235,7 +235,7 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
               type="file"
               accept="image/*"
               onChange={handlePhotoUpload}
-              className="text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-600 file:text-white hover:file:bg-cyan-500 cursor-pointer text-slate-300"
+              className="text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-600 file:text-white hover:file:bg-cyan-500 cursor-pointer text-white/70"
             />
 
             {/* GPS 추출 성공 시 사용자 승인 질문 박스 */}
