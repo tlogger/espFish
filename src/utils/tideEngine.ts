@@ -8,26 +8,36 @@ export interface HarborRef {
   lng: number;
   meanRange: number; // 평균 조차 cm (서해: ~800, 남해: ~300, 동해: ~30)
   highLagHours: number; // 음력 합삭 기준 평균 만조 지각(시간)
+  region: 'WEST' | 'SOUTH' | 'EAST' | 'JEJU';
 }
 
 export const KOREA_HARBORS: HarborRef[] = [
-  { name: '인천', lat: 37.452, lng: 126.592, meanRange: 750, highLagHours: 4.8 },
-  { name: '평택', lat: 36.993, lng: 126.834, meanRange: 820, highLagHours: 5.1 },
-  { name: '안흥(태안)', lat: 36.678, lng: 126.132, meanRange: 600, highLagHours: 3.5 },
-  { name: '보령(대천)', lat: 36.327, lng: 126.512, meanRange: 580, highLagHours: 3.2 },
-  { name: '군산', lat: 35.976, lng: 126.554, meanRange: 550, highLagHours: 3.0 },
-  { name: '목포', lat: 34.779, lng: 126.376, meanRange: 420, highLagHours: 2.2 },
-  { name: '완도', lat: 34.316, lng: 126.757, meanRange: 320, highLagHours: 10.5 },
-  { name: '여수', lat: 34.747, lng: 127.768, meanRange: 280, highLagHours: 9.2 },
-  { name: '통영', lat: 34.829, lng: 128.423, meanRange: 220, highLagHours: 8.7 },
-  { name: '부산', lat: 35.096, lng: 129.038, meanRange: 130, highLagHours: 7.5 },
-  { name: '울산', lat: 35.503, lng: 129.382, meanRange: 50, highLagHours: 6.8 },
-  { name: '포항', lat: 36.048, lng: 129.383, meanRange: 25, highLagHours: 5.2 },
-  { name: '속초', lat: 38.204, lng: 128.601, meanRange: 20, highLagHours: 4.0 },
-  { name: '강릉(안인진)', lat: 37.736, lng: 128.986, meanRange: 20, highLagHours: 1.8 },
-  { name: '동해(묵호)', lat: 37.551, lng: 129.117, meanRange: 20, highLagHours: 1.8 },
-  { name: '제주', lat: 33.528, lng: 126.543, meanRange: 230, highLagHours: 10.8 },
-  { name: '서귀포', lat: 33.241, lng: 126.564, meanRange: 220, highLagHours: 10.1 },
+  // 서해안 (7물제 적용: 음력 16일 = 7물 사리, 음력 8일 조금, 음력 9일 무시)
+  { name: '인천송도', lat: 37.338, lng: 126.586, meanRange: 750, highLagHours: 4.7, region: 'WEST' },
+  { name: '인천', lat: 37.452, lng: 126.592, meanRange: 750, highLagHours: 4.8, region: 'WEST' },
+  { name: '안산', lat: 37.192, lng: 126.647, meanRange: 720, highLagHours: 4.6, region: 'WEST' },
+  { name: '평택', lat: 36.993, lng: 126.834, meanRange: 820, highLagHours: 5.1, region: 'WEST' },
+  { name: '안흥(태안)', lat: 36.678, lng: 126.132, meanRange: 600, highLagHours: 3.5, region: 'WEST' },
+  { name: '보령(대천)', lat: 36.327, lng: 126.512, meanRange: 580, highLagHours: 3.2, region: 'WEST' },
+  { name: '군산', lat: 35.976, lng: 126.554, meanRange: 550, highLagHours: 3.0, region: 'WEST' },
+  { name: '목포', lat: 34.779, lng: 126.376, meanRange: 420, highLagHours: 2.2, region: 'WEST' },
+  
+  // 남해안 (8물제 적용: 음력 16일 = 8물 사리, 음력 7일 조금, 음력 8일 무시)
+  { name: '완도', lat: 34.316, lng: 126.757, meanRange: 320, highLagHours: 10.5, region: 'SOUTH' },
+  { name: '여수', lat: 34.747, lng: 127.768, meanRange: 280, highLagHours: 9.2, region: 'SOUTH' },
+  { name: '통영', lat: 34.829, lng: 128.423, meanRange: 220, highLagHours: 8.7, region: 'SOUTH' },
+  { name: '부산', lat: 35.096, lng: 129.038, meanRange: 130, highLagHours: 7.5, region: 'SOUTH' },
+  
+  // 동해안 (8물제 적용)
+  { name: '울산', lat: 35.503, lng: 129.382, meanRange: 50, highLagHours: 6.8, region: 'EAST' },
+  { name: '포항', lat: 36.048, lng: 129.383, meanRange: 25, highLagHours: 5.2, region: 'EAST' },
+  { name: '속초', lat: 38.204, lng: 128.601, meanRange: 20, highLagHours: 4.0, region: 'EAST' },
+  { name: '강릉(안인진)', lat: 37.736, lng: 128.986, meanRange: 20, highLagHours: 1.8, region: 'EAST' },
+  { name: '동해(묵호)', lat: 37.551, lng: 129.117, meanRange: 20, highLagHours: 1.8, region: 'EAST' },
+  
+  // 제주도 (8물제 적용)
+  { name: '제주', lat: 33.528, lng: 126.543, meanRange: 230, highLagHours: 10.8, region: 'JEJU' },
+  { name: '서귀포', lat: 33.241, lng: 126.564, meanRange: 220, highLagHours: 10.1, region: 'JEJU' },
 ];
 
 /** 하버사인 거리(km) 계산 */
@@ -73,18 +83,27 @@ export function getMoonAge(date: Date): number {
   return moonAge;
 }
 
-/** 8물제 기준 물때 명칭 계산 (한국 바다낚시 표준) */
-export function getMulInfo(moonAge: number): { mulNumber: number; mulText: string; lunarDay: number } {
+/**
+ * 한국 해역별 물때 명칭 및 번호 계산
+ * - 서해 (WEST): 7물제 (음력 8일 조금, 9일 무시, 10일 1물, 16일 7물 사리, 17일 8물) -> (lunarDay + 6) % 15
+ * - 남해/동해/제주 (SOUTH, EAST, JEJU): 8물제 (음력 7일 조금, 8일 무시, 9일 1물, 16일 8물 사리, 17일 9물) -> (lunarDay + 7) % 15
+ */
+export function getMulInfo(
+  moonAge: number,
+  region: 'WEST' | 'SOUTH' | 'EAST' | 'JEJU' = 'WEST'
+): { mulNumber: number; mulText: string; lunarDay: number } {
   const lunarDay = Math.floor(moonAge) + 1; // 음력 1일 ~ 30일
   
-  // 8물제 (사리 = 7~8물, 조금 = 14물, 무시 = 15물)
-  let mulNum = (lunarDay + 6) % 15;
+  const isWest = region === 'WEST';
+  // 서해: 7물제 ((lunarDay + 6) % 15), 남해/동해/제주: 8물제 ((lunarDay + 7) % 15)
+  let mulNum = (lunarDay + (isWest ? 6 : 7)) % 15;
   if (mulNum === 0) mulNum = 15;
 
   let mulText = `${mulNum}물`;
-  if (mulNum === 7 || mulNum === 8) mulText += ' (사리)';
-  else if (mulNum === 14) mulText += ' (조금)';
-  else if (mulNum === 15) mulText += ' (무시)';
+  if (mulNum === 14) mulText = '14물 (조금)';
+  else if (mulNum === 15) mulText = '15물 (무시)';
+  else if (isWest && mulNum === 7) mulText += ' (사리)';
+  else if (!isWest && mulNum === 8) mulText += ' (사리)';
 
   return { mulNumber: mulNum, mulText, lunarDay };
 }
@@ -94,8 +113,16 @@ function padZero(num: number): string {
   return num < 10 ? `0${num}` : `${num}`;
 }
 
-/** 특정 날짜, 포인트 좌표에 대한 물때, 일출일몰 및 72시간 연속 조석 곡선 계산 (오늘 0시 기준 3일간) */
-export function calculateTideDay(lat: number, lng: number, baseDate: Date = new Date()): TideDayInfo {
+/** 특정 날짜, 포인트 좌표에 대한 물때, 일출일몰 및 단일 연속 마스터 조석 시계열 엔진 (-6h ~ +72h 통합) */
+export function calculateTideDay(
+  lat: number,
+  lng: number,
+  baseDate: Date = new Date(),
+  khoaOverride?: {
+    events?: { type: 'HIGH' | 'LOW'; time: string; height: number; diff?: number }[];
+    hourlyCurve?: { hour: number; time: string; height: number }[];
+  }
+): TideDayInfo {
   const harbor = findNearestHarbor(lat, lng);
   const tideCycle = 12.42;
 
@@ -104,65 +131,177 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
 
   // 오늘 00:00:00 기준 시점
   const startOfDay = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 0, 0, 0);
+  const baseTimestamp = baseDate.getTime();
+  const currentHourOffset = Math.round((baseTimestamp - startOfDay.getTime()) / (3600 * 1000));
 
   const dayLabels = ['오늘', '내일', '모레'];
+  const todayMoonAge = getMoonAge(baseDate);
+  const todayMul = getMulInfo(todayMoonAge, harbor.region);
+  const todayTimes = SunCalc.getTimes(new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 12, 0, 0), lat, lng);
+
+  // KHOA 공식 발표치(관측소) 위상 보정계수 산출:
+  // KHOA 공식 첫 고조 시각이 있으면 자체 모델과의 위상차(Phase Shift)를 계산하여 72시간 전 구간에 일괄 동기화
+  let phaseShiftHours = 0;
+  if (khoaOverride?.events && khoaOverride.events.length >= 2) {
+    const firstKhoaHigh = khoaOverride.events.find((e) => e.type === 'HIGH');
+    if (firstKhoaHigh) {
+      const [kh, km] = firstKhoaHigh.time.split(':').map(Number);
+      const khoaHighHour = kh + km / 60;
+      const modelHighHour = (harbor.highLagHours + todayMoonAge * 0.83) % tideCycle;
+      let diffH = khoaHighHour - modelHighHour;
+      while (diffH > tideCycle / 2) diffH -= tideCycle;
+      while (diffH < -tideCycle / 2) diffH += tideCycle;
+      phaseShiftHours = diffH;
+    }
+  }
+
+  // =========================================================================
+  // 1. 과거 -6시간부터 미래 +72시간까지 단일 연속 마스터 시계열 생성 (총 79개 포인트)
+  // =========================================================================
+  const masterSeries: TideCurvePoint[] = [];
+
+  for (let totalHour = -6; totalHour <= 72; totalHour++) {
+    const pointDate = new Date(startOfDay.getTime() + totalHour * 3600 * 1000);
+    const dayDiff = Math.floor(totalHour / 24);
+    const dayLabel = dayDiff === 0 ? '오늘' : dayDiff === 1 ? '내일' : dayDiff === -1 ? '어제' : '모레';
+    const hourInDay = ((totalHour % 24) + 24) % 24;
+
+    const pMoonAge = getMoonAge(pointDate);
+    const { mulNumber: pMulNumber } = getMulInfo(pMoonAge, harbor.region);
+
+    const firstHighHour = (harbor.highLagHours + pMoonAge * 0.83 + phaseShiftHours) % tideCycle;
+    const springFactor = 0.4 + 0.6 * (Math.sin(((pMulNumber - 1) / 15) * Math.PI) ** 2);
+    const amplitude = (harbor.meanRange * springFactor) / 2;
+    const meanSeaLevel = harbor.meanRange <= 50 ? 16 : harbor.meanRange * 0.6;
+
+    const t = hourInDay;
+    const phase = ((t - firstHighHour) * 2 * Math.PI) / tideCycle;
+    const diurnalFactor = 0.22 * Math.sin(((pMoonAge - 3) / 14.76) * Math.PI);
+    const diurnalDiff = Math.round(amplitude * diurnalFactor);
+    const phaseDiurnal = ((t - (firstHighHour + 3)) * Math.PI) / 12;
+
+    let height = Math.max(2, Math.round(meanSeaLevel + amplitude * Math.cos(phase) + diurnalDiff * Math.cos(phaseDiurnal)));
+
+    // 당일(0~23시) KHOA 실제 관측/예보 시계열이 오버라이드로 제공된 경우 100% 실측치로 교체
+    if (dayDiff === 0 && khoaOverride?.hourlyCurve && khoaOverride.hourlyCurve.length >= 24) {
+      const kPt = khoaOverride.hourlyCurve.find((k) => k.hour === hourInDay);
+      if (kPt && kPt.height != null) {
+        height = kPt.height;
+      }
+    }
+
+    const slope = -Math.sin(phase);
+    let stateText = '물돌이(정조)';
+    if (slope > 0.3) stateText = '들물';
+    else if (slope < -0.3) stateText = '날물';
+
+    const pTimes = SunCalc.getTimes(new Date(pointDate.getFullYear(), pointDate.getMonth(), pointDate.getDate(), 12, 0, 0), lat, lng);
+    const isSunrise = pTimes.sunrise ? Math.abs(pointDate.getTime() - pTimes.sunrise.getTime()) <= 35 * 60000 : false;
+    const isSunset = pTimes.sunset ? Math.abs(pointDate.getTime() - pTimes.sunset.getTime()) <= 35 * 60000 : false;
+
+    const isCurrent = totalHour === currentHourOffset;
+    const displayTime = `${dayLabel !== '오늘' ? `${dayLabel} ` : ''}${padZero(hourInDay)}:00`;
+
+    masterSeries.push({
+      hour: totalHour,
+      timeStr: `${padZero(hourInDay)}:00`,
+      displayTime,
+      dateStr: `${padZero(pointDate.getMonth() + 1)}/${padZero(pointDate.getDate())}`,
+      dayLabel,
+      height,
+      stateText,
+      isCurrent,
+      isSunrise,
+      isSunset,
+    });
+  }
+
+  // =========================================================================
+  // 2. 단일 마스터 시계열 곡선 상에서 극대(만조)/극소(간조) 수학적 정밀 검출
+  // =========================================================================
+  const allExtremums: {
+    type: 'HIGH' | 'LOW';
+    time: string;
+    height: number;
+    exactMinutes: number;
+    dayDiff: number;
+  }[] = [];
+
+  for (let i = 1; i < masterSeries.length - 1; i++) {
+    const prev = masterSeries[i - 1];
+    const curr = masterSeries[i];
+    const next = masterSeries[i + 1];
+
+    const isPeakHigh = curr.height >= prev.height && curr.height >= next.height && (curr.height > prev.height || curr.height > next.height);
+    const isPeakLow = curr.height <= prev.height && curr.height <= next.height && (curr.height < prev.height || curr.height < next.height);
+
+    if (isPeakHigh || isPeakLow) {
+      const denom = prev.height - 2 * curr.height + next.height;
+      const xPeak = denom !== 0 ? (prev.height - next.height) / (2 * denom) : 0;
+      const boundedX = Math.max(-0.5, Math.min(0.5, xPeak));
+
+      const peakExactHours = curr.hour + boundedX;
+      const peakMinutesTotal = Math.round(peakExactHours * 60);
+      const dayDiff = Math.floor(peakMinutesTotal / 1440);
+      const minInDay = ((peakMinutesTotal % 1440) + 1440) % 1440;
+      const hh = Math.floor(minInDay / 60);
+      const mm = minInDay % 60;
+
+      const interpolatedHeight = Math.round(curr.height - (denom * boundedX * boundedX) / 2);
+
+      allExtremums.push({
+        type: isPeakHigh ? 'HIGH' : 'LOW',
+        time: `${padZero(hh)}:${padZero(mm)}`,
+        height: Math.max(2, interpolatedHeight),
+        exactMinutes: peakMinutesTotal,
+        dayDiff,
+      });
+
+      if (isPeakHigh) curr.isHighTide = true;
+      if (isPeakLow) curr.isLowTide = true;
+    }
+  }
+
+  // 조위차(tideDiff) 계산 (인접 반대 극점과의 높이 차이)
+  for (let i = 0; i < masterSeries.length; i++) {
+    const pt = masterSeries[i];
+    let prevExt: (typeof allExtremums)[0] | null = null;
+    for (let e = allExtremums.length - 1; e >= 0; e--) {
+      if (allExtremums[e].exactMinutes <= pt.hour * 60) {
+        prevExt = allExtremums[e];
+        break;
+      }
+    }
+    if (prevExt) {
+      pt.tideDiff = pt.height - prevExt.height;
+    }
+  }
+
+  // 3일간 요약 데이터 (threeDays) 구축 (마스터 시계열 극치와 100% 동기화)
   const threeDays: TideDaySummary[] = [];
 
-  // 3일간 요약 데이터 산출 (오늘, 내일, 모레 - 정오 12시 기준으로 SunCalc 계산하여 표준시 왜곡 방지)
   for (let d = 0; d < 3; d++) {
     const curDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() + d, 12, 0, 0);
     const moonAge = getMoonAge(curDate);
-    const { mulText, mulNumber } = getMulInfo(moonAge);
+    const { mulText } = getMulInfo(moonAge, harbor.region);
     const times = SunCalc.getTimes(curDate, lat, lng);
 
-    const firstHighHour = (harbor.highLagHours + moonAge * 0.83) % tideCycle;
-    const springFactor = 0.4 + 0.6 * (Math.sin(((mulNumber - 1) / 15) * Math.PI) ** 2);
-    const amplitude = (harbor.meanRange * springFactor) / 2;
-    // 동해안(조차 50cm 이하 소조차 해역)은 기준 해수면 16cm 기준, 서·남해안은 조차 비례 계산
-    const meanSeaLevel = harbor.meanRange <= 50 ? 16 : harbor.meanRange * 0.6;
+    let dayHighs = allExtremums
+      .filter((e) => e.dayDiff === d && e.type === 'HIGH')
+      .map((e) => ({ time: e.time, height: e.height }));
+    let dayLows = allExtremums
+      .filter((e) => e.dayDiff === d && e.type === 'LOW')
+      .map((e) => ({ time: e.time, height: e.height }));
 
-    const highs: { time: string; height: number }[] = [];
-    const lows: { time: string; height: number }[] = [];
-
-    // 일조부등(Diurnal Inequality): 태음일주조(O1)와 일월일주조(K1)에 의한 일중 고조·저조 조위차
-    const diurnalFactor = 0.22 * Math.sin(((moonAge - 3) / 14.76) * Math.PI);
-    const diurnalDiff = Math.round(amplitude * diurnalFactor);
-
-    // 당일 00:00~23:59 사이에 발생하는 모든 만조 시각 산출 (반일주조 12.42시간 간격 + 일조부등 반영)
-    const highHours: number[] = [];
-    for (let k = -1; k <= 2; k++) {
-      const hr = firstHighHour + k * tideCycle;
-      if (hr >= 0 && hr < 24) {
-        highHours.push(hr);
-      }
+    // 오늘(d === 0) KHOA 공식 극점이 제공된 경우 최우선 적용
+    if (d === 0 && khoaOverride?.events && khoaOverride.events.length >= 2) {
+      dayHighs = khoaOverride.events
+        .filter((e) => e.type === 'HIGH')
+        .map((e) => ({ time: e.time, height: e.height, diff: e.diff }));
+      dayLows = khoaOverride.events
+        .filter((e) => e.type === 'LOW')
+        .map((e) => ({ time: e.time, height: e.height, diff: e.diff }));
     }
-    highHours.sort((a, b) => a - b).forEach((hr, idx) => {
-      const h = Math.floor(hr);
-      const m = Math.floor((hr - h) * 60);
-      const ineq = idx % 2 === 0 ? diurnalDiff : -diurnalDiff;
-      highs.push({
-        time: `${padZero(h)}:${padZero(m)}`,
-        height: Math.max(10, Math.round(meanSeaLevel + amplitude + ineq)),
-      });
-    });
-
-    // 당일 00:00~23:59 사이에 발생하는 모든 간조 시각 산출 (만조 대비 6.21시간 위상차 + 일조부등 반영)
-    const lowHours: number[] = [];
-    for (let k = -2; k <= 2; k++) {
-      const hr = firstHighHour + (k + 0.5) * tideCycle;
-      if (hr >= 0 && hr < 24) {
-        lowHours.push(hr);
-      }
-    }
-    lowHours.sort((a, b) => a - b).forEach((hr, idx) => {
-      const h = Math.floor(hr);
-      const m = Math.floor((hr - h) * 60);
-      const ineq = idx % 2 === 0 ? -diurnalDiff * 0.8 : diurnalDiff * 0.8;
-      lows.push({
-        time: `${padZero(h)}:${padZero(m)}`,
-        height: Math.max(2, Math.round(meanSeaLevel - amplitude + ineq)),
-      });
-    });
 
     const dayName = `${padZero(curDate.getMonth() + 1)}/${padZero(curDate.getDate())} (${['일', '월', '화', '수', '목', '금', '토'][curDate.getDay()]})`;
 
@@ -172,12 +311,14 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
       mulText,
       sunrise: formatTime(times.sunrise),
       sunset: formatTime(times.sunset),
-      highTides: highs,
-      lowTides: lows,
+      highTides: dayHighs,
+      lowTides: dayLows,
     });
   }
 
-  // 1. 미래 황금 피딩 타임(Golden Feeding Times) 사전 계산 (오늘/내일 정확한 날짜 기준)
+  // =========================================================================
+  // 4. 황금 피딩 타임(Feeding Times) 산출
+  // =========================================================================
   const allFeedingTimes: {
     label: string;
     timeRange: string;
@@ -194,55 +335,43 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
   }[] = [];
 
   for (let d = 0; d < 3; d++) {
-    // 12시 기준으로 날짜 객체를 생성하여 자정/표준시 왜곡 원천 차단
     const dayDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() + d, 12, 0, 0);
     const dayTimes = SunCalc.getTimes(dayDate, lat, lng);
     const daySummary = threeDays[d];
     const prefix = d === 0 ? '오늘' : d === 1 ? '내일' : '모레';
 
-    // (1) 아침 해창 피딩 (일출 전 40분 ~ 일출 후 60분)
+    // (1) 아침 해창 피딩
     if (dayTimes.sunrise && !isNaN(dayTimes.sunrise.getTime())) {
       const srStart = new Date(dayTimes.sunrise.getTime() - 40 * 60000);
       const srEnd = new Date(dayTimes.sunrise.getTime() + 60 * 60000);
-      const sHour = srStart.getHours() + d * 24;
-      const eHour = srEnd.getHours() + d * 24;
-      const sTimeStr = `${padZero(srStart.getMonth() + 1)}/${padZero(srStart.getDate())} ${padZero(srStart.getHours())}:00`;
-      const eTimeStr = `${padZero(srEnd.getMonth() + 1)}/${padZero(srEnd.getDate())} ${padZero(srEnd.getHours())}:00`;
-
       allFeedingTimes.push({
         label: `🌅 ${prefix} 아침 해창`,
         timeRange: `${d > 0 ? `(${prefix}) ` : ''}${formatTime(srStart)} ~ ${formatTime(srEnd)}`,
         reason: '일출 전후 먹이활동 집중 (시각 어종 활성)',
-        startHour: sHour,
-        endHour: Math.max(eHour, sHour + 1),
-        startTimeStr: sTimeStr,
-        endTimeStr: eTimeStr,
+        startHour: srStart.getHours() + d * 24,
+        endHour: Math.max(srEnd.getHours() + d * 24, srStart.getHours() + d * 24 + 1),
+        startTimeStr: `${padZero(srStart.getMonth() + 1)}/${padZero(srStart.getDate())} ${padZero(srStart.getHours())}:00`,
+        endTimeStr: `${padZero(srEnd.getMonth() + 1)}/${padZero(srEnd.getDate())} ${padZero(srEnd.getHours())}:00`,
         startTimestamp: srStart.getTime(),
         endTimestamp: srEnd.getTime(),
         dayLabel: prefix,
       });
     }
 
-    // (2) 들물 본류대 피딩 (각 만조 2시간 전 ~ 만조 시점)
-    if (daySummary && daySummary.highTides) {
+    // (2) 들물 본류대 피딩
+    if (daySummary?.highTides) {
       daySummary.highTides.forEach((ht, htIdx) => {
         const [hHour, hMin] = ht.time.split(':').map(Number);
         const htDate = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), hHour, hMin, 0);
         const htStartDate = new Date(htDate.getTime() - 2 * 3600 * 1000);
-
-        const sHour = (hHour - 2 + 24) % 24 + d * 24;
-        const eHour = hHour + d * 24;
-        const sTimeStr = `${padZero(htStartDate.getMonth() + 1)}/${padZero(htStartDate.getDate())} ${padZero(htStartDate.getHours())}:00`;
-        const eTimeStr = `${padZero(htDate.getMonth() + 1)}/${padZero(htDate.getDate())} ${padZero(htDate.getHours())}:00`;
-
         allFeedingTimes.push({
           label: `🌊 ${prefix} 들물 피딩${daySummary.highTides.length > 1 ? ` (${htIdx + 1}차)` : ''}`,
-          timeRange: `${d > 0 ? `(${prefix}) ` : ''}${formatTime(htStartDate)} ~ ${formatTime(htDate)}`,
-          reason: `만조 전 조류 유입 활성 (${ht.height}cm 만조 전)`,
-          startHour: sHour,
-          endHour: Math.max(eHour, sHour + 1),
-          startTimeStr: sTimeStr,
-          endTimeStr: eTimeStr,
+          timeRange: `${d > 0 ? `(${prefix}) ` : ''}${formatTime(htStartDate)} ~ ${formatTime(htDate)} (만조)`,
+          reason: '만조 직전 본류대 유입 및 베이트피시 연안 접근',
+          startHour: htStartDate.getHours() + d * 24,
+          endHour: Math.max(hHour + d * 24, htStartDate.getHours() + d * 24 + 1),
+          startTimeStr: `${padZero(htStartDate.getMonth() + 1)}/${padZero(htStartDate.getDate())} ${padZero(htStartDate.getHours())}:00`,
+          endTimeStr: `${padZero(htDate.getMonth() + 1)}/${padZero(htDate.getDate())} ${padZero(hHour)}:00`,
           startTimestamp: htStartDate.getTime(),
           endTimestamp: htDate.getTime(),
           dayLabel: prefix,
@@ -250,23 +379,18 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
       });
     }
 
-    // (3) 저녁 해질녘 피딩 (일몰 전 60분 ~ 일몰 후 40분)
+    // (3) 저녁 일몰 골든아워
     if (dayTimes.sunset && !isNaN(dayTimes.sunset.getTime())) {
-      const ssStart = new Date(dayTimes.sunset.getTime() - 60 * 60000);
+      const ssStart = new Date(dayTimes.sunset.getTime() - 40 * 60000);
       const ssEnd = new Date(dayTimes.sunset.getTime() + 40 * 60000);
-      const sHour = ssStart.getHours() + d * 24;
-      const eHour = ssEnd.getHours() + d * 24;
-      const sTimeStr = `${padZero(ssStart.getMonth() + 1)}/${padZero(ssStart.getDate())} ${padZero(ssStart.getHours())}:00`;
-      const eTimeStr = `${padZero(ssEnd.getMonth() + 1)}/${padZero(ssEnd.getDate())} ${padZero(ssEnd.getHours())}:00`;
-
       allFeedingTimes.push({
         label: `🌇 ${prefix} 저녁 일몰`,
         timeRange: `${d > 0 ? `(${prefix}) ` : ''}${formatTime(ssStart)} ~ ${formatTime(ssEnd)}`,
         reason: '일몰 골든아워 (포식성 어종 연안 접근)',
-        startHour: sHour,
-        endHour: Math.max(eHour, sHour + 1),
-        startTimeStr: sTimeStr,
-        endTimeStr: eTimeStr,
+        startHour: ssStart.getHours() + d * 24,
+        endHour: Math.max(ssEnd.getHours() + d * 24, ssStart.getHours() + d * 24 + 1),
+        startTimeStr: `${padZero(ssStart.getMonth() + 1)}/${padZero(ssStart.getDate())} ${padZero(ssStart.getHours())}:00`,
+        endTimeStr: `${padZero(ssEnd.getMonth() + 1)}/${padZero(ssEnd.getDate())} ${padZero(ssEnd.getHours())}:00`,
         startTimestamp: ssStart.getTime(),
         endTimestamp: ssEnd.getTime(),
         dayLabel: prefix,
@@ -274,123 +398,38 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
     }
   }
 
-  // 2. 현재 시각 -6시간 ~ 향후 +36시간 실시간 연속 조위 곡선 (총 42시간, 황금 피딩 타임 구간 태깅)
-  const curve36: TideCurvePoint[] = [];
-  const baseTimestamp = baseDate.getTime();
+  // =========================================================================
+  // 5. 단일 마스터 시계열로부터 100% 동기화된 파생 슬라이스(Slice) 추출
+  // =========================================================================
 
-  for (let offset = -6; offset <= 36; offset++) {
-    const pointDate = new Date(baseTimestamp + offset * 3600 * 1000);
-    const moonAge = getMoonAge(pointDate);
-    const { mulNumber } = getMulInfo(moonAge);
+  // (1) 24시간 곡선: 오늘 00:00 ~ 24:00 (총 25개)
+  const hourlyCurve: TideCurvePoint[] = masterSeries
+    .filter((p) => p.hour >= 0 && p.hour <= 24)
+    .map((p) => ({ ...p }));
 
-    const firstHighHour = (harbor.highLagHours + moonAge * 0.83) % tideCycle;
-    const springFactor = 0.4 + 0.6 * (Math.sin(((mulNumber - 1) / 15) * Math.PI) ** 2);
-    const amplitude = (harbor.meanRange * springFactor) / 2;
-    // 동해안(조차 50cm 이하 소조차 해역)은 기준 해수면 16cm 기준, 서·남해안은 조차 비례 계산
-    const meanSeaLevel = harbor.meanRange <= 50 ? 16 : harbor.meanRange * 0.6;
+  // (2) 72시간 전체 곡선: 00:00 ~ 72시간 (총 73개)
+  const hourly72Curve: TideCurvePoint[] = masterSeries
+    .filter((p) => p.hour >= 0 && p.hour <= 72)
+    .map((p) => ({ ...p }));
 
-    const t = pointDate.getHours() + pointDate.getMinutes() / 60;
-    const phase = ((t - firstHighHour) * 2 * Math.PI) / tideCycle;
-    const diurnalFactor = 0.22 * Math.sin(((moonAge - 3) / 14.76) * Math.PI);
-    const diurnalDiff = Math.round(amplitude * diurnalFactor);
-    const phaseDiurnal = ((t - (firstHighHour + 3)) * Math.PI) / 12;
-    const height = Math.max(2, Math.round(meanSeaLevel + amplitude * Math.cos(phase) + diurnalDiff * Math.cos(phaseDiurnal)));
-
-    const slope = -Math.sin(phase);
-    let stateText = '물돌이(정조)';
-    if (slope > 0.3) stateText = '들물';
-    else if (slope < -0.3) stateText = '날물';
-
-    const dayDiff = Math.floor((pointDate.getTime() - startOfDay.getTime()) / (24 * 3600 * 1000));
-    const dayLabel = dayDiff === 0 ? '오늘' : dayDiff === 1 ? '내일' : dayDiff === -1 ? '어제' : '모레';
-
-    // 해당 날짜의 일출/일몰 시각 확인 (오차 35분 이내)
-    const pTimes = SunCalc.getTimes(new Date(pointDate.getFullYear(), pointDate.getMonth(), pointDate.getDate(), 12, 0, 0), lat, lng);
-    const isSunrise = pTimes.sunrise ? Math.abs(pointDate.getTime() - pTimes.sunrise.getTime()) <= 35 * 60000 : false;
-    const isSunset = pTimes.sunset ? Math.abs(pointDate.getTime() - pTimes.sunset.getTime()) <= 35 * 60000 : false;
-
-    // 만조/간조 정점 확인: cos(phase) > 0.95 (만조), cos(phase) < -0.95 (간조)
-    const cosVal = Math.cos(phase);
-    const isHighTide = cosVal >= 0.96;
-    const isLowTide = cosVal <= -0.96;
-    const tideDiff = Math.round(amplitude * 2); // 조차 (만조-간조차 cm)
-
-    // [요구사항 2] 황금 피딩 타임 구간 매칭 확인
-    const matchedFeeding = allFeedingTimes.find(
-      (f) => pointDate.getTime() >= f.startTimestamp && pointDate.getTime() <= f.endTimestamp
-    );
-    const isFeedingTime = Boolean(matchedFeeding);
-    const feedingReason = matchedFeeding?.reason;
-    const feedingLabel = matchedFeeding?.label;
-
-    let eventLabel = '';
-    if (offset === 0) eventLabel = `현재 (${height}cm)`;
-    else if (isHighTide) eventLabel = `만조 ${height}cm (조차 ${tideDiff}cm)`;
-    else if (isLowTide) eventLabel = `간조 ${height}cm (조차 ${tideDiff}cm)`;
-    else if (isSunrise) eventLabel = `일출 ${formatTime(pTimes.sunrise)}`;
-    else if (isSunset) eventLabel = `일몰 ${formatTime(pTimes.sunset)}`;
-    else if (isFeedingTime && feedingLabel) eventLabel = `✨ ${feedingLabel}`;
-
-    const displayTime = `${dayLabel !== '오늘' ? `${dayLabel} ` : ''}${padZero(pointDate.getHours())}:00`;
-
-    curve36.push({
-      hour: offset,
-      timeStr: `${padZero(pointDate.getHours())}:00`,
-      displayTime,
-      dateStr: `${padZero(pointDate.getMonth() + 1)}/${padZero(pointDate.getDate())}`,
-      dayLabel,
-      height,
-      stateText,
-      isCurrent: offset === 0,
-      isSunrise,
-      isSunset,
-      isHighTide,
-      isLowTide,
-      isFeedingTime,
-      feedingReason,
-      feedingLabel,
-      tideDiff,
-      eventLabel: eventLabel || undefined,
+  // (3) 현재 시각 기준 -6h ~ +36h 실시간 예측 곡선 (AreaChart 바인딩용, 총 43개)
+  const curve36: TideCurvePoint[] = masterSeries
+    .filter((p) => p.hour >= currentHourOffset - 6 && p.hour <= currentHourOffset + 36)
+    .map((p) => {
+      const pointTimestamp = startOfDay.getTime() + p.hour * 3600 * 1000;
+      const matchedFeeding = allFeedingTimes.find(
+        (f) => pointTimestamp >= f.startTimestamp && pointTimestamp <= f.endTimestamp
+      );
+      return {
+        ...p,
+        hour: p.hour - currentHourOffset, // 상대 오프셋 (-6 ~ +36)
+        isFeedingTime: Boolean(matchedFeeding),
+        feedingReason: matchedFeeding?.reason,
+        feedingLabel: matchedFeeding?.label,
+      };
     });
-  }
 
-  // [요구사항 5] 직전 극값(만조 또는 간조) 기준 조위 변화량(tideDiff) 정밀 재계산
-  // 만조: 이전 간조에서 더해지는 값 (+), 간조: 이전 만조에서 차감되는 값 (-), 사이 값도 직전 극값 기준 증감
-  let lastExtremum: { type: 'HIGH' | 'LOW'; height: number } | null = null;
-  const baseMulNumber = getMulInfo(getMoonAge(baseDate)).mulNumber;
-  const approxRange = harbor.meanRange * (0.4 + 0.6 * (Math.sin(((baseMulNumber - 1) / 15) * Math.PI) ** 2));
-  const meanLevel = harbor.meanRange * 0.6;
-  if (curve36.length >= 2) {
-    const isRising = curve36[1].height >= curve36[0].height;
-    if (isRising) {
-      lastExtremum = { type: 'LOW', height: Math.max(10, Math.round(meanLevel - approxRange / 2)) };
-    } else {
-      lastExtremum = { type: 'HIGH', height: Math.round(meanLevel + approxRange / 2) };
-    }
-  }
-
-  for (let i = 0; i < curve36.length; i++) {
-    const pt = curve36[i];
-    const prevPt = curve36[i - 1];
-    const nextPt = curve36[i + 1];
-
-    const isPeakHigh = (prevPt ? pt.height >= prevPt.height : false) && (nextPt ? pt.height >= nextPt.height : false) && pt.height > meanLevel;
-    const isPeakLow = (prevPt ? pt.height <= prevPt.height : false) && (nextPt ? pt.height <= nextPt.height : false) && pt.height < meanLevel;
-
-    if (isPeakHigh) {
-      const diff = lastExtremum ? pt.height - lastExtremum.height : Math.round(approxRange);
-      pt.tideDiff = Math.abs(diff);
-      lastExtremum = { type: 'HIGH', height: pt.height };
-    } else if (isPeakLow) {
-      const diff = lastExtremum ? pt.height - lastExtremum.height : -Math.round(approxRange);
-      pt.tideDiff = diff < 0 ? diff : -diff;
-      lastExtremum = { type: 'LOW', height: pt.height };
-    } else if (lastExtremum) {
-      pt.tideDiff = pt.height - lastExtremum.height;
-    }
-  }
-
-  // 3. 피딩 타임에 curve36의 시작/종료 displayTime 매핑 (차트 ReferenceArea 렌더링용)
+  // 피딩 타임에 curve36의 시작/종료 displayTime 매핑
   for (const f of allFeedingTimes) {
     const startPt = curve36.find((c) => Math.abs(c.hour * 3600000 + baseTimestamp - f.startTimestamp) <= 45 * 60000) ||
       curve36.find((c) => c.hour * 3600000 + baseTimestamp >= f.startTimestamp);
@@ -403,71 +442,12 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
     }
   }
 
-  // 72시간 연속 시간별 조위 곡선 (기존 하위 호환 유지)
-  const hourly72Curve: TideCurvePoint[] = [];
-  const hourlyCurve: TideCurvePoint[] = [];
-
-  for (let totalHour = 0; totalHour < 72; totalHour++) {
-    const curHourDate = new Date(startOfDay.getTime() + totalHour * 3600 * 1000);
-    const dayIdx = Math.floor(totalHour / 24);
-    const moonAge = getMoonAge(curHourDate);
-    const { mulNumber } = getMulInfo(moonAge);
-
-    const firstHighHour = (harbor.highLagHours + moonAge * 0.83) % tideCycle;
-    const springFactor = 0.4 + 0.6 * (Math.sin(((mulNumber - 1) / 15) * Math.PI) ** 2);
-    const amplitude = (harbor.meanRange * springFactor) / 2;
-    // 동해안(조차 50cm 이하 소조차 해역)은 기준 해수면 16cm 기준, 서·남해안은 조차 비례 계산
-    const meanSeaLevel = harbor.meanRange <= 50 ? 16 : harbor.meanRange * 0.6;
-
-    // 현재 시각 기준 phase 및 일조부등(Diurnal Inequality)을 curve36과 100% 동일하게 반영
-    const t = curHourDate.getHours();
-    const phase = ((t - firstHighHour) * 2 * Math.PI) / tideCycle;
-    const diurnalFactor = 0.22 * Math.sin(((moonAge - 3) / 14.76) * Math.PI);
-    const diurnalDiff = Math.round(amplitude * diurnalFactor);
-    const phaseDiurnal = ((t - (firstHighHour + 3)) * Math.PI) / 12;
-    const height = Math.max(2, Math.round(meanSeaLevel + amplitude * Math.cos(phase) + diurnalDiff * Math.cos(phaseDiurnal)));
-
-    const slope = -Math.sin(phase);
-    let stateText = '물돌이(정조)';
-    if (slope > 0.3) stateText = '들물';
-    else if (slope < -0.3) stateText = '날물';
-
-    const point: TideCurvePoint = {
-      hour: totalHour,
-      timeStr: `${padZero(curHourDate.getMonth() + 1)}/${padZero(curHourDate.getDate())} ${padZero(t)}:00`,
-      dateStr: `${padZero(curHourDate.getMonth() + 1)}/${padZero(curHourDate.getDate())}`,
-      dayLabel: dayLabels[dayIdx] || '예보',
-      height,
-      stateText,
-    };
-
-    hourly72Curve.push(point);
-
-    if (totalHour < 24) {
-      hourlyCurve.push({
-        hour: totalHour,
-        timeStr: `${padZero(t)}:00`,
-        dateStr: point.dateStr,
-        dayLabel: '오늘',
-        height,
-        stateText,
-      });
-    }
-  }
-
-  // 오늘 기준 대표 정보
-  const todayMoonAge = getMoonAge(baseDate);
-  const todayMul = getMulInfo(todayMoonAge);
-  const todayTimes = SunCalc.getTimes(new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 12, 0, 0), lat, lng);
-
-  // 시간순 정렬 및 현재 시각(baseDate) 기준 종료되지 않은 미래 피딩 타임만 필터링
   const nowMs = baseDate.getTime();
   const futureFeedingTimes = allFeedingTimes
     .filter((f) => f.endTimestamp > nowMs)
     .sort((a, b) => a.endTimestamp - b.endTimestamp)
-    .slice(0, 4); // 가장 가까운 다음 4개 피딩 타임 카드 제공
+    .slice(0, 4);
 
-  // 만약 3일치 전체가 필터링되었을 경우(드문 경우)를 대비해 안전 폴백
   const feedingTimes = futureFeedingTimes.length > 0 ? futureFeedingTimes : allFeedingTimes.slice(0, 3);
 
   return {

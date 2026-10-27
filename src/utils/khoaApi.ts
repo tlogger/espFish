@@ -13,7 +13,13 @@ export const KHOA_SERVICE_KEY =
 
 /** 웹 환경(로컬 개발)에서는 Vite 프록시(/api-khoa)를 통해 CORS를 우회하고, 네이티브/프로덕션에서는 직접 호출 */
 function getKhoaApiBaseUrl(): string {
-  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+  if (
+    typeof window !== 'undefined' &&
+    window.location &&
+    window.location.protocol &&
+    window.location.protocol.startsWith('http') &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ) {
     return '/api-khoa';
   }
   return 'https://apis.data.go.kr';
@@ -100,16 +106,17 @@ export async function fetchKhoaTideLevel(
   };
 
   try {
-    // 1440분을 취득하기 위해 5개 페이지(300개씩)를 병렬 호출
-    const pages = await Promise.all([
-      fetchPage(1),
-      fetchPage(2),
-      fetchPage(3),
-      fetchPage(4),
-      fetchPage(5),
-    ]);
-
-    const combined = pages.flat();
+    // 1440분 전수 취득을 위해 5개 페이지(300개씩)를 순차 호출 (공공데이터포털 503 동시성 거부 방지)
+    const combined: KhoaTideRecord[] = [];
+    for (let page = 1; page <= 5; page++) {
+      const pageData = await fetchPage(page);
+      if (pageData.length > 0) {
+        combined.push(...pageData);
+      }
+      if (page < 5) {
+        await new Promise((r) => setTimeout(r, 40));
+      }
+    }
     return combined;
   } catch (e) {
     console.warn(`[KHOA API] fetchKhoaTideLevel combined failed (${obsCode}):`, e);

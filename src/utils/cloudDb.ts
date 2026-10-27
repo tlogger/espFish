@@ -137,9 +137,12 @@ export function getSavedCloudConfig(): CloudDbConfig {
     return { url: savedUrl, anonKey: savedKey };
   }
 
+  const envUrl = typeof import.meta !== 'undefined' && import.meta?.env ? import.meta.env.VITE_SUPABASE_URL : undefined;
+  const envKey = typeof import.meta !== 'undefined' && import.meta?.env ? import.meta.env.VITE_SUPABASE_ANON_KEY : undefined;
+
   return {
-    url: import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL,
-    anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_KEY,
+    url: envUrl || DEFAULT_SUPABASE_URL,
+    anonKey: envKey || DEFAULT_SUPABASE_KEY,
   };
 }
 

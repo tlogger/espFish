@@ -21,6 +21,7 @@ import type {
   WindUnit
 } from './types';
 import { calculateTideDay, getDistanceKm } from './utils/tideEngine';
+import { getKhoaTideForecast } from './utils/tideService';
 import { fetchMarineData, fetchWeatherData, formatWindSpeed, getCompassDirection, getWeatherText } from './utils/weatherApi';
 import { calculateBiteScore } from './utils/biteScore';
 import { extractExifFromImage } from './utils/exifExtractor';
@@ -367,9 +368,18 @@ export function App() {
         setRecenterTarget({ lat: spot.lat, lng: spot.lng, zoom: isSurf ? 14 : 15 });
       }
 
-      // 1. 한국형 물때 & 36시간 연속 조석 곡선 & 3일간 일출일몰 정밀 계산 (곡선 및 시간표 100% 완전 동기화)
+      // 1. 단일 마스터 시계열 조위 엔진 정밀 계산 (곡선 및 시간표 100% 완전 동기화)
       const tideData = calculateTideDay(spot.lat, spot.lng, new Date());
       setTide(tideData);
+
+      // [KHOA 중앙 DB 캐싱 연동] 당일 실측/예측 조위 시계열과 1:1 결합하여 단일 마스터 시계열 캘리브레이션 갱신
+      getKhoaTideForecast(spot.lat, spot.lng, new Date())
+        .then((kForecast) => {
+          if (kForecast?.tideDayInfo) {
+            setTide(kForecast.tideDayInfo);
+          }
+        })
+        .catch(() => {});
 
       // 2. Open-Meteo Weather & Marine API 병렬 Fetch (48h+ 예보 지원)
       try {
@@ -403,6 +413,13 @@ export function App() {
         const tideData = calculateTideDay(selectedSpot.lat, selectedSpot.lng, now);
         setTide(tideData);
 
+        getKhoaTideForecast(selectedSpot.lat, selectedSpot.lng, now)
+          .then((kForecast) => {
+            if (kForecast?.tideDayInfo) {
+              setTide(kForecast.tideDayInfo);
+            }
+          })
+          .catch(() => {});
 
         const [weatherData, marineData] = await Promise.all([
           fetchWeatherData(selectedSpot.lat, selectedSpot.lng),
