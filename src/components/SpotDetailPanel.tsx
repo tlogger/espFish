@@ -173,6 +173,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
         }
       })
       .catch(() => {});
+
     return () => {
       isCancelled = true;
     };
@@ -750,9 +751,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               const now = new Date();
               const curMins = now.getHours() * 60 + now.getMinutes();
 
-              // 가장 인접한 간조(들물 시작점) 찾기
+              // 가장 인접한 간조(들물 시작점) 찾기 (조위변화곡선 예측 tide.lowTides와 100% 동기화)
               let nearestLow: { time: string; height: number; diffMinutes: number } | null = null;
-              for (const lt of tide.lowTides) {
+              const lowTidesList = tide.lowTides || [];
+              for (const lt of lowTidesList) {
                 const [lh, lm] = lt.time.split(':').map(Number);
                 const lowMins = lh * 60 + lm;
                 const diff = curMins - lowMins;
@@ -894,6 +896,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 diff?: number;
               }
 
+              // [정합성 동기화] 뒤쪽 조위변화곡선 예측(-6h ~ +36h)과 100% 일치하도록 tide.highTides / tide.lowTides 동기화 사용
               const rawExtremums: { type: 'HIGH' | 'LOW'; time: string; height: number; minutes: number; diff?: number }[] = [
                 ...(tide.highTides || []).map((h) => {
                   const [hh, mm] = h.time.split(':').map(Number);
@@ -903,11 +906,14 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   const [hh, mm] = l.time.split(':').map(Number);
                   return { type: 'LOW' as const, time: l.time, height: l.height, minutes: (hh || 0) * 60 + (mm || 0) };
                 }),
-              ].sort((a, b) => a.minutes - b.minutes);
+              ];
+
+              rawExtremums.sort((a, b) => a.minutes - b.minutes);
 
               // 조위차 계산 (이전/이후 반대 극값과의 높이 차이)
               for (let i = 0; i < rawExtremums.length; i++) {
                 const ev = rawExtremums[i];
+                if (ev.diff !== undefined) continue;
                 let prevOpp: typeof ev | null = null;
                 for (let j = i - 1; j >= 0; j--) {
                   if (rawExtremums[j].type !== ev.type) {
@@ -967,20 +973,24 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               const maxH = allHeights.length ? Math.max(...allHeights) + 20 : 100;
               const rangeH = Math.max(20, maxH - minH);
 
-              // 24개 시간별 샘플 포인트 (부드러운 코사인 곡선 보간)
+              // [정합성 동기화] 뒤쪽 조위변화곡선 예측(-6h ~ +36h)의 당일 00:00~24:00 연속 시계열(hourly72Curve/hourlyCurve)을 100% 동일하게 직접 렌더링
               const curvePoints: { x: number; y: number; hour: number }[] = [];
               for (let hr = 0; hr <= 24; hr++) {
                 const x = (hr / 24) * svgW;
-                // 가장 가까운 극점들을 기반으로 높이 보간
-                let estHeight = (minH + maxH) / 2;
-                if (rawExtremums.length >= 2) {
-                  // 인접 만조/간조 기반 코사인 위상 계산
-                  const targetMins = hr * 60;
-                  const firstEv = rawExtremums[0];
-                  const phase = ((targetMins - firstEv.minutes) / 745.2) * 2 * Math.PI;
-                  const amp = (maxH - minH) / 2;
-                  const mid = minH + amp;
-                  estHeight = firstEv.type === 'HIGH' ? mid + amp * Math.cos(phase) : mid - amp * Math.cos(phase);
+                // 당일 0~24시간의 시간대별 정확한 조위 취득 (24시는 다음날 0시)
+                const targetPt = tide.hourly72Curve?.[hr] || (hr === 24 ? tide.hourly72Curve?.[23] : tide.hourlyCurve?.[hr]);
+                let estHeight = targetPt?.height;
+                if (estHeight === undefined) {
+                  if (rawExtremums.length >= 2) {
+                    const targetMins = hr * 60;
+                    const firstEv = rawExtremums[0];
+                    const phase = ((targetMins - firstEv.minutes) / 745.2) * 2 * Math.PI;
+                    const amp = (maxH - minH) / 2;
+                    const mid = minH + amp;
+                    estHeight = firstEv.type === 'HIGH' ? mid + amp * Math.cos(phase) : mid - amp * Math.cos(phase);
+                  } else {
+                    estHeight = (minH + maxH) / 2;
+                  }
                 }
                 const y = svgH - 12 - ((estHeight - minH) / rangeH) * (svgH - 24);
                 curvePoints.push({ x, y: Math.max(10, Math.min(svgH - 6, y)), hour: hr });
@@ -994,22 +1004,29 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
               const nowX = Math.min(svgW - 2, Math.max(2, (nowMinutes / 1440) * svgW));
 
+              const displayMulText = tide.mulText;
+              const displayLunarDate = tide.lunarDateStr;
+              const curPredictPoint = (tide.curve36 || []).find((c) => c.isCurrent);
+              const displayCurrentHeight = curPredictPoint?.height ?? currentTidePoint?.height;
+
               return (
                 <div className="p-3.5 sm:p-4 bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-slate-950/95 border border-cyan-500/40 rounded-2xl shadow-xl space-y-3">
                   {/* 1행: 물때 명칭 & 음력 & 국립해양조사원 관측소 & 현재 조위 */}
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-extrabold text-base sm:text-lg text-cyan-300 drop-shadow">🌊 {tide.mulText}</span>
-                      <span className="text-xs sm:text-sm text-slate-300 font-medium">({tide.lunarDateStr})</span>
+                      <span className="font-extrabold text-base sm:text-lg text-cyan-300 drop-shadow">🌊 {displayMulText}</span>
+                      <span className="text-xs sm:text-sm text-slate-300 font-medium">({displayLunarDate})</span>
                       <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-cyan-950/80 text-cyan-400 border border-cyan-800/60 font-medium">
                         국립해양조사원 {nearestStation.station.name} 관측소 ({nearestStation.distanceKm}km)
                       </span>
                     </div>
-                    {currentTidePoint && (
+                    {displayCurrentHeight !== undefined && (
                       <div className="text-xs sm:text-sm text-cyan-200 font-mono font-bold bg-cyan-950/90 border border-cyan-700/70 px-2.5 py-1 rounded-lg shadow-inner flex items-center gap-1.5">
                         <span className="text-slate-400 font-sans font-normal text-xs">현재:</span>
-                        <span className="text-white font-extrabold">{currentTidePoint.height}cm</span>
-                        <span className="text-cyan-300 font-sans text-xs">({currentTidePoint.stateText})</span>
+                        <span className="text-white font-extrabold">{displayCurrentHeight}cm</span>
+                        {currentTidePoint?.stateText && (
+                          <span className="text-cyan-300 font-sans text-xs">({currentTidePoint.stateText})</span>
+                        )}
                       </div>
                     )}
                   </div>

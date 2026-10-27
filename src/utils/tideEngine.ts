@@ -419,10 +419,13 @@ export function calculateTideDay(lat: number, lng: number, baseDate: Date = new 
     // 동해안(조차 50cm 이하 소조차 해역)은 기준 해수면 16cm 기준, 서·남해안은 조차 비례 계산
     const meanSeaLevel = harbor.meanRange <= 50 ? 16 : harbor.meanRange * 0.6;
 
-    // 현재 시각 기준 phase
+    // 현재 시각 기준 phase 및 일조부등(Diurnal Inequality)을 curve36과 100% 동일하게 반영
     const t = curHourDate.getHours();
     const phase = ((t - firstHighHour) * 2 * Math.PI) / tideCycle;
-    const height = Math.round(meanSeaLevel + amplitude * Math.cos(phase));
+    const diurnalFactor = 0.22 * Math.sin(((moonAge - 3) / 14.76) * Math.PI);
+    const diurnalDiff = Math.round(amplitude * diurnalFactor);
+    const phaseDiurnal = ((t - (firstHighHour + 3)) * Math.PI) / 12;
+    const height = Math.max(2, Math.round(meanSeaLevel + amplitude * Math.cos(phase) + diurnalDiff * Math.cos(phaseDiurnal)));
 
     const slope = -Math.sin(phase);
     let stateText = '물돌이(정조)';

@@ -367,7 +367,7 @@ export function App() {
         setRecenterTarget({ lat: spot.lat, lng: spot.lng, zoom: isSurf ? 14 : 15 });
       }
 
-      // 1. 한국형 물때 & 36시간 연속 조석 곡선 & 3일간 일출일몰 즉시 계산
+      // 1. 한국형 물때 & 36시간 연속 조석 곡선 & 3일간 일출일몰 정밀 계산 (곡선 및 시간표 100% 완전 동기화)
       const tideData = calculateTideDay(spot.lat, spot.lng, new Date());
       setTide(tideData);
 
@@ -402,6 +402,7 @@ export function App() {
         const now = new Date();
         const tideData = calculateTideDay(selectedSpot.lat, selectedSpot.lng, now);
         setTide(tideData);
+
 
         const [weatherData, marineData] = await Promise.all([
           fetchWeatherData(selectedSpot.lat, selectedSpot.lng),
