@@ -284,13 +284,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-white">
-                {currentUser ? '앵글러 계정 & 환경 설정' : 'ExFish 앵글러 로그인'}
+                {currentUser ? '환경 설정' : 'ExFish 앵글러 로그인'}
               </h2>
-              <p className="text-[11px] text-slate-400">
-                {currentUser
-                  ? '바람·조류 단위 및 맞춤 관심어종 설정'
-                  : '비밀번호 없이 Email과 닉네임만으로 간편 접속'}
-              </p>
+              {!currentUser && (
+                <p className="text-[11px] text-slate-400">
+                  비밀번호 없이 Email과 닉네임만으로 간편 접속
+                </p>
+              )}
             </div>
           </div>
           <button
@@ -363,15 +363,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   </div>
                   <div className="grid grid-cols-3 gap-1.5">
                     {[
-                      { id: 'ms', label: 'm/s (초속 미터)' },
-                      { id: 'knot', label: 'knot (노트)' },
-                      { id: 'kmh', label: 'km/h (시속)' },
+                      { id: 'ms', label: 'm/s' },
+                      { id: 'knot', label: 'knot' },
+                      { id: 'kmh', label: 'km/h' },
                     ].map((w) => (
                       <button
                         type="button"
                         key={w.id}
                         onClick={() => setLocalWindUnit(w.id as WindUnit)}
-                        className={`py-1.5 px-2 rounded-lg border text-center text-[11px] font-medium transition ${
+                        className={`py-1.5 px-2 rounded-lg border text-center text-xs font-medium transition ${
                           localWindUnit === w.id
                             ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 font-bold'
                             : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
@@ -393,15 +393,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   </div>
                   <div className="grid grid-cols-3 gap-1.5">
                     {[
-                      { id: 'knot', label: 'knot (노트)' },
-                      { id: 'ms', label: 'm/s (초속 미터)' },
-                      { id: 'cms', label: 'cm/s (센티미터)' },
+                      { id: 'knot', label: 'knot' },
+                      { id: 'ms', label: 'm/s' },
+                      { id: 'cms', label: 'cm/s' },
                     ].map((c) => (
                       <button
                         type="button"
                         key={c.id}
                         onClick={() => setLocalCurrentUnit(c.id as CurrentUnit)}
-                        className={`py-1.5 px-2 rounded-lg border text-center text-[11px] font-medium transition ${
+                        className={`py-1.5 px-2 rounded-lg border text-center text-xs font-medium transition ${
                           localCurrentUnit === c.id
                             ? 'bg-blue-500/20 border-blue-400 text-blue-300 font-bold'
                             : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
@@ -426,7 +426,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-400 leading-snug">
-                  선택하신 대상어종의 생태에 따라 포인트별 입질 종합 점수가 실시간 맞춤 계산됩니다.
+                  선택한 대상 어종에 따라 입질 지수 실시간 계산
                 </p>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1 max-h-40 overflow-y-auto">
@@ -473,7 +473,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   className="flex-1 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded-xl transition shadow flex items-center justify-center gap-1.5"
                 >
                   <Sparkles size={14} />
-                  <span>설정 저장하기</span>
+                  <span>저장</span>
                 </button>
                 <button
                   type="button"

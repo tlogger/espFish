@@ -28,7 +28,8 @@ import {
   Wind,
   Volume2,
   Sliders,
-  Bell
+  Bell,
+  Download
 } from 'lucide-react';
 import { Area, AreaChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type {
@@ -48,7 +49,7 @@ import { calculateSingleSpeciesScore } from '../utils/biteScore';
 import { ChecklistModal } from './ChecklistModal';
 import { BiteScoreHelpModal } from './BiteScoreHelpModal';
 import { deleteCloudMemo, fetchCloudMemos, saveCloudMemo } from '../utils/cloudDb';
-import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
+import { SPECIES_ENCYCLOPEDIA, type SpeciesCategory, type SpeciesEcology } from '../utils/speciesDatabase';
 import { SpeciesQuickModal } from './SpeciesQuickModal';
 import { getSpeciesRigInfo } from '../utils/speciesRigs';
 import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeatherText, getWindyWebUrl } from '../utils/weatherApi';
@@ -113,6 +114,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   const [isChecklistOpen, setIsChecklistOpen] = React.useState(false);
   const [isBiteScoreHelpOpen, setIsBiteScoreHelpOpen] = React.useState(false);
   const [expandedSpecies, setExpandedSpecies] = React.useState<string | null>(null);
+  const [selectedEncyclopediaSpecies, setSelectedEncyclopediaSpecies] = React.useState<string | null>(null);
+  const [encyclopediaSearch, setEncyclopediaSearch] = React.useState('');
+  const [encyclopediaCategory, setEncyclopediaCategory] = React.useState<string>('ALL');
 
   // 갯바위 들물 탈출 골든타임 비프 경보 활성화 상태 (Phase 3: 네이티브 푸시/알람 연동)
   const [isEvacAlarmEnabled, setIsEvacAlarmEnabled] = React.useState(false);
@@ -1774,20 +1778,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             )}
 
-            {/* 상단 액션 및 요약 */}
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-semibold text-slate-300">
-                조과 히스토리 ({catchLogs.length}건)
-              </span>
-              <button
-                onClick={onOpenCatchLogModal}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-md shadow-emerald-600/20"
-              >
-                <PlusCircle size={14} />
-                <span>조과/꽝 등록</span>
-              </button>
-            </div>
-
             {/* 1. 이 포인트에서 낚이는 어종별 실시간 입질 지수 */}
             {(() => {
               // 해당 포인트의 대표 대상어종 + 실제 조과 로그에 등록된 어종 목록 취합
@@ -2054,6 +2044,28 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 </div>
               );
             })()}
+
+            {/* 2. 채비 및 수심 공략 팁 (실시간 어종별 입질 지수 아래로 이동) */}
+            {spot.description && (
+              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                <span className="text-xs font-bold text-slate-300">💡 채비 및 수심 공략 팁</span>
+                <p className="text-xs text-slate-300 leading-relaxed">{spot.description}</p>
+              </div>
+            )}
+
+            {/* 3. 조과 히스토리 및 조과 등록 (실시간 어종별 입질 지수 아래로 이동) */}
+            <div className="flex justify-between items-center pt-1">
+              <span className="text-xs font-semibold text-slate-300">
+                조과 히스토리 ({catchLogs.length}건)
+              </span>
+              <button
+                onClick={onOpenCatchLogModal}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer"
+              >
+                <PlusCircle size={14} />
+                <span>조과/꽝 등록</span>
+              </button>
+            </div>
 
             {/* 빅데이터 조과 & 꽝 통계 카드 (출조 1건 이상일 때 표시) */}
             {catchLogs.length > 0 && (() => {
@@ -2371,13 +2383,191 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             )}
 
-            {/* 공략 및 채비 메모 */}
-            {spot.description && (
-              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
-                <span className="text-xs font-bold text-slate-300">💡 채비 및 수심 공략 팁</span>
-                <p className="text-xs text-slate-300 leading-relaxed">{spot.description}</p>
+            {/* [요구사항 1.3] 연안 어종 정보 (앱 보유 전수 어종 리스트 뷰 & 종합 정보) */}
+            <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 font-bold text-xs text-cyan-300">
+                  <Fish size={15} className="text-cyan-400" />
+                  <span>연안 어종 정보</span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800">
+                    {Object.keys(SPECIES_ENCYCLOPEDIA).length}종
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-400">터치 시 종합 생태·채비 정보</span>
               </div>
-            )}
+
+              {/* 검색 및 카테고리 필터 */}
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  placeholder="어종 검색 (예: 우럭, 감성돔, 갑오징어)..."
+                  value={encyclopediaSearch}
+                  onChange={(e) => setEncyclopediaSearch(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                />
+
+                <div className="flex gap-1 overflow-x-auto pb-0.5 text-[10.5px]">
+                  {[
+                    { id: 'ALL', label: '전체' },
+                    { id: 'ROCKFISH', label: '락피시' },
+                    { id: 'CEPHALOPOD', label: '두족류' },
+                    { id: 'SEA_BREAM', label: '도미류' },
+                    { id: 'PELAGIC', label: '회유성' },
+                    { id: 'BENTHIC', label: '저서성' },
+                  ].map((cat) => (
+                    <button
+                      type="button"
+                      key={cat.id}
+                      onClick={() => setEncyclopediaCategory(cat.id)}
+                      className={`px-2 py-0.8 rounded-md shrink-0 transition font-medium ${
+                        encyclopediaCategory === cat.id
+                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 font-bold'
+                          : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 어종 리스트 뷰 */}
+              <div className="space-y-1.5 max-h-80 overflow-y-auto pr-0.5">
+                {Object.values(SPECIES_ENCYCLOPEDIA)
+                  .filter((sp) => {
+                    if (encyclopediaCategory !== 'ALL' && sp.category !== encyclopediaCategory) return false;
+                    if (encyclopediaSearch.trim()) {
+                      const q = encyclopediaSearch.trim().toLowerCase();
+                      return (
+                        sp.name.toLowerCase().includes(q) ||
+                        (sp.scientificName && sp.scientificName.toLowerCase().includes(q)) ||
+                        sp.categoryName.toLowerCase().includes(q)
+                      );
+                    }
+                    return true;
+                  })
+                  .map((sp) => {
+                    const isExpanded = selectedEncyclopediaSpecies === sp.name;
+                    const curMonth = new Date().getMonth() + 1;
+                    const isTastiest = sp.tastiestMonths?.includes(curMonth);
+                    const isPeak = sp.peakMonths?.includes(curMonth);
+
+                    return (
+                      <div
+                        key={sp.name}
+                        className={`rounded-xl border transition overflow-hidden ${
+                          isExpanded
+                            ? 'bg-slate-900/95 border-cyan-500/60 shadow-lg'
+                            : 'bg-slate-900/60 border-slate-800/80 hover:border-slate-700'
+                        }`}
+                      >
+                        {/* 어종 요약 헤더 (클릭 시 토글) */}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedEncyclopediaSpecies(isExpanded ? null : sp.name)}
+                          className="w-full p-2.5 flex items-center justify-between text-left transition cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-bold text-xs text-white truncate">{sp.name}</span>
+                            <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700/80 shrink-0">
+                              {sp.categoryName.split('(')[0]}
+                            </span>
+                            {isTastiest && (
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-500/40 font-bold shrink-0">
+                                🍽️제철
+                              </span>
+                            )}
+                            {isPeak && !isTastiest && (
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/40 font-bold shrink-0">
+                                🎣시즌
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[10px] font-mono text-cyan-300">
+                              {sp.tempRange.optMin}~{sp.tempRange.optMax}°C
+                            </span>
+                            <ChevronDown
+                              size={14}
+                              className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180 text-cyan-400' : ''}`}
+                            />
+                          </div>
+                        </button>
+
+                        {/* 클릭 시 펼쳐지는 어종 종합 정보 */}
+                        {isExpanded && (
+                          <div className="p-3 pt-1 border-t border-slate-800/80 space-y-2 text-[11px] bg-slate-950/70">
+                            {sp.scientificName && (
+                              <div className="text-[10px] font-mono text-slate-500 italic">
+                                학명: {sp.scientificName}
+                              </div>
+                            )}
+
+                            <p className="text-slate-300 leading-relaxed text-xs">
+                              {sp.description}
+                            </p>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 bg-slate-900/80 p-2 rounded-lg border border-slate-800 text-[10.5px]">
+                              <div>
+                                <strong className="text-slate-400">· 서식 바닥:</strong> {sp.bottomName}
+                              </div>
+                              <div>
+                                <strong className="text-slate-400">· 활동 특성:</strong> {sp.activityName}
+                              </div>
+                              {sp.waterLayerName && (
+                                <div>
+                                  <strong className="text-slate-400">· 공략 수층:</strong> {sp.waterLayerName}
+                                </div>
+                              )}
+                              <div>
+                                <strong className="text-slate-400">· 선호 조류:</strong> {sp.currentPrefName}
+                              </div>
+                              {sp.regionNames && (
+                                <div className="sm:col-span-2">
+                                  <strong className="text-slate-400">· 주요 서식지:</strong> {sp.regionNames}
+                                </div>
+                              )}
+                              {sp.recommendedBait && (
+                                <div className="sm:col-span-2 text-cyan-300">
+                                  <strong className="text-slate-300">· 추천 채비/미끼:</strong> {sp.recommendedBait}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* 금어기 및 포획 금지 규정 */}
+                            {(sp.minLengthCm || sp.prohibitedPeriod || sp.prohibitedNote) && (
+                              <div className="p-2 rounded-lg bg-rose-950/30 border border-rose-900/50 text-[10px] text-rose-200 space-y-0.5">
+                                <div className="font-bold flex items-center gap-1">
+                                  <span>⚖️ 수산자원관리법 규정</span>
+                                  {sp.minLengthCm && (
+                                    <span className="text-rose-400">
+                                      (금지체장: {sp.minLengthCm}cm 이하 방생)
+                                    </span>
+                                  )}
+                                </div>
+                                {sp.prohibitedPeriod && (
+                                  <div>금어기: <strong>{sp.prohibitedPeriod}</strong></div>
+                                )}
+                                {sp.prohibitedNote && (
+                                  <div className="text-slate-400">{sp.prohibitedNote}</div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* 제철 및 맛 */}
+                            {sp.tastiestDesc && (
+                              <div className="text-[10px] text-amber-300 bg-amber-950/30 px-2 py-1 rounded border border-amber-900/40">
+                                <strong>😋 맛있는 제철:</strong> {sp.tastiestDesc} ({sp.tastiestMonths?.join(', ')}월)
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
 
             {/* 유튜브 실시간 현장 조황 & 낚시 영상 링크 (최신순 검색) */}
             <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
@@ -2446,8 +2636,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             </div>
 
-            {/* 기타 안내 및 체크리스트 (요구사항 3-2: 가장 아래로 이동) */}
-            <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+            {/* 기타 안내 및 체크리스트 & 모바일 APK 다운로드 링크 */}
+            <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
               <span className="text-xs font-bold text-amber-300">
                 기타
               </span>
@@ -2469,6 +2659,31 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 >
                   <span>체크리스트</span>
                 </button>
+              </div>
+
+              {/* [요구사항 10] 모바일 앱 다운로드 (exfish.apk) 링크 */}
+              <div className="pt-2 border-t border-slate-800/80">
+                <a
+                  href="https://tlogger.github.io/espFish/exfish.apk"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full p-2.5 rounded-xl bg-gradient-to-r from-cyan-950/80 via-slate-900 to-blue-950/80 hover:from-cyan-900 hover:to-blue-900 border border-cyan-500/40 text-cyan-200 text-xs font-bold transition flex items-center justify-between shadow-md group cursor-pointer"
+                  title="최신 ExFish Android APK 다운로드"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">📱</span>
+                    <div>
+                      <div className="text-white font-bold group-hover:text-cyan-300 flex items-center gap-1.5">
+                        <span>ExFish 모바일 앱 다운로드</span>
+                        <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-cyan-900/60 text-cyan-300 border border-cyan-700/60">.apk</span>
+                      </div>
+                      <div className="text-[10.5px] text-slate-400 font-normal">
+                        Android 스마트폰 전용 설치 파일 (tlogger.github.io)
+                      </div>
+                    </div>
+                  </div>
+                  <Download size={16} className="text-cyan-400 group-hover:translate-y-0.5 transition shrink-0" />
+                </a>
               </div>
             </div>
           </div>

@@ -2063,7 +2063,7 @@ export const MapView: React.FC<MapViewProps> = ({
         {/* 보조 액션 단일 머티리얼 툴바 패널 (채비 캘리브레이션 & 찜한 포인트 필터 & 화면 켜짐 & GPS 내 위치) */}
         <div className="flex items-center bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-1 shadow-2xl divide-x divide-slate-800/80">
           <div className="flex items-center gap-0.5 pr-1">
-            {/* 공기역학 채비 캘리브레이션 버튼 */}
+            {/* 공기역학 채비 비거리 예측 버튼 */}
             <button
               onClick={() => setIsTacklePopoverOpen(!isTacklePopoverOpen)}
               className={`p-2 rounded-xl flex items-center justify-center transition active:scale-95 ${
@@ -2071,7 +2071,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   ? 'bg-cyan-600 text-white shadow-md shadow-cyan-500/30'
                   : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
               }`}
-              title="채비 공기역학 캘리브레이션 (루어 무게 & PE 라인 호수 설정)"
+              title="채비 비거리 예측 (루어 무게 & PE 라인 호수 설정)"
             >
               <Sliders size={17} className={isTacklePopoverOpen ? 'text-white' : 'text-slate-400'} />
             </button>
@@ -2140,7 +2140,7 @@ export const MapView: React.FC<MapViewProps> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 font-bold text-cyan-300 text-sm sm:text-base">
                   <Sliders size={16} className="text-cyan-400" />
-                  <span>비거리 예측</span>
+                  <span>채비 비거리 예측</span>
                 </div>
                 <button
                   onClick={() => setIsTacklePopoverOpen(false)}

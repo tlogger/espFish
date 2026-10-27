@@ -36,7 +36,8 @@ import {
   saveCloudSpot,
 } from './utils/cloudDb';
 import { cacheSpotMetadata, getAllCachedSpots, subscribeNetworkStatus } from './utils/offlineStorage';
-import { setupHardwareBackButtonListener } from './utils/nativeBridge';
+import { setupHardwareBackButtonListener, isNativePlatform } from './utils/nativeBridge';
+import { APP_VERSION } from './version';
 
 export function App() {
   const [spots, setSpots] = React.useState<FishingSpot[]>([]);
@@ -90,8 +91,8 @@ export function App() {
   const [isSpotListModalOpen, setIsSpotListModalOpen] = React.useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = React.useState(false);
   const [isChecklistModalOpen, setIsChecklistModalOpen] = React.useState(false);
-  // 모바일/웹 초기 2초 스플래시 스크린 표시 상태
-  const [showSplash, setShowSplash] = React.useState(true);
+  // 모바일 앱 초기 1초 스플래시 스크린 표시 상태 (웹 환경은 스플래시 생략)
+  const [showSplash, setShowSplash] = React.useState(() => isNativePlatform());
   const [newSpotLat, setNewSpotLat] = React.useState<number | undefined>();
   const [newSpotLng, setNewSpotLng] = React.useState<number | undefined>();
   const [microAdjustSpot, setMicroAdjustSpot] = React.useState<FishingSpot | null>(null);
@@ -647,12 +648,14 @@ export function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      {/* 2초 스플래시 스크린 */}
-      {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} durationMs={2000} />}
+      {/* 모바일 앱 전용 1초 스플래시 스크린 (웹 환경은 스플래시 없이 즉시 로딩) */}
+      {showSplash && isNativePlatform() && (
+        <SplashScreen onFinish={() => setShowSplash(false)} durationMs={1000} />
+      )}
 
       {/* 글로벌 상단 헤더 & 내비게이션 바 */}
       <header className="h-14 bg-slate-900 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 shadow-md gap-2">
-        {/* 로고 (ExFish 브랜딩 및 구호 적용, 클릭 시 페이지 새로고침) */}
+        {/* 로고 (ExFish 브랜딩 및 버전 정보 표시, 클릭 시 페이지 새로고침) */}
         <button
           type="button"
           onClick={() => window.location.reload()}
@@ -664,9 +667,14 @@ export function App() {
             <img src={`${import.meta.env.BASE_URL}user-icon.png`} alt="ExFish Logo" className="w-full h-full object-cover rounded-md" />
           </div>
           <div className="flex flex-col">
-            <span className="text-base sm:text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500 bg-clip-text text-transparent leading-none">
-              ExFish
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-base sm:text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500 bg-clip-text text-transparent leading-none">
+                ExFish
+              </span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/60 text-cyan-400 font-bold leading-none">
+                v{APP_VERSION}
+              </span>
+            </div>
             <span className="hidden md:inline-block text-[10px] text-slate-400 font-medium tracking-tight mt-0.5">
               ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며...
             </span>

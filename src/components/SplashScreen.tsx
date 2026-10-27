@@ -78,13 +78,13 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
           className="absolute top-0 inset-x-0 z-10 flex flex-col items-center pt-8 sm:pt-14 px-6 text-center animate-fade-in"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2rem)' }}
         >
-          <div className="flex items-center gap-3 drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)]">
+          <div className="flex items-center gap-3">
             <img
               src={`${import.meta.env.BASE_URL}user-icon.png`}
               alt="ExFish Logo"
-              className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
+              className="w-10 h-10 sm:w-12 sm:h-12 object-contain bg-transparent"
             />
-            <span className="text-4xl sm:text-5xl font-black tracking-widest text-white drop-shadow-[0_4px_20px_rgba(0,0,0,0.95)] font-sans">
+            <span className="text-4xl sm:text-5xl font-black tracking-widest font-sans inline-block transform scale-y-150 origin-center bg-gradient-to-r from-sky-400 via-white to-sky-900 bg-clip-text text-transparent drop-shadow-[0_4px_16px_rgba(0,0,0,0.8)]">
               ExFish
             </span>
           </div>
