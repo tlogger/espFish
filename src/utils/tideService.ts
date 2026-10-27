@@ -178,11 +178,13 @@ export async function getKhoaTideForecast(
       const timePart = it.obsrvnDt.split(' ')[1] || '00:00';
       const [hh, mm] = timePart.split(':').map(Number);
       const minutes = (hh || 0) * 60 + (mm || 0);
-      const val = it.tdlvHgt ?? it.bscTdlvHgt ?? 0;
+      const val = it.tdlvHgt != null && !isNaN(it.tdlvHgt)
+        ? it.tdlvHgt
+        : (it.bscTdlvHgt != null && !isNaN(it.bscTdlvHgt) ? it.bscTdlvHgt : 0);
       return { time: timePart.slice(0, 5), minutes, val };
     });
 
-    // 24시간 시간별 곡선
+    // 24시간 시간별 곡선 (00:00 ~ 23:00)
     for (let h = 0; h < 24; h++) {
       const targetM = h * 60;
       const pt = points.find((p) => Math.abs(p.minutes - targetM) <= 15) || points[Math.min(points.length - 1, h * 60)];
@@ -193,10 +195,10 @@ export async function getKhoaTideForecast(
       });
     }
 
-    // 극점 탐색 (창(window) 크기 30분)
-    const win = 25;
-    const rawExtremes: { type: 'HIGH' | 'LOW'; time: string; height: number; minutes: number }[] = [];
-    for (let i = win; i < points.length - win; i += 5) {
+    // 극점 탐색 (창(window) 크기 35분)
+    const win = 35;
+    const rawPeaks: { type: 'HIGH' | 'LOW'; time: string; height: number; minutes: number }[] = [];
+    for (let i = win; i < points.length - win; i++) {
       const cur = points[i].val;
       let isMax = true;
       let isMin = true;
@@ -204,15 +206,16 @@ export async function getKhoaTideForecast(
         if (points[j].val > cur) isMax = false;
         if (points[j].val < cur) isMin = false;
       }
-      if (isMax && (rawExtremes.length === 0 || rawExtremes[rawExtremes.length - 1].type !== 'HIGH')) {
-        rawExtremes.push({
+      if (isMax) {
+        rawPeaks.push({
           type: 'HIGH',
           time: points[i].time,
           height: Math.round(cur),
           minutes: points[i].minutes,
         });
-      } else if (isMin && (rawExtremes.length === 0 || rawExtremes[rawExtremes.length - 1].type !== 'LOW')) {
-        rawExtremes.push({
+      }
+      if (isMin) {
+        rawPeaks.push({
           type: 'LOW',
           time: points[i].time,
           height: Math.round(cur),
@@ -221,11 +224,26 @@ export async function getKhoaTideForecast(
       }
     }
 
+    // 인접 동일 타입 병합 (더 극단적인 값을 유지)
+    const filteredPeaks: typeof rawPeaks = [];
+    for (const p of rawPeaks) {
+      if (filteredPeaks.length === 0 || filteredPeaks[filteredPeaks.length - 1].type !== p.type) {
+        filteredPeaks.push(p);
+      } else {
+        const last = filteredPeaks[filteredPeaks.length - 1];
+        if (p.type === 'HIGH' && p.height > last.height) {
+          filteredPeaks[filteredPeaks.length - 1] = p;
+        } else if (p.type === 'LOW' && p.height < last.height) {
+          filteredPeaks[filteredPeaks.length - 1] = p;
+        }
+      }
+    }
+
     // 최소 2개 이상 극점 확보되었을 때 이벤트 확정
-    if (rawExtremes.length >= 2) {
-      for (let i = 0; i < rawExtremes.length; i++) {
-        const ev = rawExtremes[i];
-        const opp = rawExtremes.find((o, idx) => idx !== i && o.type !== ev.type);
+    if (filteredPeaks.length >= 2) {
+      for (let i = 0; i < filteredPeaks.length; i++) {
+        const ev = filteredPeaks[i];
+        const opp = filteredPeaks.find((o, idx) => idx !== i && o.type !== ev.type);
         const diff = opp ? Math.abs(ev.height - opp.height) : 50;
         events.push({
           type: ev.type,

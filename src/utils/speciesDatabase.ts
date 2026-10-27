@@ -668,7 +668,7 @@ export const SPECIES_ENCYCLOPEDIA: Record<string, SpeciesEcology> = {
     lengthStandard: 'NONE',
     prohibitedPeriod: null,
     prohibitedNote: '전국 공통 법정 금어기/금지체장 없음. (일부 지자체 산란기 권고 확인)',
-    recommendedBait: '수평 에기 2.2~2.5호 + 봉돌 6~10호 (단차 15~25cm 가짓줄 다운샷)',
+    recommendedBait: '수평 에기 2.2~2.5호 + 봉돌 3~6호 (단차 15~25cm 가짓줄 다운샷)',
   },
   무늬오징어: {
     name: '무늬오징어',

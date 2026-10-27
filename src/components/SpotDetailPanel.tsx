@@ -419,7 +419,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   onClick={async () => {
                     const shareTitle = `ExFish - ${spot.name}`;
                     const shareText = `[ExFish 낚시 포인트] ${spot.name}\n${spot.navi_name ? `목적지: ${spot.navi_name}\n` : ''}실시간 수심: ${realDepthResult.realDepthM.toFixed(1)}m · 입질 지수: ${biteScore?.totalScore ?? 0}점!`;
-                    const shareUrl = window.location.href;
+                    // [요구사항 6] PC웹 및 모바일 공유 시 현재 포인트의 Full URL(?spot=xxx) 생성
+                    const origin = window.location.origin;
+                    const pathname = window.location.pathname;
+                    const shareUrl = `${origin}${pathname}?spot=${encodeURIComponent(spot.id)}`;
 
                     // 모바일 네이티브 앱 환경: 다른 앱(카카오톡, 메시지 등)으로 공유 다이얼로그 호출
                     if (Capacitor.isNativePlatform()) {
@@ -440,7 +443,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     try {
                       if (navigator.clipboard) {
                         await navigator.clipboard.writeText(shareUrl);
-                        alert('포인트 링크가 클립보드에 복사되었습니다.');
+                        alert(`포인트 전체 링크가 클립보드에 복사되었습니다.\n${shareUrl}`);
                       } else {
                         const ta = document.createElement('textarea');
                         ta.value = shareUrl;
@@ -448,7 +451,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         ta.select();
                         document.execCommand('copy');
                         document.body.removeChild(ta);
-                        alert('포인트 링크가 클립보드에 복사되었습니다.');
+                        alert(`포인트 전체 링크가 클립보드에 복사되었습니다.\n${shareUrl}`);
                       }
                     } catch {
                       alert(`포인트 링크: ${shareUrl}`);
@@ -1862,11 +1865,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       return (
                         <div
                           key={`scored-species-${name}`}
-                          className={`p-2.5 transition select-none ${
+                          onClick={() => setExpandedSpecies(isExpanded ? null : name)}
+                          className={`p-2.5 transition select-none cursor-pointer rounded-xl ${
                             isFavorite
                               ? 'bg-amber-950/20 hover:bg-amber-950/30'
                               : 'hover:bg-slate-850/60'
-                          }`}
+                          } ${isExpanded ? 'bg-slate-900/90 ring-1 ring-cyan-500/30' : ''}`}
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -1876,39 +1880,14 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                 </span>
                               )}
 
-                              {/* 물고기명 클릭 시 3초 어종 백과 팝업 */}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setQuickModalSpecies(name);
-                                }}
-                                className="font-bold text-sm text-slate-100 hover:text-cyan-300 underline decoration-cyan-500/50 hover:decoration-cyan-300 underline-offset-2 transition cursor-pointer"
-                                title="어종 정보 보기"
-                              >
-                                {name}
-                              </button>
-
-                              {/* 채비 버튼: 어류 명칭 바로 뒤 */}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setExpandedSpecies(isExpanded ? null : name);
-                                }}
-                                className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10.5px] font-bold border transition cursor-pointer ${
-                                  isExpanded
-                                    ? 'bg-cyan-500 text-slate-950 border-cyan-400'
-                                    : 'bg-slate-800 text-cyan-300 border-cyan-800/80 hover:bg-slate-750'
-                                }`}
-                                title="추천 채비 보기"
-                              >
-                                <span>채비</span>
+                              {/* [요구사항 7] 물고기명 (클릭 시 아코디언으로 설명+선호물때+시간대+채비 일체형 펼침) */}
+                              <span className="font-bold text-sm text-slate-100 flex items-center gap-1">
+                                <span>🐟 {name}</span>
                                 <ChevronDown
-                                  size={11}
-                                  className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                                  size={13}
+                                  className={`text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180 text-cyan-300' : ''}`}
                                 />
-                              </button>
+                              </span>
 
                               <span className="px-1.5 py-0.2 rounded bg-slate-800/90 text-slate-300 text-[10px]">
                                 {ecology.categoryName}
@@ -1932,13 +1911,73 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                             </div>
                           </div>
 
-                          {/* 원클릭 추천 채비 상세 확장 뷰 */}
+                          {/* [요구사항 5 & 7] 원클릭 어종 설명 + 선호 물때/시간대 + 맞춤 추천 채비 일체형 아코디언 */}
                           {isExpanded && (
                             <div
                               onClick={(e) => e.stopPropagation()}
-                              className="mt-2.5 pt-2.5 border-t border-slate-800/80 space-y-2 animate-in fade-in duration-150"
+                              className="mt-2.5 pt-2.5 border-t border-slate-800/80 space-y-2.5 animate-in fade-in duration-150"
                             >
-                              <div className="p-2.5 bg-slate-950/80 rounded-xl border border-cyan-900/50 space-y-2 text-[11px]">
+                              {/* 1. 어종 설명 & 생태 요약 */}
+                              <div className="p-2.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1.5 text-xs">
+                                <div className="text-slate-200 leading-relaxed text-[11px]">
+                                  {ecology.description}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 text-[10px] text-slate-400 pt-0.5">
+                                  {ecology.bottomName && (
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
+                                      바닥: {ecology.bottomName}
+                                    </span>
+                                  )}
+                                  {ecology.waterLayerName && (
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
+                                      유영층: {ecology.waterLayerName}
+                                    </span>
+                                  )}
+                                  {ecology.minLengthCm && (
+                                    <span className="px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-600/40 text-amber-300 font-bold">
+                                      {ecology.minLengthCm}cm 이하 방생
+                                    </span>
+                                  )}
+                                  {ecology.prohibitedNote && (
+                                    <span className="px-1.5 py-0.5 rounded bg-rose-950/50 border border-rose-800/40 text-rose-300 text-[9.5px]">
+                                      {ecology.prohibitedNote}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* 2. [요구사항 5] 선호 물때 & 선호 시간대 & 적정 수온 브리핑 */}
+                              <div className="p-2.5 bg-gradient-to-r from-cyan-950/30 to-blue-950/30 rounded-xl border border-cyan-800/40 space-y-1.5 text-xs">
+                                <div className="font-bold text-cyan-300 flex items-center gap-1.5 text-xs">
+                                  <span>🌊 최적 공략 물때 & 피딩 타임</span>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-slate-300">
+                                  <div>
+                                    <strong className="text-cyan-400">· 선호 물때:</strong>{' '}
+                                    <span className="text-slate-200">
+                                      {ecology.currentPrefName || (spot.best_tides?.length ? spot.best_tides.join(', ') : '전 물때 무난')}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <strong className="text-cyan-400">· 선호 시간대:</strong>{' '}
+                                    <span className="text-slate-200">
+                                      {ecology.activityName || (spot.best_times?.length ? spot.best_times.join(', ') : '새벽/해질녘 피딩')}
+                                    </span>
+                                  </div>
+                                  <div className="sm:col-span-2">
+                                    <strong className="text-cyan-400">· 적정 수온:</strong>{' '}
+                                    <span className="text-slate-200">
+                                      최적 {ecology.tempRange.optMin}~{ecology.tempRange.optMax}°C (생존한계 {ecology.tempRange.min}~{ecology.tempRange.max}°C)
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="text-[10.5px] text-amber-300/90 pt-1 border-t border-cyan-900/40">
+                                  <strong>히트 골든타임:</strong> {rigInfo.goldenHoursText(tide?.sunrise || '06:30', tide?.sunset || '18:30', tide?.mulNumber || 7)}
+                                </div>
+                              </div>
+
+                              {/* 3. [요구사항 7] 맞춤 추천 채비 상세 */}
+                              <div className="p-2.5 bg-slate-950/90 rounded-xl border border-cyan-900/60 space-y-2 text-[11px]">
                                 <div className="font-bold text-cyan-300 flex items-center justify-between flex-wrap gap-1">
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     <span>맞춤 추천 채비 ({name})</span>
@@ -1964,7 +2003,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                     </div>
                                   )}
                                   <div>
-                                    <strong className="text-slate-400">· 주력 생미끼:</strong> {rigInfo.recommendedRig.bait}
+                                    <strong className="text-slate-400">· 주력 미끼:</strong> {rigInfo.recommendedRig.bait}
                                   </div>
                                   <div>
                                     <strong className="text-slate-400">· 원줄/목줄:</strong> {rigInfo.recommendedRig.line}
@@ -1988,18 +2027,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                 <div className="text-[10px] text-amber-200/90 bg-amber-950/40 p-1.5 rounded-lg border border-amber-900/40">
                                   <strong>핵심 액션:</strong> {rigInfo.recommendedRig.action}
                                 </div>
-                              </div>
-
-                              <div className="p-2.5 bg-gradient-to-r from-amber-950/20 to-indigo-950/30 rounded-xl border border-amber-500/30 space-y-1 text-[11px]">
-                                <div className="font-bold text-amber-300">
-                                  <span>최적 히트 골든타임</span>
-                                </div>
-                                <p className="text-[10px] text-slate-200">
-                                  {rigInfo.goldenHoursText(tide?.sunrise || '06:30', tide?.sunset || '18:30', tide?.mulNumber || 7)}
-                                </p>
-                                <p className="text-[10px] text-slate-400">
-                                  <strong>섭이 전략:</strong> {rigInfo.feedingStrategy}
-                                </p>
                               </div>
                             </div>
                           )}
@@ -2317,56 +2344,15 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             </div>
 
-            {/* 추천 대상어 & 낚시 방법 (요구사항 9: 각 어종별 상태 메시지 및 요약 팝업) */}
-            <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
-              <span className="text-xs font-bold text-slate-300">주요 대상어종</span>
-              <div className="flex flex-wrap gap-1.5">
-                {spot.target_species.map((sp, idx) => {
-                  const eco = SPECIES_ENCYCLOPEDIA[sp] || Object.values(SPECIES_ENCYCLOPEDIA).find((e) => e.name.includes(sp) || sp.includes(e.name));
-                  const isTastiest = eco?.tastiestMonths?.includes(new Date().getMonth() + 1);
-                  return (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setQuickModalSpecies(sp)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/90 hover:bg-cyan-950/80 border border-slate-700/80 hover:border-cyan-400 text-xs font-bold text-slate-200 transition active:scale-95 shadow-sm"
-                      title="클릭하여 어종 요약 카드 보기"
-                    >
-                      <span>🐟 {sp}</span>
-                      {eco?.minLengthCm && (
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-600/30">
-                          {eco.minLengthCm}cm↓방생
-                        </span>
-                      )}
-                      {isTastiest && (
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-500/40 font-bold" title="지금 제철 꿀맛">
-                          🍽️제철
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+            {/* [요구사항 5] 정보 탭의 주요 대상어종 섹션 제거 ('어종과 조과' 탭으로 통합) 및 포인트 공략 방향 안내 */}
+            {spot.casting_directions && spot.casting_directions.length > 0 && (
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1 text-xs text-slate-300">
+                <span className="text-[11px] font-bold text-slate-400">캐스팅 공략 방향</span>
+                <p className="text-cyan-300 font-semibold">
+                  {spot.casting_directions.includes('ALL') ? '전방위 (모든 방향 공략 가능)' : spot.casting_directions.join(', ')}
+                </p>
               </div>
-
-              <div className="pt-2 border-t border-slate-800 text-xs space-y-1 text-slate-300">
-                <div>
-                  <strong className="text-slate-400">선호 물때:</strong>{' '}
-                  {spot.best_tides?.join(', ') || '전 물때 무난'}
-                </div>
-                <div>
-                  <strong className="text-slate-400">선호 시간대:</strong>{' '}
-                  {spot.best_times?.join(', ') || '새벽/해질녘 피딩'}
-                </div>
-                {spot.casting_directions && spot.casting_directions.length > 0 && (
-                  <div>
-                    <strong className="text-slate-400">캐스팅 공략 방향:</strong>{' '}
-                    <span className="text-cyan-300 font-semibold">
-                      {spot.casting_directions.includes('ALL') ? '전방위 (모든 방향)' : spot.casting_directions.join(', ')}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
+            )}
 
             {/* 공략 및 채비 메모 */}
             {spot.description && (

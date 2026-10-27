@@ -11,6 +11,14 @@
 export const KHOA_SERVICE_KEY =
   '7Q54Z6DQ%2B9wH23fR%2FAlrOSh4XgQ9xyA8I%2F69h1tmrlCwtFqMG8zdR01z0h8%2Bo%2Ft1Uvt%2BwoN947y1ts5Maeoy%2Bg%3D%3D';
 
+/** 웹 환경(로컬 개발)에서는 Vite 프록시(/api-khoa)를 통해 CORS를 우회하고, 네이티브/프로덕션에서는 직접 호출 */
+function getKhoaApiBaseUrl(): string {
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return '/api-khoa';
+  }
+  return 'https://apis.data.go.kr';
+}
+
 export interface KhoaTideRecord {
   obsvtrNm: string;
   lat: number;
@@ -60,31 +68,51 @@ function getTodayString(): string {
   return `${y}${m}${d}`;
 }
 
-/** 1. 조위관측소 실측·예측 조위 조회 (1일 시계열 데이터) */
+/** 1. 조위관측소 실측·예측 조위 조회 (1일 1440분 전체 시계열: numOfRows=300 x 5페이지 병렬 조회) */
 export async function fetchKhoaTideLevel(
   obsCode: string,
   dateStr: string = getTodayString()
 ): Promise<KhoaTideRecord[]> {
   const cleanDate = dateStr.replace(/-/g, '');
-  const url = `https://apis.data.go.kr/1192136/surveyTideLevel/GetSurveyTideLevelApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&obsCode=${obsCode}&date=${cleanDate}&numOfRows=1440`;
+  const baseUrl = getKhoaApiBaseUrl();
+
+  const fetchPage = async (pageNo: number): Promise<KhoaTideRecord[]> => {
+    const url = `${baseUrl}/1192136/surveyTideLevel/GetSurveyTideLevelApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&obsCode=${obsCode}&date=${cleanDate}&numOfRows=300&pageNo=${pageNo}`;
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(9000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const items = json?.body?.items?.item;
+      if (!Array.isArray(items) || items.length === 0) return [];
+
+      return items.map((it: any) => ({
+        obsvtrNm: it.obsvtrNm,
+        lat: Number(it.lat),
+        lot: Number(it.lot),
+        obsrvnDt: it.obsrvnDt,
+        bscTdlvHgt: it.bscTdlvHgt != null && !isNaN(Number(it.bscTdlvHgt)) ? Number(it.bscTdlvHgt) : undefined,
+        tdlvHgt: it.tdlvHgt != null && !isNaN(Number(it.tdlvHgt)) ? Number(it.tdlvHgt) : undefined,
+      }));
+    } catch (e) {
+      console.warn(`[KHOA API] fetchKhoaTideLevel page ${pageNo} failed (${obsCode}):`, e);
+      return [];
+    }
+  };
 
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-    const items = json?.body?.items?.item;
-    if (!Array.isArray(items) || items.length === 0) return [];
+    // 1440분을 취득하기 위해 5개 페이지(300개씩)를 병렬 호출
+    const pages = await Promise.all([
+      fetchPage(1),
+      fetchPage(2),
+      fetchPage(3),
+      fetchPage(4),
+      fetchPage(5),
+    ]);
 
-    return items.map((it: any) => ({
-      obsvtrNm: it.obsvtrNm,
-      lat: Number(it.lat),
-      lot: Number(it.lot),
-      obsrvnDt: it.obsrvnDt,
-      bscTdlvHgt: it.bscTdlvHgt != null ? Number(it.bscTdlvHgt) : undefined,
-      tdlvHgt: it.tdlvHgt != null ? Number(it.tdlvHgt) : undefined,
-    }));
+    const combined = pages.flat();
+    return combined;
   } catch (e) {
-    console.warn(`[KHOA API] fetchKhoaTideLevel failed (${obsCode}):`, e);
+    console.warn(`[KHOA API] fetchKhoaTideLevel combined failed (${obsCode}):`, e);
     return [];
   }
 }
@@ -95,7 +123,8 @@ export async function fetchKhoaWind(
   dateStr: string = getTodayString()
 ): Promise<KhoaWindRecord | null> {
   const cleanDate = dateStr.replace(/-/g, '');
-  const url = `https://apis.data.go.kr/1192136/surveyWind/GetSurveyWindApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&obsCode=${obsCode}&date=${cleanDate}&numOfRows=60`;
+  const baseUrl = getKhoaApiBaseUrl();
+  const url = `${baseUrl}/1192136/surveyWind/GetSurveyWindApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&obsCode=${obsCode}&date=${cleanDate}&numOfRows=60`;
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
@@ -131,7 +160,8 @@ export async function fetchKhoaWaterTemp(
   dateStr: string = getTodayString()
 ): Promise<KhoaWaterTempRecord | null> {
   const cleanDate = dateStr.replace(/-/g, '');
-  const url = `https://apis.data.go.kr/1192136/surveyWaterTemp/GetSurveyWaterTempApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&obsCode=${obsCode}&date=${cleanDate}&numOfRows=60`;
+  const baseUrl = getKhoaApiBaseUrl();
+  const url = `${baseUrl}/1192136/surveyWaterTemp/GetSurveyWaterTempApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&obsCode=${obsCode}&date=${cleanDate}&numOfRows=60`;
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
@@ -166,8 +196,9 @@ export async function fetchKhoaWaterDepth(lat: number, lng: number): Promise<Kho
   const ymax = (lat + 0.002).toFixed(4);
   const xmin = (lng - 0.0025).toFixed(4);
   const xmax = (lng + 0.0025).toFixed(4);
+  const baseUrl = getKhoaApiBaseUrl();
 
-  const url = `https://apis.data.go.kr/1192136/waterDepth/GetWaterDepthApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&ymin=${ymin}&ymax=${ymax}&xmin=${xmin}&xmax=${xmax}&numOfRows=10`;
+  const url = `${baseUrl}/1192136/waterDepth/GetWaterDepthApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&ymin=${ymin}&ymax=${ymax}&xmin=${xmin}&xmax=${xmax}&numOfRows=10`;
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
@@ -207,8 +238,9 @@ export async function fetchKhoaRoms(lat: number, lng: number): Promise<KhoaRomsR
   const ymax = (lat + 0.02).toFixed(4);
   const xmin = (lng - 0.025).toFixed(4);
   const xmax = (lng + 0.025).toFixed(4);
+  const baseUrl = getKhoaApiBaseUrl();
 
-  const url = `https://apis.data.go.kr/1192136/roms/GetRomsApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&ymin=${ymin}&ymax=${ymax}&xmin=${xmin}&xmax=${xmax}&numOfRows=5`;
+  const url = `${baseUrl}/1192136/roms/GetRomsApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&ymin=${ymin}&ymax=${ymax}&xmin=${xmin}&xmax=${xmax}&numOfRows=5`;
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(6000) });

@@ -6,13 +6,14 @@
 export type RodType = 'LURE' | 'SURF';
 export type RodPower = 'UL' | 'L' | 'ML' | 'M' | 'MH' | 'H' | 'SURF';
 
-// [요구사항 2-6-12] 미끼 선택 모델 (생미끼, 루어: 인치 및 형상)
-export type BaitType = 'LIVE' | 'LURE';
+// [요구사항 2-6-12 & 요구사항 4] 미끼 선택 모델 (생미끼, 루어: 인치 및 형상, 메탈: 길이 2.5~16cm)
+export type BaitType = 'LIVE' | 'LURE' | 'METAL';
 export type LureShape = 'GRUB' | 'SHAD' | 'STRAIGHT' | 'MINNOW';
 
 export interface BaitConfig {
   type: BaitType;
-  lengthInches: number; // 1 ~ 4
+  lengthInches: number; // 1 ~ 4 (루어용)
+  lengthCm?: number; // 2.5 ~ 16.0cm (메탈용)
   shape: LureShape;
   weightGrams: number;
   surfaceAreaCm2: number;
@@ -25,10 +26,14 @@ export const LURE_SHAPE_NAMES: Record<LureShape, string> = {
   MINNOW: '미노우',
 };
 
-export function getBaitSpecs(type: BaitType, lengthInches: number = 2, shape: LureShape = 'GRUB'): BaitConfig {
-  const safeLen = Math.max(1, Math.min(4, Math.round(lengthInches)));
+export function getBaitSpecs(
+  type: BaitType,
+  lengthInches: number = 2,
+  shape: LureShape = 'GRUB',
+  lengthCm: number = 6.0
+): BaitConfig {
   if (type === 'LIVE') {
-    // 생미끼는 2인치 그럽웜으로 가정
+    // 생미끼는 2인치 그럽웜 기준으로 2.5g 가정
     return {
       type: 'LIVE',
       lengthInches: 2,
@@ -38,7 +43,25 @@ export function getBaitSpecs(type: BaitType, lengthInches: number = 2, shape: Lu
     };
   }
 
+  if (type === 'METAL') {
+    // 메탈 지그: 형상 없이 길이(2.5cm ~ 16.0cm)만 지정
+    // 표준 납/합금 메탈지그 밀도 기준 실측 무게 모델: 2.5cm(약 7g) ~ 6cm(약 30g) ~ 10cm(약 80g) ~ 16cm(약 200g)
+    const safeCm = Math.max(2.5, Math.min(16.0, Math.round(lengthCm * 2) / 2));
+    const metalWeight = Math.round((0.052 * Math.pow(safeCm, 2.95) + 3.0) * 10) / 10;
+    const surfaceAreaCm2 = Math.round((0.015 * safeCm * safeCm + 0.8) * 10) / 10;
+
+    return {
+      type: 'METAL',
+      lengthInches: Math.round(safeCm / 2.54),
+      lengthCm: safeCm,
+      shape: 'MINNOW',
+      weightGrams: metalWeight,
+      surfaceAreaCm2,
+    };
+  }
+
   // 루어 형상 & 길이별 무게 및 단면적
+  const safeLen = Math.max(1, Math.min(4, Math.round(lengthInches)));
   const weightTable: Record<LureShape, Record<number, number>> = {
     GRUB: { 1: 1.0, 2: 2.5, 3: 5.0, 4: 9.0 },
     SHAD: { 1: 1.2, 2: 3.2, 3: 6.8, 4: 12.5 },
@@ -59,6 +82,7 @@ export function getBaitSpecs(type: BaitType, lengthInches: number = 2, shape: Lu
   return {
     type: 'LURE',
     lengthInches: safeLen,
+    lengthCm: Math.round(safeLen * 2.54 * 10) / 10,
     shape,
     weightGrams,
     surfaceAreaCm2,
@@ -168,6 +192,7 @@ const KEY_ROD_LENGTH_M = 'exfish_rod_length_m';
 const KEY_ROD_LENGTH = 'exfish_rod_length_ft'; // 레거시 호환용
 const KEY_BAIT_TYPE = 'exfish_bait_type';
 const KEY_BAIT_LENGTH = 'exfish_bait_length';
+const KEY_BAIT_LENGTH_CM = 'exfish_bait_length_cm';
 const KEY_BAIT_SHAPE = 'exfish_bait_shape';
 
 export interface TackleRigConfig {
@@ -458,6 +483,7 @@ export function getSavedTackleConfig(): TackleRigConfig {
   let rodLengthM = 2.6; // 기본 8.6ft = 2.6m
   let baitType: BaitType = 'LIVE';
   let baitLength = 2;
+  let baitLengthCm = 6.0;
   let baitShape: LureShape = 'GRUB';
 
   if (typeof window !== 'undefined') {
@@ -469,6 +495,7 @@ export function getSavedTackleConfig(): TackleRigConfig {
       const savedLenFt = localStorage.getItem(KEY_ROD_LENGTH);
       const savedBaitType = localStorage.getItem(KEY_BAIT_TYPE) as BaitType | null;
       const savedBaitLen = localStorage.getItem(KEY_BAIT_LENGTH);
+      const savedBaitLenCm = localStorage.getItem(KEY_BAIT_LENGTH_CM);
       const savedBaitShape = localStorage.getItem(KEY_BAIT_SHAPE) as LureShape | null;
 
       if (savedW) weight = parseFloat(savedW) || 25;
@@ -488,8 +515,9 @@ export function getSavedTackleConfig(): TackleRigConfig {
         rodLengthM = Math.round(ft * 0.3048 * 10) / 10;
       }
 
-      if (savedBaitType === 'LIVE' || savedBaitType === 'LURE') baitType = savedBaitType;
+      if (savedBaitType === 'LIVE' || savedBaitType === 'LURE' || savedBaitType === 'METAL') baitType = savedBaitType;
       if (savedBaitLen) baitLength = parseInt(savedBaitLen, 10) || 2;
+      if (savedBaitLenCm) baitLengthCm = parseFloat(savedBaitLenCm) || 6.0;
       if (savedBaitShape && ['GRUB', 'SHAD', 'STRAIGHT', 'MINNOW'].includes(savedBaitShape)) {
         baitShape = savedBaitShape;
       }
@@ -508,7 +536,7 @@ export function getSavedTackleConfig(): TackleRigConfig {
     rodLengthM = Math.max(1.6, Math.min(3.0, rodLengthM));
   }
 
-  const baitConfig = getBaitSpecs(baitType, baitLength, baitShape);
+  const baitConfig = getBaitSpecs(baitType, baitLength, baitShape, baitLengthCm);
 
   const { distanceMeters, elasticityEfficiency, lengthFactor, totalWeightGrams } = calculateCalibratedDistance(
     weight,
@@ -546,7 +574,8 @@ export function saveTackleConfig(
   rodLength?: number, // m 단위 (만약 6.0 이상이면 ft로 간주하여 m로 변환)
   baitType?: BaitType,
   baitLength?: number,
-  baitShape?: LureShape
+  baitShape?: LureShape,
+  baitLengthCm?: number
 ): TackleRigConfig {
   if (typeof window !== 'undefined') {
     try {
@@ -568,11 +597,12 @@ export function saveTackleConfig(
 
       if (baitType) localStorage.setItem(KEY_BAIT_TYPE, baitType);
       if (baitLength !== undefined) localStorage.setItem(KEY_BAIT_LENGTH, String(baitLength));
+      if (baitLengthCm !== undefined) localStorage.setItem(KEY_BAIT_LENGTH_CM, String(baitLengthCm));
       if (baitShape) localStorage.setItem(KEY_BAIT_SHAPE, baitShape);
 
       window.dispatchEvent(
         new CustomEvent('exfish_tackle_updated', {
-          detail: { weightGrams, peLineSize, rodPower: finalPower, rodLength, baitType, baitLength, baitShape },
+          detail: { weightGrams, peLineSize, rodPower: finalPower, rodLength, baitType, baitLength, baitShape, baitLengthCm },
         })
       );
     } catch {

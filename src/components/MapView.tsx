@@ -2407,7 +2407,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   </span>
                 </div>
 
-                {/* 미끼 종류 탭 (생미끼 vs 루어) */}
+                {/* [요구사항 4] 미끼 종류 탭 (생미끼 vs 루어 vs 메탈) */}
                 <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800">
                   <button
                     type="button"
@@ -2452,6 +2452,29 @@ export const MapView: React.FC<MapViewProps> = ({
                     }`}
                   >
                     🐟 루어
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = saveTackleConfig(
+                        tackleConfig.weightGrams,
+                        tackleConfig.peLineSize,
+                        tackleConfig.rodPower,
+                        tackleConfig.rodLengthM,
+                        'METAL',
+                        undefined,
+                        undefined,
+                        tackleConfig.baitConfig?.lengthCm || 6.0
+                      );
+                      setTackleConfig(updated);
+                    }}
+                    className={`flex-1 py-1.5 text-center text-xs font-bold rounded-md transition ${
+                      tackleConfig.baitConfig?.type === 'METAL'
+                        ? 'bg-cyan-500 text-slate-950 shadow'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    ⚡ 메탈
                   </button>
                 </div>
 
@@ -2518,6 +2541,49 @@ export const MapView: React.FC<MapViewProps> = ({
                           </button>
                         ))}
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* [요구사항 4] 메탈 선택 시: 형상 없이 길이(2.5cm ~ 16cm)만 지정 */}
+                {tackleConfig.baitConfig?.type === 'METAL' && (
+                  <div className="p-2.5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-400">메탈 지그 길이:</span>
+                      <span className="font-mono font-bold text-cyan-300">
+                        {(tackleConfig.baitConfig.lengthCm ?? 6.0).toFixed(1)}cm
+                        <span className="text-[11px] text-slate-400 font-normal ml-1">
+                          (자중 약 {tackleConfig.baitConfig.weightGrams}g)
+                        </span>
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={2.5}
+                      max={16.0}
+                      step={0.5}
+                      value={tackleConfig.baitConfig.lengthCm ?? 6.0}
+                      onChange={(e) => {
+                        const lenCm = parseFloat(e.target.value);
+                        const updated = saveTackleConfig(
+                          tackleConfig.weightGrams,
+                          tackleConfig.peLineSize,
+                          tackleConfig.rodPower,
+                          tackleConfig.rodLengthM,
+                          'METAL',
+                          undefined,
+                          undefined,
+                          lenCm
+                        );
+                        setTackleConfig(updated);
+                      }}
+                      className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                    />
+                    <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                      <span>2.5cm</span>
+                      <span>6.0cm (표준)</span>
+                      <span>10.0cm</span>
+                      <span>16.0cm</span>
                     </div>
                   </div>
                 )}
@@ -2991,9 +3057,9 @@ export const MapView: React.FC<MapViewProps> = ({
         </div>
       )}
 
-      {/* 지도 좌측 상단 날씨·기온 & 수온·물때 미니 표시 (블러 배경 없이 낮 지도에서도 선명한 단순 외곽 그림자 처리) */}
+      {/* [요구사항 2] 지도 좌측 상단 날씨·기온 & 수온·물때 미니 표시 (우하단 그림자, 글자 1pt 확대, '수온' 텍스트 제거) */}
       {!contextMenuSpot && (weather || marine || tide) && (
-        <div className="absolute top-2.5 left-3 z-20 flex flex-col gap-0.5 select-none pointer-events-none [text-shadow:_1px_1px_0_#000,_-1px_-1px_0_#000,_1px_-1px_0_#000,_-1px_1px_0_#000]">
+        <div className="absolute top-2.5 left-3 z-20 flex flex-col gap-0.5 select-none pointer-events-none [text-shadow:_1.5px_1.5px_0_#000]">
           {/* 1행: 날씨 아이콘 + 기온 + 풍향/풍속 */}
           {weather && (
             <div className="flex items-center gap-1.5 leading-none font-bold">
@@ -3007,7 +3073,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   : '☁️'}
               </span>
 
-              <span className="font-mono font-bold text-amber-300 text-xs leading-none">
+              <span className="font-mono font-bold text-amber-300 text-[13px] leading-none">
                 {weather.temp.toFixed(1)}°
               </span>
 
@@ -3025,18 +3091,18 @@ export const MapView: React.FC<MapViewProps> = ({
             </div>
           )}
 
-          {/* 2행: 수온 + 물때 (수온 앞 온도계 아이콘 및 수온/물때 동일한 크기 통일) */}
+          {/* 2행: 수온 + 물때 (1pt 확대한 12px, 수온 텍스트 제거, 우하단 그림자) */}
           {(marine?.seaSurfaceTemp !== undefined || tide?.mulText) && (
             <div className="flex items-center gap-1.5 leading-none mt-0.5 font-bold">
               {marine?.seaSurfaceTemp !== undefined && (
-                <span className="text-[11px] font-mono text-rose-300 font-bold leading-none flex items-center gap-0.5">
-                  <span className="text-[10px]">🌡️</span>
-                  <span>수온 {marine.seaSurfaceTemp.toFixed(1)}°</span>
+                <span className="text-[12px] font-mono text-rose-300 font-bold leading-none flex items-center gap-0.5">
+                  <span className="text-[11px]">🌡️</span>
+                  <span>{marine.seaSurfaceTemp.toFixed(1)}°</span>
                 </span>
               )}
 
               {tide?.mulText && (
-                <span className="text-[11px] font-bold text-cyan-200 leading-none">
+                <span className="text-[12px] font-bold text-cyan-200 leading-none">
                   {marine?.seaSurfaceTemp !== undefined ? `· ${tide.mulText}` : tide.mulText}
                 </span>
               )}

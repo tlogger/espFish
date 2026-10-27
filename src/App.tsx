@@ -211,8 +211,22 @@ export function App() {
       // 오프라인 대비 로컬 캐시 백업
       cSpots.forEach((s) => cacheSpotMetadata(s));
       if (cSpots.length > 0 && !selectedSpot) {
-        // 첫 진입 시 포인트 정보는 로드하되, 지도는 내 위치 중심으로 유지하도록 shouldRecenter=false 전달
-        handleSelectSpot(cSpots[0], false);
+        // [요구사항 6] URL Query Parameter에 ?spot=spotId 가 있는 경우 해당 스팟을 우선 선택 및 중심 이동
+        let targetSpot = cSpots[0];
+        let shouldCenter = false;
+        if (typeof window !== 'undefined') {
+          const params = new URLSearchParams(window.location.search);
+          const spotParam = params.get('spot');
+          if (spotParam) {
+            const found = cSpots.find((s) => s.id === spotParam || s.id === decodeURIComponent(spotParam));
+            if (found) {
+              targetSpot = found;
+              shouldCenter = true;
+              setIsMobileDrawerOpen(true);
+            }
+          }
+        }
+        handleSelectSpot(targetSpot, shouldCenter);
       }
     } catch (err) {
       console.warn('Supabase 데이터 로드 실패, 오프라인 로컬 캐시 복원 시도:', err);
