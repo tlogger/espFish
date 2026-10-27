@@ -62,6 +62,7 @@ import { calculateRealWaterDepth, calculateSinkTimeToBottom } from '../utils/dep
 import { KhoaDepthRecord } from '../utils/khoaApi';
 import { Share } from '@capacitor/share';
 import { Capacitor } from '@capacitor/core';
+import { APP_VERSION } from '../version';
 
 interface SpotDetailPanelProps {
   spot: FishingSpot;
@@ -2384,68 +2385,74 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             )}
 
             {/* [요구사항 1.3] 연안 어종 정보 (앱 보유 전수 어종 리스트 뷰 & 종합 정보) */}
-            <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 font-bold text-xs text-cyan-300">
-                  <Fish size={15} className="text-cyan-400" />
-                  <span>연안 어종 정보</span>
-                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800">
-                    {Object.keys(SPECIES_ENCYCLOPEDIA).length}종
-                  </span>
-                </div>
-                <span className="text-[10px] text-slate-400">터치 시 종합 생태·채비 정보</span>
-              </div>
+            {(() => {
+              const uniqueSpeciesList = Array.from(
+                new Map(Object.values(SPECIES_ENCYCLOPEDIA).map((sp) => [sp.name, sp])).values()
+              );
 
-              {/* 검색 및 카테고리 필터 */}
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  placeholder="어종 검색 (예: 우럭, 감성돔, 갑오징어)..."
-                  value={encyclopediaSearch}
-                  onChange={(e) => setEncyclopediaSearch(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-                />
+              return (
+                <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-cyan-300">
+                      <Fish size={15} className="text-cyan-400" />
+                      <span>연안 어종 정보</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800">
+                        {uniqueSpeciesList.length}종
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-400">터치 시 종합 생태·채비 정보</span>
+                  </div>
 
-                <div className="flex gap-1 overflow-x-auto pb-0.5 text-[10.5px]">
-                  {[
-                    { id: 'ALL', label: '전체' },
-                    { id: 'ROCKFISH', label: '락피시' },
-                    { id: 'CEPHALOPOD', label: '두족류' },
-                    { id: 'SEA_BREAM', label: '도미류' },
-                    { id: 'PELAGIC', label: '회유성' },
-                    { id: 'BENTHIC', label: '저서성' },
-                  ].map((cat) => (
-                    <button
-                      type="button"
-                      key={cat.id}
-                      onClick={() => setEncyclopediaCategory(cat.id)}
-                      className={`px-2 py-0.8 rounded-md shrink-0 transition font-medium ${
-                        encyclopediaCategory === cat.id
-                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 font-bold'
-                          : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200'
-                      }`}
-                    >
-                      {cat.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                  {/* 검색 및 카테고리 필터 */}
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder="어종 검색 (예: 우럭, 감성돔, 갑오징어)..."
+                      value={encyclopediaSearch}
+                      onChange={(e) => setEncyclopediaSearch(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                    />
 
-              {/* 어종 리스트 뷰 */}
-              <div className="space-y-1.5 max-h-80 overflow-y-auto pr-0.5">
-                {Object.values(SPECIES_ENCYCLOPEDIA)
-                  .filter((sp) => {
-                    if (encyclopediaCategory !== 'ALL' && sp.category !== encyclopediaCategory) return false;
-                    if (encyclopediaSearch.trim()) {
-                      const q = encyclopediaSearch.trim().toLowerCase();
-                      return (
-                        sp.name.toLowerCase().includes(q) ||
-                        (sp.scientificName && sp.scientificName.toLowerCase().includes(q)) ||
-                        sp.categoryName.toLowerCase().includes(q)
-                      );
-                    }
-                    return true;
-                  })
+                    <div className="flex gap-1 overflow-x-auto pb-0.5 text-[10.5px]">
+                      {[
+                        { id: 'ALL', label: '전체' },
+                        { id: 'ROCKFISH', label: '락피시' },
+                        { id: 'CEPHALOPOD', label: '두족류' },
+                        { id: 'SEA_BREAM', label: '도미류' },
+                        { id: 'PELAGIC', label: '회유성' },
+                        { id: 'BENTHIC', label: '저서성' },
+                      ].map((cat) => (
+                        <button
+                          type="button"
+                          key={cat.id}
+                          onClick={() => setEncyclopediaCategory(cat.id)}
+                          className={`px-2 py-0.8 rounded-md shrink-0 transition font-medium ${
+                            encyclopediaCategory === cat.id
+                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 font-bold'
+                              : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200'
+                          }`}
+                        >
+                          {cat.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 어종 리스트 뷰 */}
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-0.5">
+                    {uniqueSpeciesList
+                      .filter((sp) => {
+                        if (encyclopediaCategory !== 'ALL' && sp.category !== encyclopediaCategory) return false;
+                        if (encyclopediaSearch.trim()) {
+                          const q = encyclopediaSearch.trim().toLowerCase();
+                          return (
+                            sp.name.toLowerCase().includes(q) ||
+                            (sp.scientificName && sp.scientificName.toLowerCase().includes(q)) ||
+                            sp.categoryName.toLowerCase().includes(q)
+                          );
+                        }
+                        return true;
+                      })
                   .map((sp) => {
                     const isExpanded = selectedEncyclopediaSpecies === sp.name;
                     const curMonth = new Date().getMonth() + 1;
@@ -2566,10 +2573,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       </div>
                     );
                   })}
+                </div>
               </div>
-            </div>
+            );
+          })()}
 
-            {/* 유튜브 실시간 현장 조황 & 낚시 영상 링크 (최신순 검색) */}
+          {/* 유튜브 실시간 현장 조황 & 낚시 영상 링크 (최신순 검색) */}
             <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-rose-400 flex items-center gap-1.5">
@@ -2684,6 +2693,14 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   </div>
                   <Download size={16} className="text-cyan-400 group-hover:translate-y-0.5 transition shrink-0" />
                 </a>
+              </div>
+
+              {/* [요구사항 2] 앱 버전 정보 */}
+              <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 font-mono">
+                <span>시스템 버전</span>
+                <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-cyan-400 font-bold">
+                  v{APP_VERSION}
+                </span>
               </div>
             </div>
           </div>

@@ -4,6 +4,8 @@
  */
 
 import { getOrFetchKhoaData } from './khoaDbCache';
+import { isNativePlatform } from './nativeBridge';
+import { CapacitorHttp } from '@capacitor/core';
 
 export interface KhoaSwtcDayInfo {
   searchDate: string; // YYYY-MM-DD
@@ -41,6 +43,11 @@ export interface KhoaSwtcWeeklyResult {
 }
 
 function getSwtcApiBaseUrl(): string {
+  // 모바일 네이티브 앱 환경에서는 KHOA 공식 도메인으로 직접 통신 (CapacitorHttp / Native)
+  if (isNativePlatform()) {
+    return 'https://www.khoa.go.kr';
+  }
+  // PC 웹 로컬 개발 환경(localhost)에서는 Vite 프록시 사용
   if (
     typeof window !== 'undefined' &&
     window.location &&
@@ -87,18 +94,36 @@ export async function fetchKhoaSwtcWeekly(
       });
 
       try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
-          },
-          body: body.toString(),
-          signal: AbortSignal.timeout(9000),
-        });
+        let json: any = null;
 
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
+        if (isNativePlatform()) {
+          // Android Native CapacitorHttp: 브라우저 CORS/보안 정책을 완전 우회하여 KHOA 서버 직접 통신
+          const capRes = await CapacitorHttp.post({
+            url: 'https://www.khoa.go.kr/swtc/getWeeklyData.do',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 ExFishApp',
+            },
+            data: body.toString(),
+            connectTimeout: 9000,
+            readTimeout: 9000,
+          });
+          json = typeof capRes.data === 'string' ? JSON.parse(capRes.data) : capRes.data;
+        } else {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+            },
+            body: body.toString(),
+            signal: AbortSignal.timeout(9000),
+          });
+
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          json = await res.json();
+        }
+
         const rawWeekly = json?.weeklyData;
         if (!Array.isArray(rawWeekly) || rawWeekly.length === 0) return null;
 

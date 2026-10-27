@@ -107,34 +107,6 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
     goldenHoursText: (sunrise, sunset, mul) =>
       `여름철(7~9월) 사리 물때(6~10물) 중들물~만조 직전 갯골 수위 상승 타임`,
   },
-  '노랑 가오리': {
-    speciesName: '노랑 가오리',
-    primaryMethod: 'SURF_CASTING',
-    primaryMethodName: '대물 원투 전용 (루어 불가)',
-    methodBadgeColor: METHOD_STYLES.SURF_CASTING,
-    rig: {
-      methodType: 'SURF_CASTING',
-      methodName: '초원투 대물 처넣기 채비',
-      rodReel: '서프대 30~35호 4.5m 이상 + 대형 스피닝릴 5000~6000번',
-      mainLine: '합사 3.0~4.0호 or 나일론 8.0~10.0호',
-      leaderSinker: '30~40호 스파이크 봉돌 (강류 고정)',
-      hookRig: '와이어 목줄 38번 + 대물 서프 바늘 20~24호',
-      bait: '통오징어, 개불, 참갯지렁이(혼무시)',
-      action: '원투 투척 후 삼각대 거치. 대형 어신 발생 시 강력한 챔질.',
-      isLureApplicable: false,
-      lureAltText: '루어 낚시 불가 (초대형 생미끼 원투 처넣기 전용)',
-    },
-    recommendedRig: {
-      lure: '루어 낚시 불가 (생미끼 원투 전용 어종)',
-      bait: '통오징어, 대형 개불, 혼무시',
-      line: '원줄 합사 3.0~4.0호 + 와이어 목줄 38번',
-      hookWeight: '30~40호 스파이크 봉돌',
-      action: '바닥 착저 후 드랙 프리 거치 → 대물 본입질 시 강력 챔질',
-    },
-    feedingStrategy: '만조를 타고 연안 갯골로 들어와 갑각류와 연체동물을 닥치는 대로 섭이합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
-      `여름철(7~9월) 사리 물때(6~10물) 중들물~만조 직전 갯골 수위 상승 타임`,
-  },
   보리멸: {
     speciesName: '보리멸',
     primaryMethod: 'SURF_CASTING',
@@ -1162,11 +1134,18 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
  * 어종명으로 추천 채비 및 전략 정보 조회 (부분 일치 매칭 지원)
  */
 export function getSpeciesRigInfo(speciesName: string): SpeciesRigInfo {
+  const normalized = speciesName.replace(/\s+/g, '');
   if (SPECIES_RIG_DATABASE[speciesName]) {
     return SPECIES_RIG_DATABASE[speciesName];
   }
+  if (SPECIES_RIG_DATABASE[normalized]) {
+    return SPECIES_RIG_DATABASE[normalized];
+  }
   const found = Object.values(SPECIES_RIG_DATABASE).find(
-    (info) => info.speciesName.includes(speciesName) || speciesName.includes(info.speciesName)
+    (info) => {
+      const dbNorm = info.speciesName.replace(/\s+/g, '');
+      return dbNorm.includes(normalized) || normalized.includes(dbNorm);
+    }
   );
   if (found) return found;
 

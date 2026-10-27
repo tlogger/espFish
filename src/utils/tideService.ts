@@ -128,7 +128,7 @@ export interface KhoaTideForecastResult {
   tideDayInfo?: TideDayInfo;
 }
 
-const CACHE_KEY_PREFIX = 'exfish_khoa_forecast_result_v2_';
+const CACHE_KEY_PREFIX = 'exfish_khoa_forecast_result_v4_';
 
 /**
  * 국가 공인 국립해양조사원(KHOA) 조위 정보 취득 및 캐싱 엔진

@@ -667,14 +667,9 @@ export function App() {
             <img src={`${import.meta.env.BASE_URL}user-icon.png`} alt="ExFish Logo" className="w-full h-full object-cover rounded-md" />
           </div>
           <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <span className="text-base sm:text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500 bg-clip-text text-transparent leading-none">
-                ExFish
-              </span>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/60 text-cyan-400 font-bold leading-none">
-                v{APP_VERSION}
-              </span>
-            </div>
+            <span className="text-base sm:text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500 bg-clip-text text-transparent leading-none">
+              ExFish
+            </span>
             <span className="hidden md:inline-block text-[10px] text-slate-400 font-medium tracking-tight mt-0.5">
               ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며...
             </span>
