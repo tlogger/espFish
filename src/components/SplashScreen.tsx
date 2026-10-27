@@ -70,10 +70,10 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
           className="w-full h-full sm:max-w-md sm:h-[90vh] sm:rounded-3xl sm:border sm:border-cyan-500/20 sm:shadow-[0_0_50px_rgba(6,182,212,0.25)] object-cover object-center filter brightness-95 transition-transform duration-1000 ease-out scale-x-[0.95] sm:scale-x-100"
         />
 
-        {/* 3. 모바일/PC 비네팅 오버레이 */}
-        <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-transparent to-slate-950/85 pointer-events-none" />
+        {/* 3. 모바일/PC 비네팅 오버레이 (상단은 투명하게 하여 배경이 비쳐보이게 처리) */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-slate-950/85 pointer-events-none" />
 
-        {/* 4. 상단 브랜드 헤더 ([요구사항 1] 아이콘 백그라운드 제거, 타이틀 크기 2배 확대) */}
+        {/* 4. 상단 브랜드 헤더 (검정 윤곽선만 그리고 속은 투명하여 배경 비침) */}
         <div
           className="absolute top-0 inset-x-0 z-10 flex flex-col items-center pt-8 sm:pt-14 px-6 text-center animate-fade-in"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2rem)' }}
@@ -84,7 +84,14 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
               alt="ExFish Logo"
               className="w-10 h-10 sm:w-12 sm:h-12 object-contain bg-transparent"
             />
-            <span className="text-4xl sm:text-5xl font-black tracking-widest font-sans inline-block transform scale-y-150 origin-center bg-gradient-to-r from-sky-400 via-white to-sky-900 bg-clip-text text-transparent drop-shadow-[0_4px_16px_rgba(0,0,0,0.8)]">
+            <span
+              className="text-4xl sm:text-5xl font-black tracking-widest font-sans inline-block transform scale-y-150 origin-center select-none"
+              style={{
+                WebkitTextStroke: '2px #000000',
+                WebkitTextFillColor: 'transparent',
+                color: 'transparent',
+              }}
+            >
               ExFish
             </span>
           </div>

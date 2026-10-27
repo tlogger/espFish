@@ -648,8 +648,8 @@ export function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      {/* 모바일 앱 전용 1초 스플래시 스크린 (웹 환경은 스플래시 없이 즉시 로딩) */}
-      {showSplash && isNativePlatform() && (
+      {/* 웹 및 모바일 앱 공통 1초 스플래시 스크린 (시각적 검증 및 브랜딩) */}
+      {showSplash && (
         <SplashScreen onFinish={() => setShowSplash(false)} durationMs={1000} />
       )}
 
