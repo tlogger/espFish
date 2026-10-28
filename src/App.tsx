@@ -720,11 +720,10 @@ export function App() {
             <div className="absolute right-1 top-1 bottom-1 flex items-center gap-1">
               <button
                 onClick={handleExecutePoiSearch}
-                className="px-2.5 h-full bg-cyan-600 hover:bg-cyan-500 text-white rounded-full text-[11px] font-bold flex items-center gap-0.5 transition shadow"
+                className="px-2 h-full bg-cyan-600 hover:bg-cyan-500 text-white rounded-full flex items-center justify-center transition shadow"
                 title="지도 장소 검색"
               >
-                {isSearchingPoi ? <Loader2 size={11} className="animate-spin" /> : <Navigation2 size={11} />}
-                <span>검색</span>
+                {isSearchingPoi ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
               </button>
               <button
                 onClick={() => setIsSpotListModalOpen(true)}

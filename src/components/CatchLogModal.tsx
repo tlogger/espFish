@@ -80,6 +80,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
 }) => {
   const [fishSpecies, setFishSpecies] = React.useState('우럭');
   const [fishCount, setFishCount] = React.useState(1);
+  const [fishCountInput, setFishCountInput] = React.useState('1');
   const [fishSize, setFishSize] = React.useState<number | undefined>(28.5);
   const [catchMethod, setCatchMethod] = React.useState<FishingMethod>('LURE');
   const [lureBait, setLureBait] = React.useState('지그헤드 1/2oz + 웜');
@@ -90,6 +91,22 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
   const [endTime, setEndTime] = React.useState('18:30');
   const [catchTime, setCatchTime] = React.useState('16:30'); // 히트 시각
   const [durationMins, setDurationMins] = React.useState<number>(270);
+
+  // 시간 포맷 헬퍼 (예: '3시간 20분')
+  const formatDurationKor = (mins: number) => {
+    if (mins <= 0) return '0분';
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    if (h > 0 && m > 0) return `${h}시간 ${m}분`;
+    if (h > 0) return `${h}시간`;
+    return `${m}분`;
+  };
+
+  const triggerPicker = (e: React.MouseEvent<HTMLInputElement>) => {
+    try {
+      (e.target as any).showPicker?.();
+    } catch {}
+  };
 
   const [catchLat, setCatchLat] = React.useState<number | undefined>();
   const [catchLng, setCatchLng] = React.useState<number | undefined>();
@@ -116,7 +133,9 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
   React.useEffect(() => {
     if (editingLog) {
       setFishSpecies(editingLog.fish_species);
-      setFishCount(editingLog.fish_count ?? (editingLog.is_hitless ? 0 : 1));
+      const initialCount = editingLog.fish_count ?? (editingLog.is_hitless ? 0 : 1);
+      setFishCount(initialCount);
+      setFishCountInput(String(initialCount));
       setFishSize(editingLog.fish_size_cm);
       setCatchMethod(editingLog.catch_method);
       setLureBait(editingLog.lure_bait || '');
@@ -304,7 +323,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
           <div className="flex items-center gap-2">
             <span className="text-2xl">{isHitless ? '❌' : '🐟'}</span>
             <h2 className="text-xl font-bold text-emerald-400">
-              {editingLog ? '조과(Catch Log) 수정하기' : '새 조과(Catch Log) 기록하기'}
+              {editingLog ? '조과 수정' : '새 조과 기록'}
             </h2>
           </div>
           <button
@@ -320,7 +339,10 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
           <button
             type="button"
             onClick={() => {
-              if (fishCount === 0) setFishCount(1);
+              if (fishCount === 0) {
+                setFishCount(1);
+                setFishCountInput('1');
+              }
             }}
             className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
               !isHitless
@@ -328,12 +350,13 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                 : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
             }`}
           >
-            <span>🐟 손맛 성공 (히트)</span>
+            <span>🐟 히트</span>
           </button>
           <button
             type="button"
             onClick={() => {
               setFishCount(0);
+              setFishCountInput('0');
               setFishSize(undefined);
             }}
             className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
@@ -342,7 +365,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                 : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
             }`}
           >
-            <span>❌ 꽝 / 노피시 (입질 무)</span>
+            <span>❌ 꽝</span>
           </button>
         </div>
 
@@ -358,10 +381,10 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
             <div>
               <div className="flex justify-between items-center mb-1">
                 <label className="text-slate-200 font-semibold text-xs flex items-center gap-1">
-                  <span>🎣 잡은 어종 또는 대상 어종 *</span>
+                  <span>🎣 어종 *</span>
                 </label>
                 <span className="text-[11px] text-slate-400">
-                  {isHitless ? '(노렸던 대상 어종을 적어주세요)' : '(실제 히트한 어종)'}
+                  {isHitless ? '(노렸던 대상 어종)' : '(실제 히트한 어종)'}
                 </span>
               </div>
               <input
@@ -419,21 +442,34 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                 <label className="block text-slate-300 mb-1 font-medium text-xs">
                   마릿수 (0이면 자동 꽝 판정) *
                 </label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    value={fishCount}
-                    onChange={(e) => setFishCount(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                    className={`w-full bg-slate-900 border rounded-lg px-3 py-2 text-white font-bold font-mono focus:outline-none ${
-                      isHitless ? 'border-rose-500 text-rose-300' : 'border-slate-700 focus:border-cyan-400'
-                    }`}
-                  />
-                  <span className={`text-xs font-bold px-2 py-2 rounded shrink-0 ${isHitless ? 'bg-rose-950 text-rose-300 border border-rose-800' : 'bg-emerald-950 text-emerald-300 border border-emerald-800'}`}>
-                    {isHitless ? '0수 (꽝)' : `${fishCount}수`}
-                  </span>
-                </div>
+                <input
+                  type="number"
+                  min="0"
+                  required
+                  value={fishCountInput}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFishCountInput(val);
+                    if (val !== '') {
+                      const parsed = parseInt(val, 10);
+                      setFishCount(isNaN(parsed) ? 0 : Math.max(0, parsed));
+                    }
+                  }}
+                  onBlur={() => {
+                    if (fishCountInput.trim() === '') {
+                      setFishCount(0);
+                      setFishCountInput('0');
+                    } else {
+                      const parsed = parseInt(fishCountInput, 10);
+                      const safe = isNaN(parsed) ? 0 : Math.max(0, parsed);
+                      setFishCount(safe);
+                      setFishCountInput(String(safe));
+                    }
+                  }}
+                  className={`w-full bg-slate-900 border rounded-lg px-3 py-2 text-white font-bold font-mono focus:outline-none ${
+                    isHitless ? 'border-rose-500 text-rose-300' : 'border-slate-700 focus:border-cyan-400'
+                  }`}
+                />
               </div>
 
               <div>
@@ -455,7 +491,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
             </div>
           </div>
 
-          {/* AI 꽝 사후 복기 인텔리전스 카드 ("ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며...") */}
+          {/* AI 꽝 사후 복기 인텔리전스 카드 */}
           {isHitless && postMortemReport && (
             <div className="p-3.5 bg-rose-950/30 border border-rose-500/40 rounded-xl space-y-2.5 animate-in fade-in duration-200">
               <div className="flex items-center justify-between border-b border-rose-900/40 pb-2">
@@ -501,8 +537,8 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                 <Clock size={13} />
                 <span>출조 일자 & 낚시 시간대</span>
               </span>
-              <span className="text-[11px] font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-800/60">
-                ⏱️ 총 {formatDuration(durationMins)} 낚시
+              <span className="text-[11px] font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-800/60 font-mono">
+                ⏱️ 총 {formatDurationKor(durationMins)} 낚시
               </span>
             </div>
 
@@ -512,12 +548,13 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                 type="date"
                 required
                 value={catchDate}
+                onClick={triggerPicker}
                 onChange={(e) => setCatchDate(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-cyan-400"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-cyan-400 cursor-pointer touch-manipulation min-h-[42px]"
               />
             </div>
 
-            {/* [요구사항 9] 낚시 시작/종료 시각 2줄 분리 (모바일 분 단위 잘림 방지) 및 자정 넘김(다음날) 표시 */}
+            {/* 낚시 시작/종료 시각 (모바일 분 단위 잘림 방지 및 터치 피커 대응) */}
             {(() => {
               const isNextDay = Boolean(startTime && endTime && endTime < startTime);
               return (
@@ -527,8 +564,9 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                     <input
                       type="time"
                       value={startTime}
+                      onClick={triggerPicker}
                       onChange={(e) => setStartTime(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-cyan-400"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-cyan-400 cursor-pointer touch-manipulation min-h-[42px]"
                     />
                   </div>
                   <div>
@@ -545,15 +583,16 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                     <input
                       type="time"
                       value={endTime}
+                      onClick={triggerPicker}
                       onChange={(e) => setEndTime(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-cyan-400"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-cyan-400 cursor-pointer touch-manipulation min-h-[42px]"
                     />
                   </div>
                 </div>
               );
             })()}
 
-            <div className={`pt-2 border-t border-slate-800 ${isHitless ? '' : 'grid grid-cols-2 gap-3'}`}>
+            <div className={`pt-2 border-t border-slate-800 ${isHitless ? '' : 'grid grid-cols-1 sm:grid-cols-2 gap-3'}`}>
               {!isHitless && (
                 <div>
                   <label className="block text-slate-300 mb-1 font-medium text-xs">
@@ -563,20 +602,26 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                     type="time"
                     required
                     value={catchTime}
+                    onClick={triggerPicker}
                     onChange={(e) => setCatchTime(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-cyan-400"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-cyan-400 cursor-pointer touch-manipulation min-h-[42px]"
                   />
                 </div>
               )}
               <div>
-                <label className="block text-slate-300 mb-1 font-medium text-xs">총 낚시 시간 (분)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-300 font-medium text-xs">낚시 시간</label>
+                  <span className="text-[11px] text-cyan-300 font-mono font-semibold">
+                    {formatDurationKor(durationMins)}
+                  </span>
+                </div>
                 <input
                   type="number"
                   min="0"
                   step="10"
                   value={durationMins}
                   onChange={(e) => setDurationMins(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                  placeholder="직접 수정 가능"
+                  placeholder="분 단위 입력"
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-cyan-400"
                 />
               </div>
@@ -777,13 +822,13 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
             )}
           </div>
 
-          {/* 입질 패턴 & 메모 */}
+          {/* 입질 패턴 & 메모 (최소 5줄 이상) */}
           <div>
             <label className="block text-slate-300 mb-1 font-medium text-xs">
               {isHitless ? '현장 상황 및 꽝 원인 분석 메모' : '히트 패턴 및 손맛 메모'}
             </label>
             <textarea
-              rows={2}
+              rows={5}
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
               placeholder={
@@ -791,7 +836,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                   ? "예: 북서풍 8m/s로 너울 심함. 밑걸림 빈번하고 수온이 급락하여 바닥권 활성도 전무했음."
                   : "바닥을 긁는 도중 '툭' 하는 입질. 만조 1시간 전 와류에서 집중 발생."
               }
-              className="w-full bg-slate-800/90 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs"
+              className="w-full bg-slate-800/90 border border-slate-700 rounded-lg p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs min-h-[120px] leading-relaxed"
             />
           </div>
 

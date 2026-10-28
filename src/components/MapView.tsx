@@ -1936,20 +1936,6 @@ export const MapView: React.FC<MapViewProps> = ({
             </div>
 
             <div className="flex flex-col gap-1 pt-0.5">
-              {(typeof window === 'undefined' || window.innerWidth < 768) && onOpenDetail && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onOpenDetail(contextMenuSpot);
-                    setContextMenuSpot(null);
-                  }}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-cyan-300 transition flex items-center gap-2 cursor-pointer text-xs font-medium"
-                >
-                  <span>📋</span>
-                  <span>상세 보기</span>
-                </button>
-              )}
-
               {onStartMicroAdjust && (
                 <button
                   type="button"
@@ -2747,82 +2733,34 @@ export const MapView: React.FC<MapViewProps> = ({
         </div>
       )}
 
-      {/* [요구사항 1] 미니멀 위치 조정 컴팩트 패널 (저장 및 취소 버튼 상단 헤더 배치로 하단 간섭 원천 방지) */}
+      {/* [요구사항 10.3] 미니멀 위치 조정 컴팩트 패널 (상/하/좌/우 버튼 제거, 저장 앞 불필요 텍스트 제거) */}
       {microAdjustSpot && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-auto max-w-[92vw] z-30 bg-slate-900/95 border border-emerald-500/60 rounded-xl p-2 shadow-2xl backdrop-blur text-white flex flex-col items-center gap-1.5 animate-fade-in text-xs">
-          <div className="flex items-center justify-between w-full gap-3 border-b border-slate-800 pb-1 px-1">
-            <div className="flex items-center gap-1 font-bold text-emerald-300 text-xs">
-              <Crosshair size={14} className="text-emerald-400 animate-pulse" />
-              <span>위치 조정</span>
-              {distMeters > 0.05 && (
-                <span className="text-[10px] text-emerald-400 font-mono font-semibold">+{distMeters.toFixed(1)}m</span>
-              )}
-            </div>
-
-            {/* 상단 액션: 저장 & 취소 버튼 상단 배치 */}
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('success');
-                  onConfirmMicroAdjust && onConfirmMicroAdjust(microAdjustSpot.id, adjustedPos.lat, adjustedPos.lng);
-                }}
-                className="py-1 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition active:scale-95 flex items-center gap-0.5"
-                title="조정 위치 저장"
-              >
-                <Check size={13} />
-                <span>저장</span>
-              </button>
-              <button
-                type="button"
-                onClick={onCancelMicroAdjust}
-                className="py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition"
-                title="조정 취소"
-              >
-                취소
-              </button>
-            </div>
-          </div>
-
-          {/* D-Pad 1m 단위 미세 넛지 컨트롤 (라벨 텍스트 완전 제거) */}
-          <div className="flex items-center gap-1.5 pt-0.5">
-            <button
-              type="button"
-              onClick={() => handleNudge(0.000009, 0)}
-              className="w-10 h-10 bg-slate-800 hover:bg-slate-700 active:bg-emerald-600 text-slate-100 rounded-lg text-xs font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
-              title="북쪽 1m 이동"
-              aria-label="북쪽 1m"
-            >
-              ▲
-            </button>
-            <button
-              type="button"
-              onClick={() => handleNudge(-0.000009, 0)}
-              className="w-10 h-10 bg-slate-800 hover:bg-slate-700 active:bg-emerald-600 text-slate-100 rounded-lg text-xs font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
-              title="남쪽 1m 이동"
-              aria-label="남쪽 1m"
-            >
-              ▼
-            </button>
-            <button
-              type="button"
-              onClick={() => handleNudge(0, -0.000011)}
-              className="w-10 h-10 bg-slate-800 hover:bg-slate-700 active:bg-emerald-600 text-slate-100 rounded-lg text-xs font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
-              title="서쪽 1m 이동"
-              aria-label="서쪽 1m"
-            >
-              ◄
-            </button>
-            <button
-              type="button"
-              onClick={() => handleNudge(0, 0.000011)}
-              className="w-10 h-10 bg-slate-800 hover:bg-slate-700 active:bg-emerald-600 text-slate-100 rounded-lg text-xs font-bold active:scale-95 transition flex items-center justify-center border border-slate-700 shadow"
-              title="동쪽 1m 이동"
-              aria-label="동쪽 1m"
-            >
-              ►
-            </button>
-          </div>
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 border border-emerald-500/60 rounded-xl p-2 shadow-2xl backdrop-blur text-white flex items-center gap-2 animate-fade-in text-xs">
+          {distMeters > 0.05 && (
+            <span className="text-[11px] text-emerald-400 font-mono font-semibold px-1">
+              +{distMeters.toFixed(1)}m
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('success');
+              onConfirmMicroAdjust && onConfirmMicroAdjust(microAdjustSpot.id, adjustedPos.lat, adjustedPos.lng);
+            }}
+            className="py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition active:scale-95 flex items-center gap-1 cursor-pointer"
+            title="조정 위치 저장"
+          >
+            <Check size={14} />
+            <span>저장</span>
+          </button>
+          <button
+            type="button"
+            onClick={onCancelMicroAdjust}
+            className="py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition cursor-pointer"
+            title="조정 취소"
+          >
+            취소
+          </button>
         </div>
       )}
 
@@ -2845,34 +2783,30 @@ export const MapView: React.FC<MapViewProps> = ({
           </div>
 
           {tempCastingEnabled ? (
-            <div className="space-y-3 py-3">
-              <div>
-                <div className="flex justify-between text-xs text-slate-300 mb-1">
-                  <span>시작 각도</span>
-                  <span className="font-mono font-bold text-cyan-400">{Math.round(tempStartDeg)}°</span>
-                </div>
+            <div className="space-y-2 py-2.5">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="w-8 shrink-0 text-slate-300 font-medium">시작</span>
                 <input
                   type="range"
                   min="0"
                   max="359"
                   value={tempStartDeg}
                   onChange={(e) => setTempStartDeg(Number(e.target.value))}
-                  className="w-full accent-cyan-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
+                  className="flex-1 accent-cyan-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
                 />
+                <span className="w-10 text-right font-mono font-bold text-cyan-400 shrink-0">{Math.round(tempStartDeg)}°</span>
               </div>
-              <div>
-                <div className="flex justify-between text-xs text-slate-300 mb-1">
-                  <span>끝 각도</span>
-                  <span className="font-mono font-bold text-cyan-400">{Math.round(tempEndDeg)}°</span>
-                </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="w-8 shrink-0 text-slate-300 font-medium">끝</span>
                 <input
                   type="range"
                   min="0"
                   max="359"
                   value={tempEndDeg}
                   onChange={(e) => setTempEndDeg(Number(e.target.value))}
-                  className="w-full accent-cyan-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
+                  className="flex-1 accent-cyan-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
                 />
+                <span className="w-10 text-right font-mono font-bold text-cyan-400 shrink-0">{Math.round(tempEndDeg)}°</span>
               </div>
             </div>
           ) : (
@@ -2925,13 +2859,11 @@ export const MapView: React.FC<MapViewProps> = ({
             {isAddingSweetSpot ? (
               <div className="p-3 bg-amber-950/40 border border-amber-500/50 rounded-xl space-y-2.5">
                 <div className="text-xs text-amber-300 font-bold flex items-center justify-between">
-                  <span>📍 지도를 클릭하여 입질 위치를 지정하세요</span>
-                  {draftSweetPos ? (
+                  <span>지도 클릭하여 입질 위치 지정</span>
+                  {draftSweetPos && (
                     <span className="text-[10px] text-emerald-400 font-mono">
                       선택됨 ({calculateDistanceAndBearing(sweetSpotConfigSpot.lat, sweetSpotConfigSpot.lng, draftSweetPos.lat, draftSweetPos.lng).distance}m)
                     </span>
-                  ) : (
-                    <span className="text-[10px] text-amber-400 animate-pulse">위치 미지정</span>
                   )}
                 </div>
 
@@ -2947,10 +2879,9 @@ export const MapView: React.FC<MapViewProps> = ({
                   />
                 </div>
 
-                {/* [요구사항 2-1-4] 반지름 선택 (기존 스팟에 영향 주지 않고 초안에만 적용) */}
+                {/* [요구사항 10.6] 반지름 선택 (반지름 문구 삭제) */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-slate-300">반지름:</span>
                     {[10, 15, 20].map((r) => (
                       <button
                         key={r}
@@ -3111,14 +3042,9 @@ export const MapView: React.FC<MapViewProps> = ({
         </div>
       )}
 
-      {/* 지도 좌하단 안내 뱃지 */}
-      <div className="absolute bottom-4 left-4 z-20 bg-slate-900/85 backdrop-blur-sm border border-slate-800 rounded-lg px-3 py-1.5 text-[11px] text-slate-300 hidden sm:flex items-center gap-2 shadow-lg">
-        <span>💡 해안·갯바위를 클릭하면 <strong>새 포인트를 추가</strong>할 수 있습니다.</span>
-        {showCastingArrows && (
-          <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
-            🎯 채비 기준비거리 {tackleConfig.calibratedDistanceMeters}m ({tackleConfig.radii.join('/')}m 링)
-          </span>
-        )}
+      {/* [요구사항 10.1] 지도 좌하단 포인트 조작 안내 칩 (맵을 가리지 않는 반투명 컴팩트 표시) */}
+      <div className="absolute bottom-3 left-3 z-20 bg-slate-950/80 backdrop-blur-sm border border-slate-800/90 rounded-full px-2.5 py-1 text-[10px] text-slate-300 flex items-center gap-1.5 shadow-md select-none pointer-events-none">
+        <span>포인트 클릭=보기, 길게 클릭=메뉴</span>
       </div>
     </div>
   );

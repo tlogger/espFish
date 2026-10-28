@@ -73,26 +73,21 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
         {/* 3. 모바일/PC 비네팅 오버레이 (상단은 투명하게 하여 배경이 비쳐보이게 처리) */}
         <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-slate-950/85 pointer-events-none" />
 
-        {/* 4. 상단 브랜드 헤더 (검정 윤곽선만 그리고 속은 투명하여 배경 비침) */}
+        {/* 4. 상단 브랜드 헤더 (아이콘 제거, 가로 화면폭의 70%에 맞춤) */}
         <div
           className="absolute top-0 inset-x-0 z-10 flex flex-col items-center pt-8 sm:pt-14 px-6 text-center animate-fade-in"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2rem)' }}
         >
-          <div className="flex items-center gap-3">
-            <img
-              src={`${import.meta.env.BASE_URL}user-icon.png`}
-              alt="ExFish Logo"
-              className="w-10 h-10 sm:w-12 sm:h-12 object-contain bg-transparent"
-            />
+          <div className="w-[70vw] max-w-sm flex items-center justify-center">
             <span
-              className="text-4xl sm:text-5xl font-black tracking-widest font-sans inline-block transform scale-y-150 origin-center select-none"
+              className="text-5xl sm:text-6xl font-black tracking-widest font-sans inline-block transform scale-y-150 origin-center select-none w-full text-center"
               style={{
-                WebkitTextStroke: '2px #000000',
+                WebkitTextStroke: '2.5px #000000',
                 WebkitTextFillColor: 'transparent',
                 color: 'transparent',
               }}
             >
-              ExFish
+              EXFISH
             </span>
           </div>
         </div>

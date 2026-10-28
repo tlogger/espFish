@@ -264,6 +264,11 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   // 미니 어종 백과사전 모달 상태
   const [quickModalSpecies, setQuickModalSpecies] = React.useState<string | null>(null);
 
+  // 아코디언 드로어(Drawer) 상태: 기본 숨김 (화살표 터치 시 펼침)
+  const [isSpeciesBiteDrawerOpen, setIsSpeciesBiteDrawerOpen] = React.useState(false);
+  const [isEncyclopediaDrawerOpen, setIsEncyclopediaDrawerOpen] = React.useState(false);
+  const [isMemoDrawerOpen, setIsMemoDrawerOpen] = React.useState(false);
+
   // 네비 목적지 명칭: 사용자가 지정한 navi_name이 있으면 그것을 우선 사용, 없으면 spot.name
   const destinationName = spot.navi_name && spot.navi_name.trim().length > 0 ? spot.navi_name.trim() : spot.name;
 
@@ -411,24 +416,24 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
               {/* 액션 버튼 그룹 */}
               <div className="flex items-center gap-1 shrink-0">
-                {onMinimize && (
-                  <button
-                    onClick={onMinimize}
-                    className="px-2 py-1 rounded-lg bg-cyan-600/80 hover:bg-cyan-500 backdrop-blur-sm text-white flex items-center gap-0.5 text-[11px] font-bold transition shadow md:hidden border border-cyan-400/30"
-                    title="지도 보기 (창 접기)"
-                  >
-                    <span>지도</span>
-                    <ChevronDown size={13} />
-                  </button>
-                )}
                 <button
                   onClick={async () => {
+                    const spotTypeLabel = spot.spot_type === 'ROCK' ? '갯바위' : spot.spot_type === 'SEAWALL' ? '석축' : spot.spot_type === 'BREAKWATER' ? '방파제' : spot.spot_type === 'BEACH' ? '해변' : '선착장';
+                    const spotSummary = `[ExFish 포인트] ${spot.name} (${spotTypeLabel}${spot.navi_name ? ` · ${spot.navi_name}` : ''})`;
+                    const biteText = `🎣 입질 지수: ${biteScore?.totalScore ?? 0}점${biteScore?.verdict ? ` (${biteScore.verdict})` : ''}`;
+                    
+                    const weatherParts: string[] = [];
+                    if (weather?.weatherText) weatherParts.push(weather.weatherText);
+                    if (weather?.temp != null) weatherParts.push(`기온 ${weather.temp.toFixed(1)}℃`);
+                    if (weather?.windSpeed != null) weatherParts.push(`풍속 ${formatWindSpeed(weather.windSpeed, windUnit)}`);
+                    if (marine?.waveHeight != null) weatherParts.push(`파고 ${marine.waveHeight.toFixed(1)}m`);
+                    if (marine?.seaSurfaceTemp != null) weatherParts.push(`수온 ${marine.seaSurfaceTemp.toFixed(1)}℃`);
+                    const weatherText = weatherParts.length > 0 ? `🌤️ 날씨: ${weatherParts.join(' · ')}` : '';
+
                     const shareTitle = `ExFish - ${spot.name}`;
-                    const shareText = `[ExFish 낚시 포인트] ${spot.name}\n${spot.navi_name ? `목적지: ${spot.navi_name}\n` : ''}실시간 수심: ${realDepthResult.realDepthM.toFixed(1)}m · 입질 지수: ${biteScore?.totalScore ?? 0}점!`;
-                    // [요구사항 6] PC웹 및 모바일 공유 시 현재 포인트의 Full URL(?spot=xxx) 생성
-                    const origin = window.location.origin;
-                    const pathname = window.location.pathname;
-                    const shareUrl = `${origin}${pathname}?spot=${encodeURIComponent(spot.id)}`;
+                    // 실제 배포 도메인 주소 보장 (localhost 방지)
+                    const shareUrl = `https://tlogger.github.io/espFish/?spot=${encodeURIComponent(spot.id)}`;
+                    const shareText = `${spotSummary}\n${biteText}${weatherText ? `\n${weatherText}` : ''}\n🔗 바로가기: ${shareUrl}`;
 
                     // 모바일 네이티브 앱 환경: 다른 앱(카카오톡, 메시지 등)으로 공유 다이얼로그 호출
                     if (Capacitor.isNativePlatform()) {
@@ -448,19 +453,19 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     // 웹 브라우저 환경: 포인트 링크 클립보드 복사
                     try {
                       if (navigator.clipboard) {
-                        await navigator.clipboard.writeText(shareUrl);
-                        alert(`포인트 전체 링크가 클립보드에 복사되었습니다.\n${shareUrl}`);
+                        await navigator.clipboard.writeText(shareText);
+                        alert(`포인트 요약 및 링크가 클립보드에 복사되었습니다.\n\n${shareText}`);
                       } else {
                         const ta = document.createElement('textarea');
-                        ta.value = shareUrl;
+                        ta.value = shareText;
                         document.body.appendChild(ta);
                         ta.select();
                         document.execCommand('copy');
                         document.body.removeChild(ta);
-                        alert(`포인트 전체 링크가 클립보드에 복사되었습니다.\n${shareUrl}`);
+                        alert(`포인트 요약 및 링크가 클립보드에 복사되었습니다.\n\n${shareText}`);
                       }
                     } catch {
-                      alert(`포인트 링크: ${shareUrl}`);
+                      alert(`포인트 정보:\n${shareText}`);
                     }
                   }}
                   className="p-1.5 rounded-lg bg-black/60 backdrop-blur-sm text-slate-200 hover:text-cyan-400 border border-white/10 transition"
@@ -486,12 +491,13 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 >
                   <Trash2 size={13} />
                 </button>
+                {/* 모바일 앱/웹 창 아래로 내리기 ('V' ChevronDown 버튼으로 교체) */}
                 <button
-                  onClick={onClose}
-                  className="p-1.5 rounded-lg bg-black/60 backdrop-blur-sm text-slate-300 hover:text-white border border-white/10 transition text-xs md:hidden"
-                  title="닫기"
+                  onClick={onMinimize || onClose}
+                  className="p-1.5 rounded-lg bg-cyan-600/80 hover:bg-cyan-500 backdrop-blur-sm text-white border border-cyan-400/30 transition md:hidden flex items-center justify-center shadow"
+                  title="상세보기 접기 (아래로 내리기)"
                 >
-                  ✕
+                  <ChevronDown size={16} />
                 </button>
               </div>
             </div>
@@ -1171,63 +1177,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 </div>
               );
             })()}
-            {/* 48시간 미래 환경 타임라인 시뮬레이터 (모바일 및 패널 전용 통합) */}
-            <div className="p-3.5 bg-slate-950/90 border border-cyan-500/30 rounded-2xl shadow-lg space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                    {isNow
-                      ? '⏱️ 실시간 환경'
-                      : `⏱️ ${targetMonth}/${targetDate} ${targetHourStr}:00 (+${timelineOffsetHours}시간 예측)`}
-                  </span>
-                  {!isNow && (
-                    <button
-                      onClick={() => setTimelineOffsetHours(0)}
-                      className="flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-200 font-semibold"
-                    >
-                      <RotateCcw size={11} /> 현재 시각 복귀
-                    </button>
-                  )}
-                </div>
-                <button
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition shadow ${
-                    isPlaying
-                      ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                      : 'bg-cyan-600 hover:bg-cyan-500 text-white'
-                  }`}
-                  title={isPlaying ? '시뮬레이션 일시정지' : '미래 예측 자동 재생'}
-                >
-                  {isPlaying ? <Pause size={12} /> : <Play size={12} />}
-                  <span>{isPlaying ? '일시정지' : '재생'}</span>
-                </button>
-              </div>
-
-              {/* 타임라인 슬라이더 바 (0h ~ 48h) */}
-              <div className="space-y-1">
-                <input
-                  type="range"
-                  min="0"
-                  max="48"
-                  step="1"
-                  value={timelineOffsetHours}
-                  onChange={(e) => {
-                    setTimelineOffsetHours(Number(e.target.value));
-                    if (isPlaying) setIsPlaying(false);
-                  }}
-                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                />
-                <div className="flex justify-between text-[10px] text-slate-400 font-mono">
-                  <span>현재 (0h)</span>
-                  <span>+12h</span>
-                  <span>내일 (+24h)</span>
-                  <span>+36h</span>
-                  <span>모레 (+48h)</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 풍속·조류·파고 위험 수준 판정 및 위험 경고 배너 */}
+            {/* 풍속·조류·파고 위험 수준 판정 및 위험 경고 배너 (최상단 배치로 슬라이더와 날씨 카드 연속성 확보) */}
             {(() => {
               const isWindDanger = simWindSpeed >= 9.5 || (weather?.windGust ? weather.windGust >= 13.0 : false);
               const isWindWarning = !isWindDanger && simWindSpeed >= 6.5;
@@ -1258,6 +1208,62 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       </div>
                     </div>
                   )}
+
+                  {/* 48시간 미래 환경 타임라인 시뮬레이터 (슬라이더 바로 아래 4대 날씨 카드가 인접하여 직관적 관찰 가능) */}
+                  <div className="p-3.5 bg-slate-950/90 border border-cyan-500/30 rounded-2xl shadow-lg space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                          {isNow
+                            ? '⏱️ 실시간 환경'
+                            : `⏱️ ${targetMonth}/${targetDate} ${targetHourStr}:00 (+${timelineOffsetHours}시간 예측)`}
+                        </span>
+                        {!isNow && (
+                          <button
+                            onClick={() => setTimelineOffsetHours(0)}
+                            className="flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-200 font-semibold"
+                          >
+                            <RotateCcw size={11} /> 현재 시각 복귀
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setIsPlaying(!isPlaying)}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition shadow ${
+                          isPlaying
+                            ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                            : 'bg-cyan-600 hover:bg-cyan-500 text-white'
+                        }`}
+                        title={isPlaying ? '시뮬레이션 일시정지' : '미래 예측 자동 재생'}
+                      >
+                        {isPlaying ? <Pause size={12} /> : <Play size={12} />}
+                        <span>{isPlaying ? '일시정지' : '재생'}</span>
+                      </button>
+                    </div>
+
+                    {/* 타임라인 슬라이더 바 (0h ~ 48h) */}
+                    <div className="space-y-1">
+                      <input
+                        type="range"
+                        min="0"
+                        max="48"
+                        step="1"
+                        value={timelineOffsetHours}
+                        onChange={(e) => {
+                          setTimelineOffsetHours(Number(e.target.value));
+                          if (isPlaying) setIsPlaying(false);
+                        }}
+                        className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                      />
+                      <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                        <span>현재 (0h)</span>
+                        <span>+12h</span>
+                        <span>내일 (+24h)</span>
+                        <span>+36h</span>
+                        <span>모레 (+48h)</span>
+                      </div>
+                    </div>
+                  </div>
 
                   {/* 4대 실시간/예측 해양·기상 카드 그리드
                       - 위험 수준 시 경고 배경색(bg-rose-950/80, border-rose-600) 자동 적용 */}
@@ -1484,7 +1490,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       <div className="flex items-center gap-1.5">
                         <span className="text-base">🌊</span>
                         <span className="font-bold text-xs text-slate-100">
-                          실시간 현장 수심 및 안착 시간
+                          수심 및 안착시간
                         </span>
                       </div>
                       <span className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
@@ -1498,9 +1504,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         <div className="text-lg font-black text-cyan-300 font-mono tracking-tight flex items-baseline gap-1">
                           <span>{realDepthResult.realDepthM.toFixed(1)}</span>
                           <span className="text-xs font-normal text-slate-400">m</span>
-                        </div>
-                        <div className="text-[9.5px] text-slate-400 truncate">
-                          기준면 보정: 해도 {realDepthResult.chartedDepth.toFixed(1)}m + 조위 {(realDepthResult.tideHeightCm / 100).toFixed(2)}m
                         </div>
                       </div>
 
@@ -1518,7 +1521,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     {/* 봉돌별 착저 예상 시간 (Sink Time) 3단 그리드 */}
                     <div className="space-y-1">
                       <div className="text-[10px] font-bold text-slate-300 flex items-center justify-between">
-                        <span>채비 바닥 안착 시간 (착저 카운트다운)</span>
+                        <span>채비 바닥 안착 시간</span>
                         <span className="text-[9px] text-slate-400 font-normal">유속 {simCurrentVel.toFixed(1)}m/s 기준</span>
                       </div>
                       <div className="grid grid-cols-3 gap-1.5 text-center">
@@ -1677,10 +1680,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             )}
 
-            {/* 4. 예상 입질 기회 카드 (요구사항 2-3) */}
+            {/* 4. 예상 입질 기회 카드 (에러 느낌 없는 안정적인 에메랄드 테마색 적용) */}
             {tide?.feedingTimes && tide.feedingTimes.length > 0 && (
               <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-                <div className="text-xs font-bold text-amber-300">
+                <div className="text-xs font-bold text-emerald-300">
                   <span>예상 입질 기회</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
@@ -1690,13 +1693,13 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     return (
                       <div
                         key={idx}
-                        className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between"
+                        className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between"
                       >
                         <div>
-                          <div className="font-bold text-amber-200">{cleanLabel || f.label}</div>
+                          <div className="font-bold text-emerald-200">{cleanLabel || f.label}</div>
                           <div className="text-[10px] text-slate-400">{cleanReason || f.reason}</div>
                         </div>
-                        <span className="font-mono font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-500/40 text-[11px]">
+                        <span className="font-mono font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/40 text-[11px]">
                           {f.timeRange}
                         </span>
                       </div>
@@ -1844,115 +1847,131 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
               return (
                 <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl shadow-lg space-y-2.5">
-                  <div className="flex items-center gap-1.5">
-                    <Fish size={15} className="text-cyan-400" />
-                    <span className="text-xs font-bold text-slate-100">
-                      실시간 어종별 입질 지수
-                    </span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsSpeciesBiteDrawerOpen(!isSpeciesBiteDrawerOpen)}
+                    className="w-full flex items-center justify-between cursor-pointer select-none"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Fish size={15} className="text-cyan-400" />
+                      <span className="text-xs font-bold text-slate-100">
+                        실시간 어종별 입질 지수
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        ({scoredList.length}종)
+                      </span>
+                    </div>
+                    <ChevronDown
+                      size={15}
+                      className={`text-slate-400 transition-transform duration-200 ${
+                        isSpeciesBiteDrawerOpen ? 'rotate-180 text-cyan-400' : ''
+                      }`}
+                    />
+                  </button>
 
-                  {/* 리스트 뷰 형태의 실시간 어종 목록 (요구사항 3-1) */}
-                  <div className="divide-y divide-slate-800/80 bg-slate-900/60 rounded-xl border border-slate-800 overflow-hidden">
-                    {scoredList.map((item) => {
-                      const { name, ecology, scoreInfo, isFavorite, hitsCount, isPeakSeason } = item;
-                      const score = scoreInfo.score;
-                      const isExpanded = expandedSpecies === name;
-                      const rigInfo = getSpeciesRigInfo(name);
+                  {/* 리스트 뷰 형태의 실시간 어종 목록 (Drawer 접힘/펼침 지원) */}
+                  {isSpeciesBiteDrawerOpen && (
+                    <div className="divide-y divide-slate-800/80 bg-slate-900/60 rounded-xl border border-slate-800 overflow-hidden">
+                      {scoredList.map((item) => {
+                        const { name, ecology, scoreInfo, isFavorite, hitsCount, isPeakSeason } = item;
+                        const score = scoreInfo.score;
+                        const isExpanded = expandedSpecies === name;
+                        const rigInfo = getSpeciesRigInfo(name);
 
-                      // 점수 등급별 스타일
-                      const scoreBg = score >= 80
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
-                        : score >= 65
-                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
-                        : score >= 50
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
-                        : 'bg-slate-800/80 text-slate-400 border-slate-700';
+                        // 점수 등급별 스타일
+                        const scoreBg = score >= 80
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
+                          : score >= 65
+                          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
+                          : score >= 50
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                          : 'bg-slate-800/80 text-slate-400 border-slate-700';
 
-                      const scoreLabel = score >= 80 ? '대박 찬스' : score >= 65 ? '호조황 기대' : score >= 50 ? '무난한 편' : '비활성';
+                        const scoreLabel = score >= 80 ? '대박 찬스' : score >= 65 ? '호조황 기대' : score >= 50 ? '무난한 편' : '비활성';
 
-                      return (
-                        <div
-                          key={`scored-species-${name}`}
-                          onClick={() => setExpandedSpecies(isExpanded ? null : name)}
-                          className={`p-2.5 transition select-none cursor-pointer rounded-xl ${
-                            isFavorite
-                              ? 'bg-amber-950/20 hover:bg-amber-950/30'
-                              : 'hover:bg-slate-850/60'
-                          } ${isExpanded ? 'bg-slate-900/90 ring-1 ring-cyan-500/30' : ''}`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              {isFavorite && (
-                                <span className="flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-bold">
-                                  <Star size={9} className="fill-amber-300" /> 관심
+                        return (
+                          <div
+                            key={`scored-species-${name}`}
+                            onClick={() => setExpandedSpecies(isExpanded ? null : name)}
+                            className={`p-2.5 transition select-none cursor-pointer rounded-xl ${
+                              isFavorite
+                                ? 'bg-amber-950/20 hover:bg-amber-950/30'
+                                : 'hover:bg-slate-850/60'
+                            } ${isExpanded ? 'bg-slate-900/90 ring-1 ring-cyan-500/30' : ''}`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {isFavorite && (
+                                  <span className="flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-bold">
+                                    <Star size={9} className="fill-amber-300" /> 관심
+                                  </span>
+                                )}
+
+                                {/* [요구사항 7] 물고기명 (클릭 시 아코디언으로 설명+선호물때+시간대+채비 일체형 펼침) */}
+                                <span className="font-bold text-sm text-slate-100 flex items-center gap-1">
+                                  <span>🐟 {name}</span>
+                                  <ChevronDown
+                                    size={13}
+                                    className={`text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180 text-cyan-300' : ''}`}
+                                  />
                                 </span>
-                              )}
 
-                              {/* [요구사항 7] 물고기명 (클릭 시 아코디언으로 설명+선호물때+시간대+채비 일체형 펼침) */}
-                              <span className="font-bold text-sm text-slate-100 flex items-center gap-1">
-                                <span>🐟 {name}</span>
-                                <ChevronDown
-                                  size={13}
-                                  className={`text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180 text-cyan-300' : ''}`}
-                                />
-                              </span>
-
-                              <span className="px-1.5 py-0.2 rounded bg-slate-800/90 text-slate-300 text-[10px]">
-                                {ecology.categoryName}
-                              </span>
-                              {isPeakSeason && (
-                                <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[9px] font-semibold">
-                                  제철
+                                <span className="px-1.5 py-0.2 rounded bg-slate-800/90 text-slate-300 text-[10px]">
+                                  {ecology.categoryName}
                                 </span>
-                              )}
-                              {hitsCount > 0 && (
-                                <span className="text-[10px] text-emerald-400 font-mono">
-                                  ({hitsCount}수)
-                                </span>
-                              )}
-                            </div>
-
-                            {/* 입질 점수 뱃지 */}
-                            <div className={`px-2 py-0.5 rounded-lg border font-mono font-bold text-xs flex items-center gap-1 shrink-0 ${scoreBg}`}>
-                              <span>{score}점</span>
-                              <span className="text-[9px] font-sans font-normal opacity-90">({scoreLabel})</span>
-                            </div>
-                          </div>
-
-                          {/* [요구사항 5 & 7] 원클릭 어종 설명 + 선호 물때/시간대 + 맞춤 추천 채비 일체형 아코디언 */}
-                          {isExpanded && (
-                            <div
-                              onClick={(e) => e.stopPropagation()}
-                              className="mt-2.5 pt-2.5 border-t border-slate-800/80 space-y-2.5 animate-in fade-in duration-150"
-                            >
-                              {/* 1. 어종 설명 & 생태 요약 */}
-                              <div className="p-2.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1.5 text-xs">
-                                <div className="text-slate-200 leading-relaxed text-[11px]">
-                                  {ecology.description}
-                                </div>
-                                <div className="flex flex-wrap gap-1.5 text-[10px] text-slate-400 pt-0.5">
-                                  {ecology.bottomName && (
-                                    <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
-                                      바닥: {ecology.bottomName}
-                                    </span>
-                                  )}
-                                  {ecology.waterLayerName && (
-                                    <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
-                                      유영층: {ecology.waterLayerName}
-                                    </span>
-                                  )}
-                                  {ecology.minLengthCm && (
-                                    <span className="px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-600/40 text-amber-300 font-bold">
-                                      {ecology.minLengthCm}cm 이하 방생
-                                    </span>
-                                  )}
-                                  {ecology.prohibitedNote && (
-                                    <span className="px-1.5 py-0.5 rounded bg-rose-950/50 border border-rose-800/40 text-rose-300 text-[9.5px]">
-                                      {ecology.prohibitedNote}
-                                    </span>
-                                  )}
-                                </div>
+                                {isPeakSeason && (
+                                  <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[9px] font-semibold">
+                                    제철
+                                  </span>
+                                )}
+                                {hitsCount > 0 && (
+                                  <span className="text-[10px] text-emerald-400 font-mono">
+                                    ({hitsCount}수)
+                                  </span>
+                                )}
                               </div>
+
+                              {/* 입질 점수 뱃지 (점수는 크게, 평가는 아래에 작게 표기) */}
+                              <div className={`px-2 py-0.5 rounded-lg border font-mono font-bold text-center shrink-0 min-w-[54px] ${scoreBg}`}>
+                                <span className="text-sm font-extrabold block leading-tight">{score}점</span>
+                                <span className="text-[9px] font-sans font-normal opacity-85 block leading-tight">{scoreLabel}</span>
+                              </div>
+                            </div>
+
+                            {/* [요구사항 5 & 7] 원클릭 어종 설명 + 선호 물때/시간대 + 맞춤 추천 채비 일체형 아코디언 */}
+                            {isExpanded && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="mt-2.5 pt-2.5 border-t border-slate-800/80 space-y-2.5 animate-in fade-in duration-150"
+                              >
+                                {/* 1. 어종 설명 & 생태 요약 */}
+                                <div className="p-2.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1.5 text-xs">
+                                  <div className="text-slate-200 leading-relaxed text-[11px]">
+                                    {ecology.description}
+                                  </div>
+                                  <div className="flex flex-wrap gap-1.5 text-[10px] text-slate-400 pt-0.5">
+                                    {ecology.bottomName && (
+                                      <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
+                                        바닥: {ecology.bottomName}
+                                      </span>
+                                    )}
+                                    {ecology.waterLayerName && (
+                                      <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
+                                        유영층: {ecology.waterLayerName}
+                                      </span>
+                                    )}
+                                    {ecology.minLengthCm && (
+                                      <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700/80 text-amber-300 font-bold">
+                                        {ecology.minLengthCm}cm 이하 방생
+                                      </span>
+                                    )}
+                                    {ecology.prohibitedNote && (
+                                      <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700/80 text-slate-300 text-[9.5px]">
+                                        {ecology.prohibitedNote}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
 
                               {/* 2. [요구사항 5] 선호 물때 & 선호 시간대 & 적정 수온 브리핑 */}
                               <div className="p-2.5 bg-gradient-to-r from-cyan-950/30 to-blue-950/30 rounded-xl border border-cyan-800/40 space-y-1.5 text-xs">
@@ -2027,12 +2046,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                 </div>
 
                                 {!rigInfo.rig?.isLureApplicable && rigInfo.rig?.lureAltText && (
-                                  <div className="text-[9.5px] text-rose-300 bg-rose-950/40 px-2 py-1 rounded border border-rose-900/50">
+                                  <div className="text-[9.5px] text-slate-300 bg-slate-900 px-2 py-1 rounded border border-slate-800">
                                     ⚠️ <strong>주의:</strong> {rigInfo.rig.lureAltText}
                                   </div>
                                 )}
 
-                                <div className="text-[10px] text-amber-200/90 bg-amber-950/40 p-1.5 rounded-lg border border-amber-900/40">
+                                <div className="text-[10px] text-slate-200 bg-slate-900 p-1.5 rounded-lg border border-slate-800">
                                   <strong>핵심 액션:</strong> {rigInfo.recommendedRig.action}
                                 </div>
                               </div>
@@ -2042,6 +2061,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       );
                     })}
                   </div>
+                  )}
                 </div>
               );
             })()}
@@ -2293,12 +2313,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
         {activeTab === 'DIRECTIONS' && (
           <div className="space-y-3 text-sm">
-            {/* 목적지 안내 & 도보 진입로/주차 팁 통합 박스 (요구사항 3-3) */}
+            {/* 목적지 안내 & 도보 진입로/주차 팁 통합 박스 (과도한 이중 박스 제거 및 슬레이트 톤 적용) */}
             <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
-              <span className="text-xs font-bold text-amber-400">
+              <span className="text-xs font-bold text-slate-200">
                 목적지
               </span>
-              <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 text-xs space-y-2">
+              <div className="text-xs space-y-2.5 pt-0.5">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="truncate">
                     <strong className="text-slate-400">네비 검색 지명:</strong>{' '}
@@ -2316,12 +2336,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     </a>
                   </div>
 
-                  {/* [요구사항 2-5] 목적지의 '카카오맵'과 '로드뷰'를 같은 줄에 표시 */}
+                  {/* 목적지의 '카카오맵'과 '로드뷰'를 같은 줄에 표시 (잔잔한 슬레이트 스타일) */}
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
                       onClick={() => openExternalUrl(kakaoNaviUrl)}
-                      className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                      className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
                     >
                       <span>카카오맵</span>
                       <ExternalLink size={11} />
@@ -2329,7 +2349,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     <button
                       type="button"
                       onClick={() => openExternalUrl(`https://map.kakao.com/link/roadview/${spot.lat},${spot.lng}`)}
-                      className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                      className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
                     >
                       <span>로드뷰</span>
                       <ExternalLink size={11} />
@@ -2338,7 +2358,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       <button
                         type="button"
                         onClick={() => openExternalUrl(spot.related_url!)}
-                        className="px-2.5 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                        className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
                         title={spot.related_url}
                       >
                         <span>관련 URL</span>
@@ -2374,7 +2394,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             </div>
 
-            {/* [요구사항 5] 정보 탭의 주요 대상어종 섹션 제거 ('어종과 조과' 탭으로 통합) 및 포인트 공략 방향 안내 */}
+            {/* 캐스팅 공략 방향 안내 */}
             {spot.casting_directions && spot.casting_directions.length > 0 && (
               <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1 text-xs text-slate-300">
                 <span className="text-[11px] font-bold text-slate-400">캐스팅 공략 방향</span>
@@ -2384,7 +2404,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             )}
 
-            {/* [요구사항 1.3] 연안 어종 정보 (앱 보유 전수 어종 리스트 뷰 & 종합 정보) */}
+            {/* 연안 어종 정보 (기본 숨김 아코디언 Drawer 및 간소화) */}
             {(() => {
               const uniqueSpeciesList = Array.from(
                 new Map(Object.values(SPECIES_ENCYCLOPEDIA).map((sp) => [sp.name, sp])).values()
@@ -2392,115 +2412,109 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
               return (
                 <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 font-bold text-xs text-cyan-300">
+                  <button
+                    type="button"
+                    onClick={() => setIsEncyclopediaDrawerOpen(!isEncyclopediaDrawerOpen)}
+                    className="w-full flex items-center justify-between cursor-pointer select-none"
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-slate-200">
                       <Fish size={15} className="text-cyan-400" />
                       <span>연안 어종 정보</span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800">
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-slate-900 text-slate-300 border border-slate-800">
                         {uniqueSpeciesList.length}종
                       </span>
                     </div>
-                    <span className="text-[10px] text-slate-400">터치 시 종합 생태·채비 정보</span>
-                  </div>
-
-                  {/* 검색 및 카테고리 필터 */}
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      placeholder="어종 검색 (예: 우럭, 감성돔, 갑오징어)..."
-                      value={encyclopediaSearch}
-                      onChange={(e) => setEncyclopediaSearch(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                    <ChevronDown
+                      size={15}
+                      className={`text-slate-400 transition-transform duration-200 ${
+                        isEncyclopediaDrawerOpen ? 'rotate-180 text-cyan-400' : ''
+                      }`}
                     />
+                  </button>
 
-                    <div className="flex gap-1 overflow-x-auto pb-0.5 text-[10.5px]">
-                      {[
-                        { id: 'ALL', label: '전체' },
-                        { id: 'ROCKFISH', label: '락피시' },
-                        { id: 'CEPHALOPOD', label: '두족류' },
-                        { id: 'SEA_BREAM', label: '도미류' },
-                        { id: 'PELAGIC', label: '회유성' },
-                        { id: 'BENTHIC', label: '저서성' },
-                      ].map((cat) => (
-                        <button
-                          type="button"
-                          key={cat.id}
-                          onClick={() => setEncyclopediaCategory(cat.id)}
-                          className={`px-2 py-0.8 rounded-md shrink-0 transition font-medium ${
-                            encyclopediaCategory === cat.id
-                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 font-bold'
-                              : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200'
-                          }`}
-                        >
-                          {cat.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  {/* Drawer 펼침 시 표시 */}
+                  {isEncyclopediaDrawerOpen && (
+                    <div className="space-y-2 pt-1">
+                      {/* 카테고리 필터 */}
+                      <div className="flex gap-1 overflow-x-auto pb-0.5 text-[10.5px]">
+                        {[
+                          { id: 'ALL', label: '전체' },
+                          { id: 'ROCKFISH', label: '락피시' },
+                          { id: 'CEPHALOPOD', label: '두족류' },
+                          { id: 'SEA_BREAM', label: '도미류' },
+                          { id: 'PELAGIC', label: '회유성' },
+                          { id: 'BENTHIC', label: '저서성' },
+                        ].map((cat) => (
+                          <button
+                            type="button"
+                            key={cat.id}
+                            onClick={() => setEncyclopediaCategory(cat.id)}
+                            className={`px-2 py-0.8 rounded-md shrink-0 transition font-medium ${
+                              encyclopediaCategory === cat.id
+                                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 font-bold'
+                                : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200'
+                            }`}
+                          >
+                            {cat.label}
+                          </button>
+                        ))}
+                      </div>
 
-                  {/* 어종 리스트 뷰 */}
-                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-0.5">
-                    {uniqueSpeciesList
-                      .filter((sp) => {
-                        if (encyclopediaCategory !== 'ALL' && sp.category !== encyclopediaCategory) return false;
-                        if (encyclopediaSearch.trim()) {
-                          const q = encyclopediaSearch.trim().toLowerCase();
-                          return (
-                            sp.name.toLowerCase().includes(q) ||
-                            (sp.scientificName && sp.scientificName.toLowerCase().includes(q)) ||
-                            sp.categoryName.toLowerCase().includes(q)
-                          );
-                        }
-                        return true;
-                      })
-                  .map((sp) => {
-                    const isExpanded = selectedEncyclopediaSpecies === sp.name;
-                    const curMonth = new Date().getMonth() + 1;
-                    const isTastiest = sp.tastiestMonths?.includes(curMonth);
-                    const isPeak = sp.peakMonths?.includes(curMonth);
+                      {/* 어종 리스트 뷰 */}
+                      <div className="space-y-1.5 max-h-80 overflow-y-auto pr-0.5">
+                        {uniqueSpeciesList
+                          .filter((sp) => {
+                            if (encyclopediaCategory !== 'ALL' && sp.category !== encyclopediaCategory) return false;
+                            return true;
+                          })
+                          .map((sp) => {
+                            const isExpanded = selectedEncyclopediaSpecies === sp.name;
+                            const curMonth = new Date().getMonth() + 1;
+                            const isTastiest = sp.tastiestMonths?.includes(curMonth);
+                            const isPeak = sp.peakMonths?.includes(curMonth);
 
-                    return (
-                      <div
-                        key={sp.name}
-                        className={`rounded-xl border transition overflow-hidden ${
-                          isExpanded
-                            ? 'bg-slate-900/95 border-cyan-500/60 shadow-lg'
-                            : 'bg-slate-900/60 border-slate-800/80 hover:border-slate-700'
-                        }`}
-                      >
-                        {/* 어종 요약 헤더 (클릭 시 토글) */}
-                        <button
-                          type="button"
-                          onClick={() => setSelectedEncyclopediaSpecies(isExpanded ? null : sp.name)}
-                          className="w-full p-2.5 flex items-center justify-between text-left transition cursor-pointer"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="font-bold text-xs text-white truncate">{sp.name}</span>
-                            <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700/80 shrink-0">
-                              {sp.categoryName.split('(')[0]}
-                            </span>
-                            {isTastiest && (
-                              <span className="text-[9px] px-1 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-500/40 font-bold shrink-0">
-                                🍽️제철
-                              </span>
-                            )}
-                            {isPeak && !isTastiest && (
-                              <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/40 font-bold shrink-0">
-                                🎣시즌
-                              </span>
-                            )}
-                          </div>
+                            return (
+                              <div
+                                key={sp.name}
+                                className={`rounded-xl border transition overflow-hidden ${
+                                  isExpanded
+                                    ? 'bg-slate-900/95 border-cyan-500/60 shadow-lg'
+                                    : 'bg-slate-900/60 border-slate-800/80 hover:border-slate-700'
+                                }`}
+                              >
+                                {/* 어종 요약 헤더 (클릭 시 토글) */}
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedEncyclopediaSpecies(isExpanded ? null : sp.name)}
+                                  className="w-full p-2.5 flex items-center justify-between text-left transition cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="font-bold text-xs text-white truncate">{sp.name}</span>
+                                    <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700/80 shrink-0">
+                                      {sp.categoryName.split('(')[0]}
+                                    </span>
+                                    {isTastiest && (
+                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-amber-300 border border-slate-700 font-bold shrink-0">
+                                        제철
+                                      </span>
+                                    )}
+                                    {isPeak && !isTastiest && (
+                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-emerald-300 border border-slate-700 font-bold shrink-0">
+                                        시즌
+                                      </span>
+                                    )}
+                                  </div>
 
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-[10px] font-mono text-cyan-300">
-                              {sp.tempRange.optMin}~{sp.tempRange.optMax}°C
-                            </span>
-                            <ChevronDown
-                              size={14}
-                              className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180 text-cyan-400' : ''}`}
-                            />
-                          </div>
-                        </button>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="text-[10px] font-mono text-cyan-300">
+                                      {sp.tempRange.optMin}~{sp.tempRange.optMax}°C
+                                    </span>
+                                    <ChevronDown
+                                      size={14}
+                                      className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180 text-cyan-400' : ''}`}
+                                    />
+                                  </div>
+                                </button>
 
                         {/* 클릭 시 펼쳐지는 어종 종합 정보 */}
                         {isExpanded && (
@@ -2542,13 +2556,13 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               )}
                             </div>
 
-                            {/* 금어기 및 포획 금지 규정 */}
+                            {/* 금어기 및 포획 금지 규정 (평범한 슬레이트 배경/외곽선) */}
                             {(sp.minLengthCm || sp.prohibitedPeriod || sp.prohibitedNote) && (
-                              <div className="p-2 rounded-lg bg-rose-950/30 border border-rose-900/50 text-[10px] text-rose-200 space-y-0.5">
-                                <div className="font-bold flex items-center gap-1">
+                              <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-[10px] text-slate-300 space-y-0.5">
+                                <div className="font-bold flex items-center gap-1 text-slate-200">
                                   <span>⚖️ 수산자원관리법 규정</span>
                                   {sp.minLengthCm && (
-                                    <span className="text-rose-400">
+                                    <span className="text-amber-300 font-semibold">
                                       (금지체장: {sp.minLengthCm}cm 이하 방생)
                                     </span>
                                   )}
@@ -2562,10 +2576,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               </div>
                             )}
 
-                            {/* 제철 및 맛 */}
+                            {/* 제철 및 맛 (평범한 슬레이트 배경/외곽선) */}
                             {sp.tastiestDesc && (
-                              <div className="text-[10px] text-amber-300 bg-amber-950/30 px-2 py-1 rounded border border-amber-900/40">
-                                <strong>😋 맛있는 제철:</strong> {sp.tastiestDesc} ({sp.tastiestMonths?.join(', ')}월)
+                              <div className="text-[10px] text-slate-300 bg-slate-900 px-2 py-1 rounded border border-slate-800">
+                                <strong>맛있는 제철:</strong> {sp.tastiestDesc} ({sp.tastiestMonths?.join(', ')}월)
                               </div>
                             )}
                           </div>
@@ -2575,13 +2589,15 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   })}
                 </div>
               </div>
-            );
-          })()}
+            )}
+          </div>
+        );
+      })()}
 
-          {/* 유튜브 실시간 현장 조황 & 낚시 영상 링크 (최신순 검색) */}
+          {/* 유튜브 실시간 현장 조황 & 낚시 영상 링크 (최신순 검색, 잔잔한 외곽선) */}
             <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-rose-400 flex items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
                   <span className="w-4 h-4 rounded bg-rose-600 flex items-center justify-center text-white text-[10px] font-black">
                     ▶
                   </span>
@@ -2595,7 +2611,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   href={`https://www.youtube.com/results?search_query=${encodeURIComponent(spot.name + ' 낚시')}&sp=CAI%253D`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-2.5 rounded-lg bg-rose-950/30 hover:bg-rose-900/40 border border-rose-800/40 hover:border-rose-600/60 text-slate-200 transition flex items-center justify-between group"
+                  className="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-200 transition flex items-center justify-between group"
                 >
                   <div className="truncate pr-2">
                     <div className="text-xs font-bold text-white group-hover:text-rose-300 truncate">
@@ -2603,7 +2619,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     </div>
                     <div className="text-[10px] text-slate-400">최근 조황 영상 보기</div>
                   </div>
-                  <ExternalLink size={13} className="text-rose-400 group-hover:text-rose-300 shrink-0" />
+                  <ExternalLink size={13} className="text-slate-400 group-hover:text-rose-300 shrink-0" />
                 </a>
 
                 {/* 2. 네비 명칭이 다를 경우 네비 지명 조황 */}
@@ -2612,7 +2628,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     href={`https://www.youtube.com/results?search_query=${encodeURIComponent(spot.navi_name + ' 낚시')}&sp=CAI%253D`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-rose-700/50 text-slate-200 transition flex items-center justify-between group"
+                    className="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-200 transition flex items-center justify-between group"
                   >
                     <div className="truncate pr-2">
                       <div className="text-xs font-bold text-white group-hover:text-rose-300 truncate">
@@ -2631,7 +2647,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${spot.name} ${sp} 낚시`)}&sp=CAI%253D`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-cyan-600/50 text-slate-200 transition flex items-center justify-between group"
+                    className="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-200 transition flex items-center justify-between group"
                   >
                     <div className="truncate pr-2">
                       <div className="text-xs font-bold text-white group-hover:text-cyan-300 truncate">
@@ -2647,17 +2663,18 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
             {/* 기타 안내 및 체크리스트 & 모바일 APK 다운로드 링크 */}
             <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
-              <span className="text-xs font-bold text-amber-300">
+              <span className="text-xs font-bold text-slate-200">
                 기타
               </span>
               <div className="grid grid-cols-2 gap-2 pt-1">
+                {/* 7.5 입질 지수 기준 색상을 체크리스트와 통일 (인디고 톤) */}
                 <button
                   type="button"
                   onClick={() => setIsBiteScoreHelpOpen(true)}
-                  className="p-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm active:scale-98 cursor-pointer"
+                  className="p-2.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/40 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm active:scale-98 cursor-pointer"
                   title="입질 종합 지수(Bite Index) 평가 기준 설명 열람"
                 >
-                  <Info size={14} className="text-amber-400 shrink-0" />
+                  <Info size={14} className="text-indigo-400 shrink-0" />
                   <span>입질지수 기준</span>
                 </button>
                 <button
@@ -2670,13 +2687,13 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 </button>
               </div>
 
-              {/* [요구사항 10] 모바일 앱 다운로드 (exfish.apk) 링크 */}
+              {/* 모바일 앱 다운로드 (exfish.apk) 링크 */}
               <div className="pt-2 border-t border-slate-800/80">
                 <a
                   href="https://tlogger.github.io/espFish/exfish.apk"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full p-2.5 rounded-xl bg-gradient-to-r from-cyan-950/80 via-slate-900 to-blue-950/80 hover:from-cyan-900 hover:to-blue-900 border border-cyan-500/40 text-cyan-200 text-xs font-bold transition flex items-center justify-between shadow-md group cursor-pointer"
+                  className="w-full p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-200 text-xs font-bold transition flex items-center justify-between shadow-md group cursor-pointer"
                   title="최신 ExFish Android APK 다운로드"
                 >
                   <div className="flex items-center gap-2">
@@ -2684,21 +2701,21 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     <div>
                       <div className="text-white font-bold group-hover:text-cyan-300 flex items-center gap-1.5">
                         <span>ExFish 모바일 앱 다운로드</span>
-                        <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-cyan-900/60 text-cyan-300 border border-cyan-700/60">.apk</span>
+                        <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700">.apk</span>
                       </div>
                       <div className="text-[10.5px] text-slate-400 font-normal">
                         Android 스마트폰 전용 설치 파일 (tlogger.github.io)
                       </div>
                     </div>
                   </div>
-                  <Download size={16} className="text-cyan-400 group-hover:translate-y-0.5 transition shrink-0" />
+                  <Download size={16} className="text-slate-400 group-hover:text-cyan-300 group-hover:translate-y-0.5 transition shrink-0" />
                 </a>
               </div>
 
-              {/* [요구사항 2] 앱 버전 정보 */}
+              {/* 7.6 앱 버전 정보: 시스템 버전 외곽선 제거 */}
               <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 font-mono">
                 <span>시스템 버전</span>
-                <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-cyan-400 font-bold">
+                <span className="text-cyan-400 font-bold">
                   v{APP_VERSION}
                 </span>
               </div>
@@ -2713,68 +2730,82 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
           return (
             <div className="space-y-3 text-xs">
-              {/* 새 메모 작성 폼 (요구사항 4-2, 4-3, 4-4) */}
-              <form onSubmit={handleAddSpotMemo} className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-300 text-[11px]">메모 남기기</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] text-slate-400 block mb-0.5">작성자 닉네임</label>
-                    <input
-                      type="text"
-                      required
-                      value={authorValue}
-                      onChange={(e) => {
-                        if (!isUserLoggedIn) setNewMemoAuthor(e.target.value);
-                      }}
-                      readOnly={isUserLoggedIn}
-                      placeholder="조사 닉네임"
-                      className={`w-full border rounded px-2.5 py-1.5 text-white font-medium focus:outline-none text-xs ${
-                        isUserLoggedIn
-                          ? 'bg-slate-800/60 border-slate-700/50 text-slate-300 cursor-not-allowed'
-                          : 'bg-slate-900 border-slate-700 focus:border-cyan-400'
-                      }`}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400 block mb-0.5">메모 유형</label>
-                    <select
-                      value={newMemoTag}
-                      onChange={(e) => setNewMemoTag(e.target.value as SpotMemoTag)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-white focus:outline-none focus:border-cyan-400 text-xs"
-                    >
-                      <option value="GENERAL">일반</option>
-                      <option value="SAFETY">안전</option>
-                      <option value="PARKING">이동</option>
-                      <option value="CONDITION">상황</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <textarea
-                    rows={2}
-                    required
-                    value={newMemoContent}
-                    onChange={(e) => setNewMemoContent(e.target.value)}
-                    placeholder="예: 간조 2시간 전부터 진입로가 드러납니다. 갯바위 젖은 곳 매우 미끄러우니 안전 유의하세요!"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs leading-relaxed"
+              {/* 새 메모 작성 폼 (Drawer 접힘/펼침 지원, 5줄 입력창, 통상 외곽선 적용) */}
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsMemoDrawerOpen(!isMemoDrawerOpen)}
+                  className="w-full flex items-center justify-between cursor-pointer select-none py-0.5"
+                >
+                  <span className="font-semibold text-slate-200 text-xs">메모 남기기</span>
+                  <ChevronDown
+                    size={15}
+                    className={`text-slate-400 transition-transform duration-200 ${
+                      isMemoDrawerOpen ? 'rotate-180 text-cyan-400' : ''
+                    }`}
                   />
-                </div>
+                </button>
 
-                <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={isSubmittingMemo || !newMemoContent.trim()}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:opacity-40 text-white font-bold transition shadow cursor-pointer"
-                  >
-                    <Send size={12} />
-                    <span>{isSubmittingMemo ? '등록 중...' : '등록'}</span>
-                  </button>
-                </div>
-              </form>
+                {isMemoDrawerOpen && (
+                  <form onSubmit={handleAddSpotMemo} className="space-y-2.5 pt-1 border-t border-slate-800/80">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">작성자 닉네임</label>
+                        <input
+                          type="text"
+                          required
+                          value={authorValue}
+                          onChange={(e) => {
+                            if (!isUserLoggedIn) setNewMemoAuthor(e.target.value);
+                          }}
+                          readOnly={isUserLoggedIn}
+                          placeholder="조사 닉네임"
+                          className={`w-full border rounded px-2.5 py-1.5 text-white font-medium focus:outline-none text-xs ${
+                            isUserLoggedIn
+                              ? 'bg-slate-800/60 border-slate-700/50 text-slate-300 cursor-not-allowed'
+                              : 'bg-slate-900 border-slate-700 focus:border-cyan-400'
+                          }`}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">메모 유형</label>
+                        <select
+                          value={newMemoTag}
+                          onChange={(e) => setNewMemoTag(e.target.value as SpotMemoTag)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-white focus:outline-none focus:border-cyan-400 text-xs"
+                        >
+                          <option value="GENERAL">일반</option>
+                          <option value="SAFETY">안전</option>
+                          <option value="PARKING">이동</option>
+                          <option value="CONDITION">상황</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <textarea
+                        rows={5}
+                        required
+                        value={newMemoContent}
+                        onChange={(e) => setNewMemoContent(e.target.value)}
+                        placeholder="예: 간조 2시간 전부터 진입로가 드러납니다. 갯바위 젖은 곳 매우 미끄러우니 안전 유의하세요!"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs leading-relaxed min-h-[110px]"
+                      />
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        disabled={isSubmittingMemo || !newMemoContent.trim()}
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:opacity-40 text-white font-bold transition shadow cursor-pointer"
+                      >
+                        <Send size={12} />
+                        <span>{isSubmittingMemo ? '등록 중...' : '등록'}</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
 
               {/* 태그 필터 칩 (요구사항 4-5) */}
               <div className="flex items-center gap-1.5 overflow-x-auto py-1">

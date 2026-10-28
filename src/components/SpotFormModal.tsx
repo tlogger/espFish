@@ -368,23 +368,23 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
                 도보 진입로 & 진입 주의구간
               </label>
               <textarea
-                rows={2}
+                rows={5}
                 value={directions}
                 onChange={(e) => setDirections(e.target.value)}
                 placeholder="예: 공영주차장 주차 후 붉은 등대 방면 테트라포드 도보 5분 진입 (장화 착용 요망)"
-                className="w-full bg-slate-850 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs"
+                className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs min-h-[110px] leading-relaxed"
               />
             </div>
           </div>
 
-          {/* 낚시 방법 선택 */}
+          {/* 낚시 방법 선택 (영문 제거) */}
           <div>
             <label className="block text-slate-300 mb-1.5 font-medium">주요 낚시 방법 (복수 선택 가능)</label>
             <div className="flex gap-2">
               {[
-                { id: 'LURE', label: '루어 (Lure)' },
-                { id: 'SURF', label: '원투 (Surf)' },
-                { id: 'FLOAT', label: '찌낚시 (Float)' },
+                { id: 'LURE', label: '루어' },
+                { id: 'SURF', label: '원투' },
+                { id: 'FLOAT', label: '찌낚시' },
               ].map((m) => {
                 const isSelected = selectedMethods.includes(m.id as FishingMethod);
                 return (
@@ -439,16 +439,16 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
               className="w-full bg-slate-800/90 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 mb-2"
             />
             <textarea
-              rows={2}
+              rows={5}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="수심 7~9m, 30m 전방 수중여 넘겨서 호핑 액션에 반응 좋음"
-              className="w-full bg-slate-800/90 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400"
+              className="w-full bg-slate-800/90 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-cyan-400 text-xs min-h-[110px] leading-relaxed"
             />
           </div>
 
-          {/* 관련 URL 입력 (요구사항 3: 블로그, 유튜브, 카페 링크 등) */}
-          <div className="p-3 bg-slate-800/60 border border-slate-700 rounded-xl space-y-1.5">
+          {/* 관련 URL 입력 (평범한 슬레이트 외곽선 적용) */}
+          <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1.5">
             <label className="block text-slate-300 text-xs font-semibold">
               관련 URL (선택)
             </label>
@@ -457,11 +457,11 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
               value={relatedUrl}
               onChange={(e) => setRelatedUrl(e.target.value)}
               placeholder="https://... (포인트 소개 영상, 블로그 조행기 등)"
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
+              className="w-full bg-slate-850 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
             />
           </div>
 
-          {/* 공개 여부 설정 (요구사항 5-6: '공개'로 변경 및 부가설명 삭제) */}
+          {/* 공개 여부 설정 */}
           <div className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700">
             <div>
               <span className="font-medium text-slate-200">공개</span>
@@ -477,7 +477,7 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
             </label>
           </div>
 
-          {/* 버튼: 플로팅(sticky)되지 않고 모달 창 콘텐츠 가장 아래에 자연스럽게 위치 */}
+          {/* 버튼: 수정 버튼 이름 Ok로 변경 */}
           <div className="pt-4 border-t border-slate-800 flex justify-end gap-3">
             <button
               type="button"
@@ -488,9 +488,9 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold shadow-lg shadow-cyan-500/20 transition active:scale-95 cursor-pointer"
+              className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold shadow-lg shadow-cyan-500/20 transition active:scale-95 cursor-pointer"
             >
-              {editingSpot ? '수정' : '포인트 저장하기'}
+              {editingSpot ? 'Ok' : 'Ok'}
             </button>
           </div>
         </form>
