@@ -322,6 +322,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
     ? weather.hourly.windSpeed[weatherIdx]
     : weather?.windSpeed ?? 0;
 
+  const simWindGust = isNow
+    ? weather?.windGust ?? simWindSpeed
+    : weatherIdx >= 0 && weather?.hourly?.windGust && weather.hourly.windGust[weatherIdx] != null
+    ? weather.hourly.windGust[weatherIdx]
+    : Math.max(weather?.windGust ?? 0, simWindSpeed);
+
   const simWindDir = isNow
     ? weather?.windDirection ?? 0
     : weatherIdx >= 0 && weather?.hourly?.windDirection && weather.hourly.windDirection[weatherIdx] != null
@@ -1179,7 +1185,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             })()}
             {/* 풍속·조류·파고 위험 수준 판정 및 위험 경고 배너 (최상단 배치로 슬라이더와 날씨 카드 연속성 확보) */}
             {(() => {
-              const isWindDanger = simWindSpeed >= 9.5 || (weather?.windGust ? weather.windGust >= 13.0 : false);
+              const isWindDanger = simWindSpeed >= 9.5 || simWindGust >= 13.0;
               const isWindWarning = !isWindDanger && simWindSpeed >= 6.5;
 
               const isCurrentDanger = simCurrentVel >= 0.9;
@@ -1327,7 +1333,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       <div className={`text-[10px] flex justify-between pt-1 border-t ${isWindDanger ? 'border-rose-800/80 text-rose-300' : 'border-slate-700/50 text-slate-400'}`}>
                         <span>돌풍:</span>
                         <span className={isWindDanger ? 'text-rose-200 font-bold' : 'text-amber-400 font-medium'}>
-                          {weather ? formatWindSpeed(weather.windGust, windUnit) : '--'}
+                          {formatWindSpeed(simWindGust, windUnit)}
                         </span>
                       </div>
                       {weather?.isObserved && (

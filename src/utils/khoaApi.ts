@@ -239,7 +239,7 @@ export async function fetchKhoaWaterDepth(lat: number, lng: number): Promise<Kho
   }
 }
 
-/** 5. ROMS 수치예측모델 유향/유속/수온 조회 */
+/** 5. ROMS 수치예측모델 유향/유속/수온 조회 (현재 시각에 가장 근접한 예측치 매칭) */
 export async function fetchKhoaRoms(lat: number, lng: number): Promise<KhoaRomsRecord | null> {
   const ymin = (lat - 0.02).toFixed(4);
   const ymax = (lat + 0.02).toFixed(4);
@@ -247,7 +247,7 @@ export async function fetchKhoaRoms(lat: number, lng: number): Promise<KhoaRomsR
   const xmax = (lng + 0.025).toFixed(4);
   const baseUrl = getKhoaApiBaseUrl();
 
-  const url = `${baseUrl}/1192136/roms/GetRomsApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&ymin=${ymin}&ymax=${ymax}&xmin=${xmin}&xmax=${xmax}&numOfRows=5`;
+  const url = `${baseUrl}/1192136/roms/GetRomsApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&ymin=${ymin}&ymax=${ymax}&xmin=${xmin}&xmax=${xmax}&numOfRows=200`;
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
@@ -256,16 +256,30 @@ export async function fetchKhoaRoms(lat: number, lng: number): Promise<KhoaRomsR
     const items = json?.body?.items?.item;
     if (!Array.isArray(items) || items.length === 0) return null;
 
-    const it = items[0];
-    if (it.crdir == null || it.crsp == null) return null;
+    // 현재 시각(KST)과 가장 오차가 적은 예측치 탐색 (어제 00:00 items[0] 고정 버그 방지)
+    const nowMs = Date.now();
+    let bestItem: any = null;
+    let minDiffMs = Infinity;
+
+    for (const it of items) {
+      if (it.crdir == null || it.crsp == null) continue;
+      const tMs = new Date(it.predcDt.replace(' ', 'T') + '+09:00').getTime();
+      const diff = Math.abs(nowMs - tMs);
+      if (diff < minDiffMs) {
+        minDiffMs = diff;
+        bestItem = it;
+      }
+    }
+
+    if (!bestItem) return null;
 
     return {
-      lat: Number(it.lat),
-      lot: Number(it.lot),
-      predcDt: it.predcDt,
-      crdir: Math.round(Number(it.crdir)),
-      crsp: Math.round(Number(it.crsp) * 100) / 100,
-      wtem: it.wtem != null ? Math.round(Number(it.wtem) * 10) / 10 : 0,
+      lat: Number(bestItem.lat),
+      lot: Number(bestItem.lot),
+      predcDt: bestItem.predcDt,
+      crdir: Math.round(Number(bestItem.crdir)),
+      crsp: Math.round(Number(bestItem.crsp) * 100) / 100,
+      wtem: bestItem.wtem != null ? Math.round(Number(bestItem.wtem) * 10) / 10 : 0,
     };
   } catch (e) {
     return null;

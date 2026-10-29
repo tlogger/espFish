@@ -100,6 +100,7 @@ export interface WeatherData {
     temp: number[];
     windSpeed: number[];
     windDirection: number[];
+    windGust?: number[];
     pop: number[]; // 강수확률
     weatherCode?: number[];
   };
