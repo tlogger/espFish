@@ -2,8 +2,8 @@
 > **슬로건**: *"ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며..."*  
 > **버전**: Version 5.0 (Field Ergonomics & Selective Safety Edition)  
 > **최종 개정일**: 2026년 10월 23일  
-> **공개 저장소**: [https://github.com/tlogger/espFish](https://github.com/tlogger/espFish)  
-> **라이브 서비스**: [https://tlogger.github.io/espFish/](https://tlogger.github.io/espFish/)  
+> **공개 저장소**: [https://github.com/tlogger/exfish](https://github.com/tlogger/exfish)  
+> **라이브 서비스**: [https://tlogger.github.io/exfish/](https://tlogger.github.io/exfish/)  
 > **문서 상태**: 모바일 Android 하이브리드 앱 및 웹 프로덕션 배포용 엔지니어링 표준 사양 (Audited & Approved by @reviewer)
 
 ---

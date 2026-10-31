@@ -13,6 +13,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
 
 public class MainActivity extends BridgeActivity {
     @Override
@@ -28,7 +29,7 @@ public class MainActivity extends BridgeActivity {
             settings.setJavaScriptCanOpenWindowsAutomatically(true);
             settings.setSupportMultipleWindows(true);
 
-            bridge.getWebView().setWebChromeClient(new WebChromeClient() {
+            bridge.getWebView().setWebChromeClient(new BridgeWebChromeClient(bridge) {
                 @Override
                 public boolean onJsAlert(WebView view, String url, String message, final android.webkit.JsResult result) {
                     new android.app.AlertDialog.Builder(view.getContext())

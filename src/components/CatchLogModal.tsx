@@ -5,6 +5,7 @@ import { syncCatchEnvironment } from '../utils/catchSync';
 import { formatCurrentVelocity, formatWindSpeed, getCompassDirection } from '../utils/weatherApi';
 import { generatePostMortemReport } from '../utils/postMortemEngine';
 import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
+import { compressImageFile } from '../utils/exifExtractor';
 
 interface CatchLogModalProps {
   isOpen: boolean;
@@ -232,8 +233,9 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
     setExifNotice('');
 
     try {
-      const localUrl = URL.createObjectURL(file);
-      setPhotoUrl(localUrl);
+      // 영구 보전 가능한 고화질 압축 Base64 데이터 생성 (blob: URL 소실 원천 방지)
+      const dataUrl = await compressImageFile(file);
+      setPhotoUrl(dataUrl);
 
       const res = await extractExifFromImage(file);
       const notices: string[] = [];

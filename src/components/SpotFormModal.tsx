@@ -1,5 +1,6 @@
 import React from 'react';
 import type { FishingMethod, FishingSpot, SpotType, SweetSpot } from '../types';
+import { compressImageFile } from '../utils/exifExtractor';
 
 interface SpotFormModalProps {
   isOpen: boolean;
@@ -124,9 +125,9 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
     setPendingGps(null);
 
     try {
-      // 1. 브라우저 로컬 미리보기 생성
-      const localUrl = URL.createObjectURL(file);
-      setPhotoUrls((prev) => [...prev, localUrl]);
+      // 1. 브라우저 및 클라우드 DB 영구 보전용 압축 Base64 Data URL 생성
+      const dataUrl = await compressImageFile(file);
+      setPhotoUrls((prev) => [...prev, dataUrl]);
 
       // 2. EXIF GPS 분석
       const res = await extractExifFromImage(file);

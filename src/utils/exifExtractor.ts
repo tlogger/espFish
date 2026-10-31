@@ -86,3 +86,50 @@ export async function extractExifFromImage(file: File): Promise<ExifExtractionRe
     return {};
   }
 }
+
+/**
+ * 사진 파일을 HTML5 Canvas를 활용하여 지정된 최대 해상도(기본 1200px)와 압축 품질(기본 0.75)의 Base64 Data URL로 인코딩합니다.
+ * 이를 통해 blob: URL 세션 소실 문제를 완벽히 해결하고, DB 및 로컬 스토리지에 안정적으로 영구 보전합니다.
+ */
+export async function compressImageFile(file: File, maxDim = 1200, quality = 0.75): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const resultStr = e.target?.result as string;
+      if (!resultStr) {
+        resolve('');
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(resultStr);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => {
+        resolve(resultStr);
+      };
+      img.src = resultStr;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
