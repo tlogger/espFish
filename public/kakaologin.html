@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>카카오 로그인 인증 중 - ExFish</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background-color: #020617;
+      color: #f8fafc;
+    }
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 4px solid #FEE500;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 20px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .title {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .desc {
+      font-size: 13px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="spinner"></div>
+  <div class="title">카카오 로그인 정보를 인증하고 있습니다...</div>
+  <div class="desc">잠시만 기다려주세요. ExFish 메인 화면으로 자동 이동합니다.</div>
+
+  <script type="text/javascript">
+    (async function() {
+      var searchParams = new URLSearchParams(window.location.search);
+      var code = searchParams.get('code');
+      var error = searchParams.get('error_description') || searchParams.get('error');
+
+      var basePath = window.location.pathname.replace(/\/kakaologin(\.html|\/.*)?$/, '/');
+      var cleanTarget = window.location.origin + basePath;
+
+      var redirected = false;
+      var redirectBack = function() {
+        if (redirected) return;
+        redirected = true;
+        window.location.replace(cleanTarget);
+      };
+
+      if (error) {
+        console.error('Kakao auth error:', error);
+        redirectBack();
+        return;
+      }
+
+      if (code) {
+        try {
+          var clientId = "61ebf0b7a0daf24cba357d92677c8d8a";
+          var isLocal = window.location.hostname === 'localhost';
+          var redirectUri = isLocal
+            ? (window.location.origin + '/kakaologin')
+            : "https://tlogger.github.io/exfish/kakaologin";
+
+          // 1. 카카오 토큰 발급 요청
+          var tokenRes = await fetch('https://kauth.kakao.com/oauth/token', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8'
+            },
+            body: new URLSearchParams({
+              grant_type: 'authorization_code',
+              client_id: clientId,
+              redirect_uri: redirectUri,
+              code: code
+            })
+          });
+
+          var tokenData = await tokenRes.json();
+
+          if (tokenData.access_token) {
+            // 2. 카카오 사용자 프로필 조회 (닉네임, 프로필사진)
+            var userRes = await fetch('https://kapi.kakao.com/v2/user/me', {
+              headers: {
+                Authorization: 'Bearer ' + tokenData.access_token
+              }
+            });
+
+            var kakaoUser = await userRes.json();
+            var kakaoAccount = kakaoUser.kakao_account || {};
+            var kakaoProfile = kakaoAccount.profile || {};
+            var kakaoProps = kakaoUser.properties || {};
+
+            var kakaoEmail = kakaoAccount.email || '';
+            var kakaoNickname = kakaoProfile.nickname
+              || kakaoProps.nickname
+              || kakaoAccount.name
+              || (kakaoEmail ? kakaoEmail.split('@')[0] : '')
+              || ('카카오조사_' + kakaoUser.id);
+            var kakaoPhoto = kakaoProfile.profile_image_url
+              || kakaoProps.profile_image
+              || '';
+
+            var authPayload = {
+              provider: 'kakao',
+              id: 'kakao_' + kakaoUser.id,
+              name: kakaoNickname,
+              email: kakaoEmail || '',
+              profile_image: kakaoPhoto,
+              access_token: tokenData.access_token,
+              timestamp: Date.now()
+            };
+
+            localStorage.setItem('exfish_kakao_auth_payload', JSON.stringify(authPayload));
+          } else {
+            console.warn('Kakao token exchange failed:', tokenData);
+            // 메인 앱에서 재시도할 수 있도록 code 저장
+            localStorage.setItem('exfish_kakao_code', code);
+          }
+        } catch (e) {
+          console.error('Kakao login processing failed:', e);
+          localStorage.setItem('exfish_kakao_code', code);
+        }
+      }
+
+      redirectBack();
+    })();
+  </script>
+</body>
+</html>

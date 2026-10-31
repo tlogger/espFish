@@ -17,11 +17,14 @@ import {
 } from 'lucide-react';
 import { DEFAULT_POPULAR_SPECIES, SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 import type { CurrentUnit, WindUnit } from '../types';
+import { buildOAuthAuthorizeUrl, type AuthProvider } from '../services/oauthService';
 
 export interface AuthUser {
   id: string; // 닉네임 또는 계정 ID
   email: string; // 사용자 이메일
   name: string; // 표시용 닉네임
+  profile_image?: string;
+  provider?: 'naver' | 'kakao' | 'google' | 'email';
   favoriteSpecies?: string[]; // 사용자가 설정한 관심 대상어 목록 (예: ['우럭', '광어'])
   windUnit?: WindUnit;
   currentUnit?: CurrentUnit;
@@ -236,6 +239,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     onClose();
   };
 
+  const handleSocialAuth = (provider: AuthProvider) => {
+    setError('');
+    const res = buildOAuthAuthorizeUrl(provider);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    if (res.url) {
+      window.location.href = res.url;
+    }
+  };
+
   const handleSaveSettings = () => {
     if (!currentUser) return;
     const trimmedId = userId.trim() || currentUser.id;
@@ -314,14 +329,41 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           {currentUser ? (
             /* 로그인 완료 상태: 계정 정보 및 단위/어종 설정 */
             <div className="space-y-4">
-              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
-                <div className="flex justify-between items-center text-slate-300">
-                  <span className="text-slate-400">활동 닉네임 / ID:</span>
-                  <span className="font-bold text-cyan-400 text-sm">{currentUser.id}</span>
+              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-850">
+                  <div className="flex items-center gap-2.5">
+                    {currentUser.profile_image ? (
+                      <img
+                        src={currentUser.profile_image}
+                        alt="Profile"
+                        className="w-10 h-10 rounded-full object-cover border border-cyan-500/50 shadow"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-cyan-950 border border-cyan-500/40 text-cyan-300 flex items-center justify-center font-bold text-sm">
+                        {(currentUser.name || currentUser.id).slice(0, 1)}
+                      </div>
+                    )}
+                    <div>
+                      <div className="font-bold text-white text-sm flex items-center gap-1.5">
+                        <span>{currentUser.name || currentUser.id}</span>
+                        {currentUser.provider === 'naver' && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/50 font-bold">네이버</span>
+                        )}
+                        {currentUser.provider === 'kakao' && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-500/50 font-bold">카카오</span>
+                        )}
+                        {currentUser.provider === 'google' && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-950 text-blue-300 border border-blue-500/50 font-bold">Google</span>
+                        )}
+                      </div>
+                      <span className="font-mono text-[11px] text-slate-400">{currentUser.email}</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center text-slate-300">
-                  <span className="text-slate-400">이메일:</span>
-                  <span className="font-mono text-slate-200">{currentUser.email}</span>
+
+                <div className="flex justify-between items-center text-slate-300 text-[11px]">
+                  <span className="text-slate-400">계정 식별자 (ID):</span>
+                  <span className="font-mono text-cyan-400 font-bold">{currentUser.id}</span>
                 </div>
                 <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1.5 border-t border-slate-800/80">
                   <span className="flex items-center gap-1">
@@ -486,56 +528,108 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               </div>
             </div>
           ) : (
-            /* 미로그인 상태: Email & 닉네임 간편 로그인 폼 */
-            <form onSubmit={handleSubmit} className="space-y-3.5">
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1 flex items-center gap-1.5">
-                  <Mail size={13} className="text-cyan-400" />
-                  <span>이메일 (Email)</span>
-                </label>
-                <input
-                  type="email"
-                  placeholder="예: fisher@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                  required
-                />
+            /* 미로그인 상태: 소셜 원클릭 로그인 + Email & 닉네임 간편 로그인 폼 */
+            <div className="space-y-4">
+              {/* 1. 소셜 로그인 버튼 그룹 */}
+              <div className="space-y-2">
+                {/* 네이버 버튼 */}
+                <button
+                  type="button"
+                  onClick={() => handleSocialAuth('naver')}
+                  className="w-full py-2.5 px-4 bg-[#03C75A] hover:bg-[#02b350] text-white font-bold rounded-xl transition shadow flex items-center justify-center gap-2.5 cursor-pointer active:scale-98"
+                >
+                  <svg className="w-4 h-4 fill-white shrink-0" viewBox="0 0 24 24">
+                    <path d="M16.273 12.845L7.37 0H0v24h7.727V11.155L16.63 24H24V0h-7.727v12.845z"/>
+                  </svg>
+                  <span>네이버로 시작하기</span>
+                </button>
+
+                {/* 카카오 버튼 */}
+                <button
+                  type="button"
+                  onClick={() => handleSocialAuth('kakao')}
+                  className="w-full py-2.5 px-4 bg-[#FEE500] hover:bg-[#ebd300] text-[#191919] font-bold rounded-xl transition shadow flex items-center justify-center gap-2.5 cursor-pointer active:scale-98"
+                >
+                  <svg className="w-4 h-4 fill-[#191919] shrink-0" viewBox="0 0 24 24">
+                    <path d="M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.708 4.8 4.27 6.054l-.87 3.23c-.08.3.18.57.46.45l3.87-2.54c.42.05.85.08 1.27.08 4.97 0 9-3.185 9-7.115C21 6.185 16.97 3 12 3z"/>
+                  </svg>
+                  <span>카카오로 시작하기</span>
+                </button>
+
+                {/* 구글 버튼 */}
+                <button
+                  type="button"
+                  onClick={() => handleSocialAuth('google')}
+                  className="w-full py-2.5 px-4 bg-white hover:bg-slate-100 text-slate-800 font-bold rounded-xl transition shadow flex items-center justify-center gap-2.5 border border-slate-300 cursor-pointer active:scale-98"
+                >
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.14z"/>
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                  </svg>
+                  <span>Google 계정으로 시작하기</span>
+                </button>
               </div>
 
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1 flex items-center gap-1.5">
-                  <Hash size={13} className="text-cyan-400" />
-                  <span>아이디 / 닉네임 (ID)</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="예: 바다의루크"
-                  value={userId}
-                  onChange={(e) => setUserId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                  required
-                />
+              {/* 구분선 */}
+              <div className="flex items-center my-3 text-slate-500">
+                <div className="flex-1 border-t border-slate-800"></div>
+                <span className="px-3 text-[10.5px] font-medium text-slate-400">또는 이메일 & 닉네임으로 직접 로그인</span>
+                <div className="flex-1 border-t border-slate-800"></div>
               </div>
 
-              <div className="p-3 bg-slate-950/70 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                <div className="flex items-center gap-1.5 text-cyan-400 font-medium">
-                  <ShieldCheck size={14} />
-                  <span>패스워드 없는 간편 로그인 & 30일 세션 유지</span>
+              {/* 2. 기존 Email & 닉네임 간편 로그인 폼 */}
+              <form onSubmit={handleSubmit} className="space-y-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1 flex items-center gap-1.5">
+                    <Mail size={13} className="text-cyan-400" />
+                    <span>이메일 (Email)</span>
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="예: fisher@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                    required
+                  />
                 </div>
-                <p className="leading-relaxed">
-                  별도의 복잡한 패스워드 없이 <strong>Email</strong>과 <strong>닉네임</strong>만으로 즉시 로그인되며, 등록하신 포인트 및 조과의 작성자로 연동됩니다. 로그인 상태는 <strong>30일간 유지</strong>됩니다.
-                </p>
-              </div>
 
-              <button
-                type="submit"
-                className="w-full py-2.5 px-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded-xl transition shadow-md shadow-cyan-600/20 flex items-center justify-center gap-1.5 active:scale-95"
-              >
-                <LogIn size={15} />
-                <span>로그인하기</span>
-              </button>
-            </form>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1 flex items-center gap-1.5">
+                    <Hash size={13} className="text-cyan-400" />
+                    <span>아이디 / 닉네임 (ID)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="예: 바다의루크"
+                    value={userId}
+                    onChange={(e) => setUserId(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                    required
+                  />
+                </div>
+
+                <div className="p-3 bg-slate-950/70 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                  <div className="flex items-center gap-1.5 text-cyan-400 font-medium">
+                    <ShieldCheck size={14} />
+                    <span>패스워드 없는 간편 로그인 & 30일 세션 유지</span>
+                  </div>
+                  <p className="leading-relaxed">
+                    별도의 복잡한 패스워드 없이 <strong>Email</strong>과 <strong>닉네임</strong>만으로 즉시 로그인되며, 등록하신 포인트 및 조과의 작성자로 연동됩니다. 로그인 상태는 <strong>30일간 유지</strong>됩니다.
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 px-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded-xl transition shadow-md shadow-cyan-600/20 flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+                >
+                  <LogIn size={15} />
+                  <span>로그인하기</span>
+                </button>
+              </form>
+            </div>
           )}
         </div>
       </div>

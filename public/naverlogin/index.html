@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>네이버 로그인 인증 중 - ExFish</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background-color: #020617;
+      color: #f8fafc;
+    }
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 4px solid #03C75A;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 20px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .title {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .desc {
+      font-size: 13px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="spinner"></div>
+  <div class="title">네이버 로그인 정보를 인증하고 있습니다...</div>
+  <div class="desc">잠시만 기다려주세요. ExFish 메인 화면으로 자동 이동합니다.</div>
+
+  <script type="text/javascript">
+    (function() {
+      var hash = window.location.hash || '';
+      var search = window.location.search || '';
+
+      var matchToken = hash.match(/access_token=([^&]+)/) || search.match(/access_token=([^&]+)/);
+      var accessToken = matchToken ? decodeURIComponent(matchToken[1]) : '';
+
+      var basePath = window.location.pathname.replace(/\/naverlogin(\.html|\/.*)?$/, '/');
+      var cleanTarget = window.location.origin + basePath;
+
+      var redirected = false;
+      function redirectBack() {
+        if (redirected) return;
+        redirected = true;
+        window.location.replace(cleanTarget);
+      }
+
+      if (!accessToken) {
+        redirectBack();
+        return;
+      }
+
+      // 기본 세션 페이로드 준비
+      var fallbackPayload = {
+        provider: 'naver',
+        id: 'naver_' + Date.now(),
+        name: '네이버 조사',
+        email: 'naver_angler@exfish.kr',
+        access_token: accessToken,
+        timestamp: Date.now()
+      };
+      localStorage.setItem('exfish_naver_auth_payload', JSON.stringify(fallbackPayload));
+
+      // 네이버 nid/me JSONP를 통한 실제 프로필 조회
+      var callbackName = '_naver_user_profile_' + Math.floor(Math.random() * 1000000);
+      var script = document.createElement('script');
+      var timeout = setTimeout(function() {
+        cleanup();
+        redirectBack();
+      }, 1800);
+
+      function cleanup() {
+        clearTimeout(timeout);
+        try {
+          delete window[callbackName];
+          if (script.parentNode) script.parentNode.removeChild(script);
+        } catch (e) {}
+      }
+
+      window[callbackName] = function(data) {
+        cleanup();
+        try {
+          if (data && data.response) {
+            var profile = data.response;
+            var realId = profile.id ? ('naver_' + profile.id) : fallbackPayload.id;
+            var realEmail = profile.email || '';
+            var realName = profile.nickname || profile.name || (realEmail ? realEmail.split('@')[0] : '') || '네이버 조사';
+            var realPhoto = profile.profile_image || '';
+
+            var successPayload = {
+              provider: 'naver',
+              id: realId,
+              name: realName,
+              email: realEmail || (realId + '@naver.com'),
+              profile_image: realPhoto,
+              access_token: accessToken,
+              timestamp: Date.now()
+            };
+            localStorage.setItem('exfish_naver_auth_payload', JSON.stringify(successPayload));
+          }
+        } catch (e) {
+          console.error('Naver profile error:', e);
+        }
+        redirectBack();
+      };
+
+      script.onerror = function() {
+        cleanup();
+        redirectBack();
+      };
+
+      script.src = 'https://openapi.naver.com/v1/nid/me?access_token=' + encodeURIComponent(accessToken) + '&oauth_callback=' + encodeURIComponent(callbackName);
+      (document.head || document.documentElement).appendChild(script);
+    })();
+  </script>
+</body>
+</html>

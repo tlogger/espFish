@@ -23,6 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 
+# Environment Variables
+.env
+.env*.local
+
 # Android Signing Keys & Large Binaries
 *.jks
 *.keystore

@@ -37,6 +37,7 @@ import {
 } from './utils/cloudDb';
 import { cacheSpotMetadata, getAllCachedSpots, subscribeNetworkStatus } from './utils/offlineStorage';
 import { setupHardwareBackButtonListener, isNativePlatform } from './utils/nativeBridge';
+import { parseOAuthCallback, processOAuthCallbackResult } from './services/oauthService';
 import { APP_VERSION } from './version';
 
 export function App() {
@@ -57,6 +58,25 @@ export function App() {
   // 로그인 상태 관리 (소셜 로그인 및 30일 세션 유지)
   const [currentUser, setCurrentUser] = React.useState<AuthUser | null>(() => getSavedAuthUser());
   const [isLoginModalOpen, setIsLoginModalOpen] = React.useState(false);
+
+  // 네이버, 카카오, 구글 소셜 로그인 콜백 수신 및 자동 처리
+  React.useEffect(() => {
+    const callbackData = parseOAuthCallback();
+    if (callbackData) {
+      // URL 해시 및 쿼리 파라미터 안전하게 정리하여 브라우저 재진입 루프 방지
+      window.history.replaceState({}, document.title, window.location.pathname);
+
+      processOAuthCallbackResult(callbackData).then((res) => {
+        if (res.user) {
+          setCurrentUser(res.user);
+          setIsLoginModalOpen(false);
+        }
+        if (res.message) {
+          alert(res.message);
+        }
+      });
+    }
+  }, []);
 
   // 환경 데이터 상태
   const [weather, setWeather] = React.useState<WeatherData | null>(null);
