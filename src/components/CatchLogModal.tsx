@@ -82,16 +82,20 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
   const [fishSpecies, setFishSpecies] = React.useState('우럭');
   const [fishCount, setFishCount] = React.useState(1);
   const [fishCountInput, setFishCountInput] = React.useState('1');
-  const [fishSize, setFishSize] = React.useState<number | undefined>(28.5);
+  const [fishSizeInput, setFishSizeInput] = React.useState('28.5');
   const [catchMethod, setCatchMethod] = React.useState<FishingMethod>('LURE');
   const [lureBait, setLureBait] = React.useState('지그헤드 1/2oz + 웜');
   const [catchDate, setCatchDate] = React.useState(new Date().toISOString().split('T')[0]);
 
-  // 출조 시간 분할 필드
+  // 출조 시간 분할 필드 (시작 시각, 종료 시각, 히트 시각 - 각 필드는 독립적으로 동작)
   const [startTime, setStartTime] = React.useState('14:00');
   const [endTime, setEndTime] = React.useState('18:30');
   const [catchTime, setCatchTime] = React.useState('16:30'); // 히트 시각
-  const [durationMins, setDurationMins] = React.useState<number>(270);
+
+  // 낚시 시간은 종료 시각 - 시작 시각으로 자동 연산 (수동 입력 불가)
+  const durationMins = React.useMemo(() => {
+    return calcDurationMinutes(startTime, endTime);
+  }, [startTime, endTime]);
 
   // 시간 포맷 헬퍼 (예: '3시간 20분')
   const formatDurationKor = (mins: number) => {
@@ -125,62 +129,70 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
   const [isSyncing, setIsSyncing] = React.useState(false);
   const [exifNotice, setExifNotice] = React.useState('');
 
-  // 시작/종료 시각 변경 시 총 낚시 시간 자동 갱신
-  React.useEffect(() => {
-    const mins = calcDurationMinutes(startTime, endTime);
-    setDurationMins(mins);
-  }, [startTime, endTime]);
+  // 모달 열림 시 1회만 초기화 (부모의 10초 타이머나 날씨 갱신으로 인한 입력값 초기화 버그 원천 방지)
+  const initializedRef = React.useRef(false);
+  const lastEditingLogIdRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
-    if (editingLog) {
-      setFishSpecies(editingLog.fish_species);
-      const initialCount = editingLog.fish_count ?? (editingLog.is_hitless ? 0 : 1);
-      setFishCount(initialCount);
-      setFishCountInput(String(initialCount));
-      setFishSize(editingLog.fish_size_cm);
-      setCatchMethod(editingLog.catch_method);
-      setLureBait(editingLog.lure_bait || '');
-      setCatchDate(editingLog.catch_date);
-      setCatchTime(editingLog.catch_time);
-      setStartTime(editingLog.start_time || '14:00');
-      setEndTime(editingLog.end_time || '18:30');
-      setDurationMins(editingLog.duration_minutes ?? calcDurationMinutes(editingLog.start_time || '14:00', editingLog.end_time || '18:30'));
-      setCatchLat(editingLog.lat);
-      setCatchLng(editingLog.lng);
-      setCatchMul(editingLog.catch_mul);
-      setTideState(editingLog.tide_state);
-      setWaterTemp(editingLog.water_temp);
-      setWindSpeed(editingLog.wind_speed);
-      if (editingLog.wind_direction != null) setWindDirection(editingLog.wind_direction);
-      if (editingLog.current_velocity != null) setSimCurrentVel(editingLog.current_velocity);
-      setPhotoUrl(editingLog.photo_url || '');
-      setMemo(editingLog.memo || '');
-      setExifNotice('');
-    } else {
-      setFishSpecies('우럭');
-      setFishCount(1);
-      setFishSize(28.5);
-      setCatchMethod('LURE');
-      setLureBait('지그헤드 1/2oz + 웜');
-      setCatchDate(new Date().toISOString().split('T')[0]);
-      setStartTime('14:00');
-      setEndTime('18:30');
-      setCatchTime('16:30');
-      setDurationMins(270);
-      setCatchLat(spotLat);
-      setCatchLng(spotLng);
-      if (currentTide) setCatchMul(currentTide.mulText);
-      if (currentWaterTemp) setWaterTemp(currentWaterTemp);
-      if (currentWeather) {
-        setWindSpeed(currentWeather.windSpeed);
-        if (currentWeather.windDirection != null) setWindDirection(currentWeather.windDirection);
+    if (isOpen) {
+      const currentLogId = editingLog ? editingLog.id : null;
+      if (!initializedRef.current || lastEditingLogIdRef.current !== currentLogId) {
+        initializedRef.current = true;
+        lastEditingLogIdRef.current = currentLogId;
+
+        if (editingLog) {
+          setFishSpecies(editingLog.fish_species);
+          const initialCount = editingLog.fish_count ?? (editingLog.is_hitless ? 0 : 1);
+          setFishCount(initialCount);
+          setFishCountInput(String(initialCount));
+          setFishSizeInput(editingLog.fish_size_cm != null ? String(editingLog.fish_size_cm) : '');
+          setCatchMethod(editingLog.catch_method);
+          setLureBait(editingLog.lure_bait || '');
+          setCatchDate(editingLog.catch_date);
+          setCatchTime(editingLog.catch_time);
+          setStartTime(editingLog.start_time || '14:00');
+          setEndTime(editingLog.end_time || '18:30');
+          setCatchLat(editingLog.lat);
+          setCatchLng(editingLog.lng);
+          setCatchMul(editingLog.catch_mul);
+          setTideState(editingLog.tide_state);
+          setWaterTemp(editingLog.water_temp);
+          setWindSpeed(editingLog.wind_speed);
+          if (editingLog.wind_direction != null) setWindDirection(editingLog.wind_direction);
+          if (editingLog.current_velocity != null) setSimCurrentVel(editingLog.current_velocity);
+          setPhotoUrl(editingLog.photo_url || '');
+          setMemo(editingLog.memo || '');
+          setExifNotice('');
+        } else {
+          setFishSpecies('우럭');
+          setFishCount(1);
+          setFishCountInput('1');
+          setFishSizeInput('28.5');
+          setCatchMethod('LURE');
+          setLureBait('지그헤드 1/2oz + 웜');
+          setCatchDate(new Date().toISOString().split('T')[0]);
+          setStartTime('14:00');
+          setEndTime('18:30');
+          setCatchTime('16:30');
+          setCatchLat(spotLat);
+          setCatchLng(spotLng);
+          if (currentTide) setCatchMul(currentTide.mulText);
+          if (currentWaterTemp) setWaterTemp(currentWaterTemp);
+          if (currentWeather) {
+            setWindSpeed(currentWeather.windSpeed);
+            if (currentWeather.windDirection != null) setWindDirection(currentWeather.windDirection);
+          }
+          if (currentVelocity) setSimCurrentVel(currentVelocity);
+          setPhotoUrl('');
+          setMemo('');
+          setExifNotice('');
+        }
       }
-      if (currentVelocity) setSimCurrentVel(currentVelocity);
-      setPhotoUrl('');
-      setMemo('');
-      setExifNotice('');
+    } else {
+      initializedRef.current = false;
+      lastEditingLogIdRef.current = null;
     }
-  }, [editingLog, currentTide, currentWaterTemp, currentWeather, currentVelocity, spotLat, spotLng, isOpen]);
+  }, [isOpen, editingLog, spotLat, spotLng]);
 
   const isHitless = fishCount === 0;
 
@@ -285,8 +297,12 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
       return;
     }
 
-    const countNum = Math.max(0, Number(fishCount) || 0);
+    const parsedCount = parseInt(fishCountInput, 10);
+    const countNum = isNaN(parsedCount) ? Math.max(0, Number(fishCount) || 0) : Math.max(0, parsedCount);
     const hitlessFlag = countNum === 0;
+
+    const parsedSize = fishSizeInput.trim() ? parseFloat(fishSizeInput) : undefined;
+    const finalSize = hitlessFlag || parsedSize == null || isNaN(parsedSize) ? undefined : parsedSize;
 
     onSaveLog({
       spot_id: spotId,
@@ -298,7 +314,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
       end_time: endTime,
       duration_minutes: durationMins,
       fish_species: fishSpecies.trim(),
-      fish_size_cm: hitlessFlag ? undefined : (fishSize ? Number(fishSize) : undefined),
+      fish_size_cm: finalSize,
       fish_count: countNum,
       is_hitless: hitlessFlag,
       catch_method: catchMethod,
@@ -344,6 +360,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
               if (fishCount === 0) {
                 setFishCount(1);
                 setFishCountInput('1');
+                if (!fishSizeInput) setFishSizeInput('28.5');
               }
             }}
             className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
@@ -359,7 +376,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
             onClick={() => {
               setFishCount(0);
               setFishCountInput('0');
-              setFishSize(undefined);
+              setFishSizeInput('');
             }}
             className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
               isHitless
@@ -411,7 +428,8 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
 
                 const hasMinLength = matchedEcology.minLengthCm != null;
                 const hasProhibited = !!matchedEcology.prohibitedPeriod;
-                const isUnderSize = !isHitless && fishSize != null && hasMinLength && fishSize <= (matchedEcology.minLengthCm || 0);
+                const currentLen = fishSizeInput.trim() ? parseFloat(fishSizeInput) : undefined;
+                const isUnderSize = !isHitless && currentLen != null && hasMinLength && currentLen <= (matchedEcology.minLengthCm || 0);
 
                 return (
                   <div className="mt-1.5 p-2 rounded-lg bg-slate-950/70 border border-slate-800 text-[11px] space-y-1">
@@ -431,7 +449,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                     </div>
                     {isUnderSize && (
                       <p className="text-rose-400 font-bold animate-pulse text-[11px] pt-0.5">
-                        ⚠️ 측정 체장({fishSize}cm)이 법정 금지체장({matchedEcology.minLengthCm}cm) 이하입니다. 어린 치어는 즉시 방생하셨나요? (위반 시 과태료 최대 80만 원)
+                        ⚠️ 측정 체장({currentLen}cm)이 법정 금지체장({matchedEcology.minLengthCm}cm) 이하입니다. 어린 치어는 즉시 방생하셨나요? (위반 시 과태료 최대 80만 원)
                       </p>
                     )}
                   </div>
@@ -482,8 +500,8 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                   type="number"
                   step="0.5"
                   disabled={isHitless}
-                  value={isHitless ? '' : (fishSize ?? '')}
-                  onChange={(e) => setFishSize(e.target.value ? parseFloat(e.target.value) : undefined)}
+                  value={isHitless ? '' : fishSizeInput}
+                  onChange={(e) => setFishSizeInput(e.target.value)}
                   placeholder={isHitless ? '꽝 (기록 생략)' : '선택 (예: 35.5)'}
                   className={`w-full bg-slate-900 border rounded-lg px-3 py-2 text-white font-mono focus:outline-none ${
                     isHitless ? 'border-slate-800 text-slate-500 bg-slate-950 cursor-not-allowed' : 'border-slate-700 focus:border-cyan-400'
@@ -556,13 +574,13 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
               />
             </div>
 
-            {/* 낚시 시작/종료 시각 (모바일 분 단위 잘림 방지 및 터치 피커 대응) */}
+            {/* 시작/종료 시각 (각각 독립적으로 수정되며, 낚시 시간은 자동 연산됨) */}
             {(() => {
               const isNextDay = Boolean(startTime && endTime && endTime < startTime);
               return (
                 <div className="space-y-2.5">
                   <div>
-                    <label className="block text-slate-400 mb-1 text-xs">낚시 시작 시각</label>
+                    <label className="block text-slate-400 mb-1 text-xs">시작 시각</label>
                     <input
                       type="time"
                       value={startTime}
@@ -574,7 +592,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-slate-400 text-xs flex items-center gap-1.5">
-                        <span>낚시 종료 시각</span>
+                        <span>종료 시각</span>
                         {isNextDay && (
                           <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold">
                             다음날
@@ -611,21 +629,11 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                 </div>
               )}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-slate-300 font-medium text-xs">낚시 시간</label>
-                  <span className="text-[11px] text-cyan-300 font-mono font-semibold">
-                    {formatDurationKor(durationMins)}
-                  </span>
+                <label className="text-slate-300 font-medium text-xs block mb-1">낚시 시간 (자동 계산)</label>
+                <div className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-cyan-300 font-mono font-semibold flex items-center justify-between min-h-[42px]">
+                  <span>{formatDurationKor(durationMins)}</span>
+                  <span className="text-xs text-slate-400 font-normal">({durationMins}분)</span>
                 </div>
-                <input
-                  type="number"
-                  min="0"
-                  step="10"
-                  value={durationMins}
-                  onChange={(e) => setDurationMins(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                  placeholder="분 단위 입력"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-cyan-400"
-                />
               </div>
             </div>
           </div>

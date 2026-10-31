@@ -36,13 +36,16 @@ import {
   saveCloudSpot,
 } from './utils/cloudDb';
 import { cacheSpotMetadata, getAllCachedSpots, subscribeNetworkStatus } from './utils/offlineStorage';
+import { loadLogsFromStorage, saveLogsToStorage } from './utils/storage';
 import { setupHardwareBackButtonListener, isNativePlatform, getNativeLocation } from './utils/nativeBridge';
 import { parseOAuthCallback, processOAuthCallbackResult } from './services/oauthService';
 import { APP_VERSION } from './version';
 
 export function App() {
   const [spots, setSpots] = React.useState<FishingSpot[]>([]);
-  const [catchLogs, setCatchLogs] = React.useState<CatchLog[]>([]);
+  const [catchLogs, setCatchLogs] = React.useState<CatchLog[]>(() => {
+    return loadLogsFromStorage();
+  });
   const [selectedSpot, setSelectedSpot] = React.useState<FishingSpot | null>(null);
   const [editingSpot, setEditingSpot] = React.useState<FishingSpot | null>(null);
   const [editingCatchLog, setEditingCatchLog] = React.useState<CatchLog | null>(null);
@@ -220,7 +223,7 @@ export function App() {
   const [environmentMap, setEnvironmentMap] = React.useState<Record<string, SpotRealtimeSummary>>({});
   const [userLocation, setUserLocation] = React.useState<{ lat: number; lng: number } | null>(null);
 
-  // 기기 로컬 저장소 대신 오직 Supabase DB에서만 포인트 및 조과 데이터 로드 (오프라인 시 로컬 캐시 폴백)
+  // 기기 로컬 저장소 및 Supabase DB 조과 데이터 로드 (오프라인 시 로컬 캐시 폴백)
   const reloadData = React.useCallback(async () => {
     try {
       const [cSpots, cLogs] = await Promise.all([
@@ -229,6 +232,7 @@ export function App() {
       ]);
       setSpots(cSpots);
       setCatchLogs(cLogs);
+      saveLogsToStorage(cLogs);
       // 오프라인 대비 로컬 캐시 백업
       cSpots.forEach((s) => cacheSpotMetadata(s));
       if (cSpots.length > 0 && !selectedSpot) {
@@ -269,6 +273,10 @@ export function App() {
       if (cached.length > 0) {
         setSpots(cached);
         if (!selectedSpot) handleSelectSpot(cached[0], false);
+      }
+      const localLogs = loadLogsFromStorage();
+      if (localLogs && localLogs.length > 0) {
+        setCatchLogs(localLogs);
       }
     }
   }, [selectedSpot, userLocation]);
@@ -605,29 +613,47 @@ export function App() {
     }
   };
 
-  // 조과 기록 생성 및 수정 핸들러 (오직 Supabase DB에 직접 저장)
+  // 조과 기록 생성 및 수정 핸들러 (Supabase 클라우드 DB 및 로컬 스토리지 즉시 동기화)
   const handleSaveCatchLog = async (logData: Omit<CatchLog, 'id' | 'created_at'>) => {
     try {
+      let finalLog: CatchLog;
       if (editingCatchLog) {
-        const updatedLog: CatchLog = {
+        finalLog = {
           ...editingCatchLog,
           ...logData,
           photo_url: logData.photo_url || undefined,
         };
-        await saveCloudCatchLog(updatedLog);
+        await saveCloudCatchLog(finalLog);
         setEditingCatchLog(null);
       } else {
-        const newLog: CatchLog = {
+        finalLog = {
           ...logData,
           id: `log-${Date.now()}`,
           user_id: currentUser ? currentUser.id : (logData.user_id || 'user-me'),
-          user_name: currentUser ? currentUser.id : (logData.user_name || '나의 조과'),
+          user_name: currentUser ? (currentUser.customNickname || currentUser.name || currentUser.id) : (logData.user_name || '나의 조과'),
           created_at: new Date().toISOString(),
         };
-        await saveCloudCatchLog(newLog);
+        await saveCloudCatchLog(finalLog);
       }
-      const cLogs = await fetchCloudLogs();
-      setCatchLogs(cLogs);
+
+      // UI 및 오프라인 캐시 즉시 업데이트
+      setCatchLogs((prev) => {
+        const next = editingCatchLog
+          ? prev.map((l) => (l.id === finalLog.id ? finalLog : l))
+          : [finalLog, ...prev.filter((l) => l.id !== finalLog.id)];
+        saveLogsToStorage(next);
+        return next;
+      });
+
+      // 최신 서버 데이터 재동기화 (백그라운드)
+      try {
+        const cLogs = await fetchCloudLogs();
+        setCatchLogs(cLogs);
+        saveLogsToStorage(cLogs);
+      } catch (syncErr) {
+        console.warn('Supabase fetchCloudLogs post-save background sync warning:', syncErr);
+      }
+
       setIsCatchLogModalOpen(false);
     } catch (e: any) {
       console.error('Supabase catch log save error:', e);
@@ -635,12 +661,20 @@ export function App() {
     }
   };
 
-  // 조과 기록 삭제 핸들러 (오직 Supabase DB에서 직접 삭제)
+  // 조과 기록 삭제 핸들러 (Supabase DB 및 로컬 스토리지 삭제)
   const handleDeleteCatchLog = async (logId: string) => {
     try {
       await deleteCloudCatchLog(logId);
-      const cLogs = await fetchCloudLogs();
-      setCatchLogs(cLogs);
+      setCatchLogs((prev) => {
+        const next = prev.filter((l) => l.id !== logId);
+        saveLogsToStorage(next);
+        return next;
+      });
+      try {
+        const cLogs = await fetchCloudLogs();
+        setCatchLogs(cLogs);
+        saveLogsToStorage(cLogs);
+      } catch (syncErr) {}
     } catch (e: any) {
       console.error('Supabase catch log delete error:', e);
       alert(`Supabase DB 조과 삭제에 실패했습니다: ${e?.message || ''}`);

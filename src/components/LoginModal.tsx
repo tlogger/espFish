@@ -291,7 +291,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     onChangeCurrentUnit(localCurrentUnit);
     if (onUpdateFavorites) onUpdateFavorites(selectedSpecies);
     onLogin(updated);
-    alert('계정 및 환경 설정이 성공적으로 저장되었습니다.');
     onClose();
   };
 
@@ -320,13 +319,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-white">
-                {currentUser ? '환경 설정' : 'exfish 소셜 로그인'}
+                {currentUser ? '환경 설정' : '소셜 로그인'}
               </h2>
-              {!currentUser && (
-                <p className="text-[11px] text-slate-400">
-                  네이버 · 카카오 · 구글 계정으로 1초 간편 로그인
-                </p>
-              )}
             </div>
           </div>
           <button
@@ -584,16 +578,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   </svg>
                   <span>Google 계정으로 시작하기</span>
                 </button>
-              </div>
-
-              <div className="p-3.5 bg-slate-950/70 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1.5">
-                <div className="flex items-center gap-1.5 text-cyan-400 font-medium">
-                  <ShieldCheck size={14} />
-                  <span>공식 OAuth2 소셜 로그인 & 30일 세션 유지</span>
-                </div>
-                <p className="leading-relaxed">
-                  별도의 비밀번호 없이 <strong>네이버 · 카카오 · 구글</strong> 공식 계정으로 안전하고 빠르게 로그인할 수 있습니다. 첫 로그인 시에는 소셜 프로필의 이름이 적용되며, 로그인 후 환경 설정에서 언제든지 닉네임과 관심 어종, 기상 단위를 변경할 수 있습니다.
-                </p>
               </div>
             </div>
           )}

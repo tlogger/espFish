@@ -75,23 +75,31 @@ function toDbSpotRecord(spot: FishingSpot): Record<string, unknown> {
 
 /** catch_logs 테이블에 존재하는 컬럼만 추출 */
 function toDbLogRecord(log: CatchLog): Record<string, unknown> {
-  // 조류, 풍향, 출조 시간(시작/종료/총시간), 꽝 여부를 memo 필드에 안전하게 보존하여 스키마 에러 방지
-  let memoText = log.memo || '';
-  if (log.current_velocity != null && !memoText.includes('[CURRENT:')) {
+  // 기존 시스템 태그들을 완벽히 정리한 후 최신 데이터로 다시 부착 (이전 태그 잔존으로 인한 수정 무시 버그 원천 방지)
+  let memoText = (log.memo || '')
+    .replace(/\s*\[CURRENT:[^\]]*\]/g, '')
+    .replace(/\s*\[WIND_DIR:[^\]]*\]/g, '')
+    .replace(/\s*\[TIME:[^\]]*\]/g, '')
+    .replace(/\s*\[HITLESS\]/g, '')
+    .trim();
+
+  if (log.current_velocity != null) {
     const velTag = `[CURRENT:${log.current_velocity}${log.current_direction != null ? `@${log.current_direction}` : ''}]`;
     memoText = memoText ? `${memoText} ${velTag}` : velTag;
   }
-  if (log.wind_direction != null && !memoText.includes('[WIND_DIR:')) {
+  if (log.wind_direction != null) {
     const windTag = `[WIND_DIR:${log.wind_direction}]`;
     memoText = memoText ? `${memoText} ${windTag}` : windTag;
   }
-  if ((log.start_time || log.end_time || log.duration_minutes != null) && !memoText.includes('[TIME:')) {
+  if (log.start_time || log.end_time || log.duration_minutes != null) {
     const timeTag = `[TIME:${log.start_time || ''}~${log.end_time || ''}(${log.duration_minutes ?? ''})]`;
     memoText = memoText ? `${memoText} ${timeTag}` : timeTag;
   }
-  if ((log.fish_count === 0 || log.is_hitless) && !memoText.includes('[HITLESS]')) {
+  if (log.fish_count === 0 || log.is_hitless) {
     memoText = memoText ? `${memoText} [HITLESS]` : '[HITLESS]';
   }
+
+  const isHitless = log.fish_count === 0 || log.is_hitless;
 
   const record: Record<string, unknown> = {
     id: log.id,
@@ -103,7 +111,7 @@ function toDbLogRecord(log: CatchLog): Record<string, unknown> {
     lat: log.lat ?? null,
     lng: log.lng ?? null,
     fish_species: log.fish_species,
-    fish_size_cm: (log.fish_count === 0 || log.is_hitless) ? null : (log.fish_size_cm ?? null),
+    fish_size_cm: isHitless ? null : (log.fish_size_cm ?? null),
     fish_count: log.fish_count ?? 0,
     catch_method: log.catch_method,
     lure_bait: log.lure_bait ?? '',
@@ -274,7 +282,7 @@ function fromDbLogRecord(record: any): CatchLog {
     if (match) {
       if (match[1]) currentVel = parseFloat(match[1]);
       if (match[2]) currentDir = parseFloat(match[2]);
-      memoText = memoText.replace(/\s*\[CURRENT:[^\]]+\]/, '').trim();
+      memoText = memoText.replace(/\s*\[CURRENT:[^\]]*\]/g, '').trim();
     }
   }
 
@@ -282,7 +290,7 @@ function fromDbLogRecord(record: any): CatchLog {
     const match = memoText.match(/\[WIND_DIR:([0-9.]+)\]/);
     if (match && match[1]) {
       windDir = parseFloat(match[1]);
-      memoText = memoText.replace(/\s*\[WIND_DIR:[^\]]+\]/, '').trim();
+      memoText = memoText.replace(/\s*\[WIND_DIR:[^\]]*\]/g, '').trim();
     }
   }
 
@@ -292,13 +300,13 @@ function fromDbLogRecord(record: any): CatchLog {
       if (match[1]) startTime = match[1];
       if (match[2]) endTime = match[2];
       if (match[3]) durationMins = parseInt(match[3], 10);
-      memoText = memoText.replace(/\s*\[TIME:[^\]]+\]/, '').trim();
+      memoText = memoText.replace(/\s*\[TIME:[^\]]*\]/g, '').trim();
     }
   }
 
   if (memoText && memoText.includes('[HITLESS]')) {
     isHitless = true;
-    memoText = memoText.replace(/\s*\[HITLESS\]/, '').trim();
+    memoText = memoText.replace(/\s*\[HITLESS\]/g, '').trim();
   }
 
   return {
