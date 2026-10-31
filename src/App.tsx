@@ -71,9 +71,6 @@ export function App() {
           setCurrentUser(res.user);
           setIsLoginModalOpen(false);
         }
-        if (res.message) {
-          alert(res.message);
-        }
       });
     }
   }, []);

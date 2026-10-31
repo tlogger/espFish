@@ -10,6 +10,8 @@ import {
 import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon, Map as MapIcon, Satellite, Moon, Sun, LocateFixed, ChevronUp, Plus, Minus } from 'lucide-react';
 import { MaterialSpotMarker } from './MaterialSpotMarker';
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo, SweetSpot } from '../types';
+import type { AuthUser } from './LoginModal';
+import { isUserAdmin } from '../services/oauthService';
 import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
 import { KOREA_DEPTH_CONTOURS, estimateDepthAtPoint } from '../data/depthContours';
 import { generateDynamicBathymetryContours } from '../utils/dynamicBathymetryEngine';
@@ -125,7 +127,7 @@ interface MapViewProps {
   microAdjustSpot?: FishingSpot | null;
   onCancelMicroAdjust?: () => void;
   onConfirmMicroAdjust?: (spotId: string, newLat: number, newLng: number) => void;
-  currentUser?: { id: string; name: string } | null;
+  currentUser?: AuthUser | null;
   onStartMicroAdjust?: (spot: FishingSpot) => void;
   onOpenDetail?: (spot: FishingSpot) => void;
   onEditSpot?: (spot: FishingSpot) => void;
@@ -161,6 +163,8 @@ export const MapView: React.FC<MapViewProps> = ({
   isSunMode = false,
   onToggleSunMode,
 }) => {
+  const isAdmin = isUserAdmin(currentUser);
+
   // 카카오 지도 SDK 동적 로더
   const [loading, error] = useKakaoLoader({
     appkey: KAKAO_APP_KEY,
@@ -1923,9 +1927,16 @@ export const MapView: React.FC<MapViewProps> = ({
             className="p-2.5 bg-slate-900/95 backdrop-blur-md border border-cyan-500/70 rounded-2xl shadow-2xl text-white text-xs font-sans space-y-1.5 animate-in fade-in zoom-in-95 duration-150 min-w-[190px] select-none pointer-events-auto"
           >
             <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 px-1">
-              <span className="font-bold text-cyan-300 text-xs truncate max-w-[140px]">
-                {contextMenuSpot.name}
-              </span>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="font-bold text-cyan-300 text-xs truncate max-w-[130px]">
+                  {contextMenuSpot.name}
+                </span>
+                {isAdmin && (
+                  <span className="text-[10px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/60 font-bold flex-shrink-0">
+                    👑 관리자
+                  </span>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setContextMenuSpot(null)}

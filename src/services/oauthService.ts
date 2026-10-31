@@ -5,6 +5,17 @@ import { createClient } from '@supabase/supabase-js';
 
 export type AuthProvider = 'google' | 'kakao' | 'naver';
 
+// 최고 관리자 계정 목록 (구글 계정 paedros@gmail.com 포함 모든 권한)
+export const ADMIN_EMAILS = ['paedros@gmail.com'];
+
+/** 최고 관리자 권한 확인 함수 */
+export function isUserAdmin(user?: { email?: string | null; isAdmin?: boolean } | null): boolean {
+  if (!user) return false;
+  if (user.isAdmin === true) return true;
+  if (!user.email) return false;
+  return ADMIN_EMAILS.includes(user.email.toLowerCase().trim());
+}
+
 const OAUTH_KEYS_STORAGE = 'exfish_oauth_client_ids';
 
 export interface OAuthClientConfig {
@@ -273,12 +284,14 @@ export async function processOAuthCallbackResult(callbackData: {
   }
 
   const now = Date.now();
+  const isAdmin = isUserAdmin({ email: userEmail });
   const authUser: AuthUser = {
     id: providerUserId,
     name: userName,
     email: userEmail,
     profile_image: userPhoto,
     provider,
+    isAdmin,
     favoriteSpecies: ['우럭', '광어'],
     loggedInAt: now,
     expiresAt: now + 30 * 24 * 60 * 60 * 1000,
@@ -302,10 +315,9 @@ export async function processOAuthCallbackResult(callbackData: {
 
   saveAuthUser(authUser);
 
-  const providerTitle = provider === 'naver' ? '네이버' : provider === 'kakao' ? '카카오' : '구글';
   return {
     success: true,
     user: authUser,
-    message: `${userName} 조사님 환영합니다! ${providerTitle} 계정으로 로그인이 완료되었습니다.`,
+    message: '',
   };
 }

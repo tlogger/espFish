@@ -48,6 +48,8 @@ import type {
 import { calculateSingleSpeciesScore } from '../utils/biteScore';
 import { ChecklistModal } from './ChecklistModal';
 import { BiteScoreHelpModal } from './BiteScoreHelpModal';
+import type { AuthUser } from './LoginModal';
+import { isUserAdmin } from '../services/oauthService';
 import { deleteCloudMemo, fetchCloudMemos, saveCloudMemo } from '../utils/cloudDb';
 import { SPECIES_ENCYCLOPEDIA, type SpeciesCategory, type SpeciesEcology } from '../utils/speciesDatabase';
 import { SpeciesQuickModal } from './SpeciesQuickModal';
@@ -76,7 +78,7 @@ interface SpotDetailPanelProps {
   onToggleFavorite?: (spotId: string) => void;
   windUnit: WindUnit;
   currentUnit: CurrentUnit;
-  currentUser?: { id: string; name: string } | null;
+  currentUser?: AuthUser | null;
   onStartMicroAdjust?: (spot: FishingSpot) => void;
   onOpenCatchLogModal: () => void;
   onEditLog: (log: CatchLog) => void;
@@ -121,6 +123,15 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
   // 갯바위 들물 탈출 골든타임 비프 경보 활성화 상태 (Phase 3: 네이티브 푸시/알람 연동)
   const [isEvacAlarmEnabled, setIsEvacAlarmEnabled] = React.useState(false);
+
+  // 관리자(구글 paedros@gmail.com) 및 작성자 권한 판별
+  const isAdmin = isUserAdmin(currentUser);
+  const isSpotOwner = Boolean(
+    spot.user_id === 'user-me' ||
+    spot.user_id === 'user-esper-1' ||
+    (currentUser && (spot.user_id === currentUser.id || spot.author_name === currentUser.name))
+  );
+  const canManageSpot = isAdmin || isSpotOwner;
   const evacAlarmIntervalRef = React.useRef<any>(null);
 
   const toggleEvacAlarm = async () => {
@@ -405,6 +416,11 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   {spot.spot_type === 'ROCK' ? '갯바위' : spot.spot_type === 'SEAWALL' ? '석축' : spot.spot_type === 'BREAKWATER' ? '방파제' : spot.spot_type === 'BEACH' ? '해변/백사장' : '선착장'}
                 </span>
                 <span className="text-[10px] text-slate-300 drop-shadow">작성: {spot.author_name}</span>
+                {isAdmin && (
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/50 font-bold ml-1">
+                    👑 ADMIN
+                  </span>
+                )}
                 {spot.photo_urls && spot.photo_urls.length > 1 && (
                   <div className="flex gap-1 ml-1 bg-black/50 backdrop-blur-sm px-1.5 py-0.5 rounded-full border border-white/10">
                     {spot.photo_urls.map((_, idx) => (
@@ -479,24 +495,36 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 >
                   <Share2 size={13} />
                 </button>
-                <button
-                  onClick={() => onEditSpot(spot)}
-                  className="p-1.5 rounded-lg bg-black/60 backdrop-blur-sm text-slate-200 hover:text-cyan-400 border border-white/10 transition"
-                  title="수정"
-                >
-                  <Edit size={13} />
-                </button>
-                <button
-                  onClick={() => {
-                    if (window.confirm(`'${spot.name}' 포인트를 정말 삭제하시겠습니까?`)) {
-                      onDeleteSpot(spot.id);
-                    }
-                  }}
-                  className="p-1.5 rounded-lg bg-black/60 backdrop-blur-sm text-slate-200 hover:text-rose-400 border border-white/10 transition"
-                  title="삭제"
-                >
-                  <Trash2 size={13} />
-                </button>
+                {canManageSpot && (
+                  <>
+                    <button
+                      onClick={() => onEditSpot(spot)}
+                      className={`p-1.5 rounded-lg backdrop-blur-sm transition border ${
+                        isAdmin
+                          ? 'bg-amber-950/70 border-amber-500/50 text-amber-300 hover:text-white'
+                          : 'bg-black/60 border-white/10 text-slate-200 hover:text-cyan-400'
+                      }`}
+                      title={isAdmin ? '포인트 수정 (관리자 전권)' : '포인트 수정'}
+                    >
+                      <Edit size={13} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`'${spot.name}' 포인트를 정말 삭제하시겠습니까?`)) {
+                          onDeleteSpot(spot.id);
+                        }
+                      }}
+                      className={`p-1.5 rounded-lg backdrop-blur-sm transition border ${
+                        isAdmin
+                          ? 'bg-rose-950/70 border-rose-500/50 text-rose-300 hover:text-white'
+                          : 'bg-black/60 border-white/10 text-slate-200 hover:text-rose-400'
+                      }`}
+                      title={isAdmin ? '포인트 삭제 (관리자 전권)' : '포인트 삭제'}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </>
+                )}
                 {/* 모바일 앱/웹 창 아래로 내리기 ('V' ChevronDown 버튼으로 교체) */}
                 <button
                   onClick={onMinimize || onClose}
@@ -2185,24 +2213,28 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         <span className="text-[11px] text-slate-400">
                           {log.catch_date} {log.catch_time}
                         </span>
-                        <button
-                          onClick={() => onEditLog(log)}
-                          className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-cyan-400 transition"
-                          title="조과 기록 수정"
-                        >
-                          <Edit size={13} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`'${log.fish_species}' 조과 기록을 삭제하시겠습니까?`)) {
-                              onDeleteLog(log.id);
-                            }
-                          }}
-                          className="p-1 rounded bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 transition"
-                          title="조과 기록 삭제"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        {Boolean(isAdmin || log.user_id === 'user-me' || (currentUser && log.user_id === currentUser.id)) && (
+                          <>
+                            <button
+                              onClick={() => onEditLog(log)}
+                              className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-cyan-400 transition"
+                              title={isAdmin ? "조과 기록 수정 (관리자 권한)" : "조과 기록 수정"}
+                            >
+                              <Edit size={13} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm(`'${log.fish_species}' 조과 기록을 삭제하시겠습니까?`)) {
+                                  onDeleteLog(log.id);
+                                }
+                              }}
+                              className="p-1 rounded bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 transition"
+                              title={isAdmin ? "조과 기록 삭제 (관리자 권한)" : "조과 기록 삭제"}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -2897,13 +2929,19 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] text-slate-500 font-mono">{dateStr}</span>
-                          <button
-                            onClick={() => handleDeleteSpotMemo(m.id)}
-                            className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
-                            title="메모 삭제"
-                          >
-                            <Trash2 size={12} />
-                          </button>
+                          {(isAdmin || m.user_name === (currentUser?.name || '') || m.user_id === 'user-me' || (currentUser && m.user_id === currentUser.id)) && (
+                            <button
+                              onClick={() => {
+                                if (window.confirm('이 필드 메모를 삭제하시겠습니까?')) {
+                                  handleDeleteSpotMemo(m.id);
+                                }
+                              }}
+                              className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
+                              title={isAdmin ? "메모 삭제 (관리자 권한)" : "메모 삭제"}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
                         </div>
                       </div>
                       <p className="text-slate-300 text-xs leading-relaxed whitespace-pre-line pl-0.5">

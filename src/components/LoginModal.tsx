@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { DEFAULT_POPULAR_SPECIES, SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 import type { CurrentUnit, WindUnit } from '../types';
-import { buildOAuthAuthorizeUrl, type AuthProvider } from '../services/oauthService';
+import { buildOAuthAuthorizeUrl, isUserAdmin, type AuthProvider } from '../services/oauthService';
 
 export interface AuthUser {
   id: string; // 닉네임 또는 계정 ID
@@ -25,6 +25,7 @@ export interface AuthUser {
   name: string; // 표시용 닉네임
   profile_image?: string;
   provider?: 'naver' | 'kakao' | 'google' | 'email';
+  isAdmin?: boolean; // 최고 관리자 권한 여부
   favoriteSpecies?: string[]; // 사용자가 설정한 관심 대상어 목록 (예: ['우럭', '광어'])
   windUnit?: WindUnit;
   currentUnit?: CurrentUnit;
@@ -103,6 +104,9 @@ export function getSavedAuthUser(): AuthUser | null {
     const user: AuthUser = JSON.parse(raw);
     if (!user.name) {
       user.name = user.id;
+    }
+    if (user.email && isUserAdmin(user)) {
+      user.isAdmin = true;
     }
 
     // 30일 세션 만료 검증
@@ -220,10 +224,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }
 
     const now = Date.now();
+    const isAdmin = isUserAdmin({ email: trimmedEmail });
     const user: AuthUser = {
       id: trimmedId,
       name: trimmedId,
       email: trimmedEmail,
+      isAdmin,
       favoriteSpecies: selectedSpecies,
       windUnit: localWindUnit,
       currentUnit: localCurrentUnit,
@@ -261,6 +267,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       id: trimmedId,
       name: trimmedId,
       email: trimmedEmail,
+      isAdmin: isUserAdmin({ email: trimmedEmail }),
       favoriteSpecies: selectedSpecies,
       windUnit: localWindUnit,
       currentUnit: localCurrentUnit,
@@ -330,7 +337,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             /* 로그인 완료 상태: 계정 정보 및 단위/어종 설정 */
             <div className="space-y-4">
               <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-850">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     {currentUser.profile_image ? (
                       <img
@@ -344,8 +351,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                       </div>
                     )}
                     <div>
-                      <div className="font-bold text-white text-sm flex items-center gap-1.5">
+                      <div className="font-bold text-white text-sm flex items-center gap-1.5 flex-wrap">
                         <span>{currentUser.name || currentUser.id}</span>
+                        {isUserAdmin(currentUser) && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/60 font-bold flex items-center gap-0.5 shadow-sm">
+                            👑 관리자
+                          </span>
+                        )}
                         {currentUser.provider === 'naver' && (
                           <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/50 font-bold">네이버</span>
                         )}
@@ -359,18 +371,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                       <span className="font-mono text-[11px] text-slate-400">{currentUser.email}</span>
                     </div>
                   </div>
-                </div>
-
-                <div className="flex justify-between items-center text-slate-300 text-[11px]">
-                  <span className="text-slate-400">계정 식별자 (ID):</span>
-                  <span className="font-mono text-cyan-400 font-bold">{currentUser.id}</span>
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1.5 border-t border-slate-800/80">
-                  <span className="flex items-center gap-1">
-                    <ShieldCheck size={13} className="text-emerald-400" />
-                    로그인 세션 유효기간:
-                  </span>
-                  <span className="text-emerald-300 font-medium">{expiryDateStr}까지 (30일)</span>
                 </div>
               </div>
 
