@@ -49,44 +49,44 @@ export const MaterialSpotMarker: React.FC<MaterialSpotMarkerProps> = ({
       {/* 선택 시 외곽 펄스 파동 링 */}
       {isSelected && (
         <span
-          className="absolute w-8 h-8 rounded-full animate-ping opacity-60"
+          className="absolute w-10 h-10 rounded-full animate-ping opacity-60"
           style={{ backgroundColor: ringColor }}
         />
       )}
 
-      {/* 마커 본체: 2/3 축소 크기 (22px~24px), 모던 머티리얼 디자인 */}
+      {/* 마커 본체: 가독성을 위해 1.3배 확대한 최적 크기 (28px~31px), 모던 머티리얼 디자인 */}
       <div
-        className={`relative flex items-center justify-center w-[22px] h-[22px] sm:w-[24px] sm:h-[24px] rounded-full bg-gradient-to-tr ${bgGradient} border-[1.5px] border-white shadow-md transition-all duration-200 ${
+        className={`relative flex items-center justify-center w-[28px] h-[28px] sm:w-[31px] sm:h-[31px] rounded-full bg-gradient-to-tr ${bgGradient} border-2 border-white shadow-md transition-all duration-200 ${
           isSelected
             ? 'scale-115 ring-2 ring-cyan-300 ring-offset-2 ring-offset-slate-900 shadow-cyan-500/60 shadow-lg'
             : 'hover:scale-110 shadow-black/50'
         }`}
         style={{
           boxShadow: isSelected
-            ? `0 0 12px ${ringColor}, 0 2px 6px rgba(0,0,0,0.6)`
-            : '0 2px 5px rgba(0,0,0,0.45)',
+            ? `0 0 14px ${ringColor}, 0 2px 8px rgba(0,0,0,0.6)`
+            : '0 2px 6px rgba(0,0,0,0.45)',
         }}
       >
         {primaryType === 'LURE' && (
-          <Fish size={12} className="text-white" strokeWidth={2.4} />
+          <Fish size={16} className="text-white" strokeWidth={2.3} />
         )}
 
         {primaryType === 'SURF' && (
-          <Anchor size={11} className="text-white" strokeWidth={2.4} />
+          <Anchor size={15} className="text-white" strokeWidth={2.3} />
         )}
 
         {primaryType === 'FLOAT' && (
-          <Waves size={11} className="text-white" strokeWidth={2.4} />
+          <Waves size={15} className="text-white" strokeWidth={2.3} />
         )}
 
         {primaryType === 'COMBO' && (
-          <Fish size={12} className="text-white" strokeWidth={2.4} />
+          <Fish size={16} className="text-white" strokeWidth={2.3} />
         )}
 
         {/* 즐겨찾기(찜) 황금 스타 미니 배지 */}
         {isFavorited && (
-          <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400 border border-slate-900 flex items-center justify-center shadow">
-            <svg viewBox="0 0 24 24" className="w-2 h-2 fill-slate-950 text-slate-950">
+          <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-amber-400 border border-slate-900 flex items-center justify-center shadow">
+            <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 fill-slate-950 text-slate-950">
               <polygon points="12,2 15,9 22,9 17,14 19,21 12,17 5,21 7,14 2,9 9,9" />
             </svg>
           </div>
