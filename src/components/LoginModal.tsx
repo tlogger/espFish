@@ -1,10 +1,7 @@
 import React from 'react';
 import {
-  LogIn,
   User as UserIcon,
   X,
-  Mail,
-  Hash,
   Check,
   Heart,
   Sparkles,
@@ -23,6 +20,7 @@ export interface AuthUser {
   id: string; // 닉네임 또는 계정 ID
   email: string; // 사용자 이메일
   name: string; // 표시용 닉네임
+  customNickname?: string; // 사용자가 직접 설정한 별칭
   profile_image?: string;
   provider?: 'naver' | 'kakao' | 'google' | 'email';
   isAdmin?: boolean; // 최고 관리자 권한 여부
@@ -31,6 +29,13 @@ export interface AuthUser {
   currentUnit?: CurrentUnit;
   loggedInAt?: number;
   expiresAt?: number; // 30일간 유효
+}
+
+export interface UserPreferences {
+  customNickname?: string;
+  favoriteSpecies?: string[];
+  windUnit?: WindUnit;
+  currentUnit?: CurrentUnit;
 }
 
 interface LoginModalProps {
@@ -97,6 +102,36 @@ export function getRememberedCredentials(): { email: string; nickname: string } 
   return { email, nickname };
 }
 
+export function saveUserPreferences(userId: string, email: string, prefs: UserPreferences): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const json = JSON.stringify(prefs);
+    if (userId) localStorage.setItem(`exfish_user_prefs_${userId}`, json);
+    if (email) localStorage.setItem(`exfish_user_prefs_${email.toLowerCase().trim()}`, json);
+    if (prefs.customNickname) {
+      saveRememberedCredentials(email, prefs.customNickname);
+    }
+    if (prefs.windUnit) localStorage.setItem('exfish_wind_unit', prefs.windUnit);
+    if (prefs.currentUnit) localStorage.setItem('exfish_current_unit', prefs.currentUnit);
+    if (prefs.favoriteSpecies) localStorage.setItem('exfish_favorite_species', JSON.stringify(prefs.favoriteSpecies));
+  } catch (e) {
+    console.warn('Failed to save user prefs:', e);
+  }
+}
+
+export function getSavedUserPreferences(userId?: string, email?: string): UserPreferences | null {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    let raw: string | null = null;
+    if (userId) raw = localStorage.getItem(`exfish_user_prefs_${userId}`);
+    if (!raw && email) raw = localStorage.getItem(`exfish_user_prefs_${email.toLowerCase().trim()}`);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (e) {}
+  return null;
+}
+
 export function getSavedAuthUser(): AuthUser | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_AUTH_USER) || localStorage.getItem(LEGACY_STORAGE_KEY);
@@ -107,6 +142,16 @@ export function getSavedAuthUser(): AuthUser | null {
     }
     if (user.email && isUserAdmin(user)) {
       user.isAdmin = true;
+    }
+
+    // 저장된 사용자 설정(별칭, 단위, 어종) 동기화
+    const prefs = getSavedUserPreferences(user.id, user.email);
+    if (prefs) {
+      if (prefs.customNickname) user.name = prefs.customNickname;
+      if (prefs.customNickname) user.customNickname = prefs.customNickname;
+      if (prefs.favoriteSpecies) user.favoriteSpecies = prefs.favoriteSpecies;
+      if (prefs.windUnit) user.windUnit = prefs.windUnit;
+      if (prefs.currentUnit) user.currentUnit = prefs.currentUnit;
     }
 
     // 30일 세션 만료 검증
@@ -130,6 +175,12 @@ export function saveAuthUser(user: AuthUser): void {
     localStorage.setItem(STORAGE_KEY_AUTH_USER, JSON.stringify(user));
     // 이메일 및 닉네임 쿠키 영구 보전
     saveRememberedCredentials(user.email, user.name || user.id);
+    saveUserPreferences(user.id, user.email, {
+      customNickname: user.customNickname || user.name,
+      favoriteSpecies: user.favoriteSpecies,
+      windUnit: user.windUnit,
+      currentUnit: user.currentUnit,
+    });
   } catch (e) {
     console.error('Failed to save auth user:', e);
   }
@@ -157,8 +208,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   onChangeWindUnit,
   onChangeCurrentUnit,
 }) => {
-  const [email, setEmail] = React.useState(() => getRememberedCredentials().email);
-  const [userId, setUserId] = React.useState(() => getRememberedCredentials().nickname);
+  const [nickname, setNickname] = React.useState(() => currentUser?.customNickname || currentUser?.name || getRememberedCredentials().nickname);
   const [error, setError] = React.useState('');
 
   // 프로필 및 설정 상태
@@ -170,8 +220,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     if (isOpen) {
       setError('');
       if (currentUser) {
-        setEmail(currentUser.email || '');
-        setUserId(currentUser.id || currentUser.name || '');
+        setNickname(currentUser.customNickname || currentUser.name || '');
         setSelectedSpecies(
           currentUser.favoriteSpecies && currentUser.favoriteSpecies.length > 0
             ? currentUser.favoriteSpecies
@@ -180,10 +229,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         setLocalWindUnit(currentUser.windUnit || windUnit);
         setLocalCurrentUnit(currentUser.currentUnit || currentUnit);
       } else {
-        // 로그아웃 상태에서 로그인 모달 열릴 때: 쿠키/로컬스토리지에 보전된 이메일과 닉네임 자동 복원
         const remembered = getRememberedCredentials();
-        setEmail(remembered.email || '');
-        setUserId(remembered.nickname || '');
+        setNickname(remembered.nickname || '');
         setSelectedSpecies(['우럭', '광어']);
         setLocalWindUnit(windUnit);
         setLocalCurrentUnit(currentUnit);
@@ -205,46 +252,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmedEmail = email.trim();
-    const trimmedId = userId.trim();
-
-    if (!trimmedEmail) {
-      setError('이메일을 입력해 주세요.');
-      return;
-    }
-    if (!trimmedEmail.includes('@') || !trimmedEmail.includes('.')) {
-      setError('올바른 이메일 형식을 입력해 주세요 (예: user@example.com).');
-      return;
-    }
-    if (!trimmedId) {
-      setError('아이디 / 닉네임을 입력해 주세요.');
-      return;
-    }
-
-    const now = Date.now();
-    const isAdmin = isUserAdmin({ email: trimmedEmail });
-    const user: AuthUser = {
-      id: trimmedId,
-      name: trimmedId,
-      email: trimmedEmail,
-      isAdmin,
-      favoriteSpecies: selectedSpecies,
-      windUnit: localWindUnit,
-      currentUnit: localCurrentUnit,
-      loggedInAt: now,
-      expiresAt: now + THIRTY_DAYS_MS,
-    };
-
-    saveAuthUser(user);
-    onLogin(user);
-    onChangeWindUnit(localWindUnit);
-    onChangeCurrentUnit(localCurrentUnit);
-    if (onUpdateFavorites) onUpdateFavorites(selectedSpecies);
-    onClose();
-  };
-
   const handleSocialAuth = (provider: AuthProvider) => {
     setError('');
     const res = buildOAuthAuthorizeUrl(provider);
@@ -259,20 +266,27 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
   const handleSaveSettings = () => {
     if (!currentUser) return;
-    const trimmedId = userId.trim() || currentUser.id;
-    const trimmedEmail = email.trim() || currentUser.email;
+    const trimmedNick = nickname.trim() || currentUser.customNickname || currentUser.name || currentUser.id;
+    const trimmedEmail = (currentUser.email || '').trim();
 
     const updated: AuthUser = {
       ...currentUser,
-      id: trimmedId,
-      name: trimmedId,
+      id: currentUser.id, // 고유한 소셜 계정 ID 보존
+      name: trimmedNick,
+      customNickname: trimmedNick,
       email: trimmedEmail,
-      isAdmin: isUserAdmin({ email: trimmedEmail }),
+      isAdmin: isUserAdmin({ email: trimmedEmail, isAdmin: currentUser.isAdmin }),
       favoriteSpecies: selectedSpecies,
       windUnit: localWindUnit,
       currentUnit: localCurrentUnit,
     };
     saveAuthUser(updated);
+    saveUserPreferences(currentUser.id, trimmedEmail, {
+      customNickname: trimmedNick,
+      favoriteSpecies: selectedSpecies,
+      windUnit: localWindUnit,
+      currentUnit: localCurrentUnit,
+    });
     onChangeWindUnit(localWindUnit);
     onChangeCurrentUnit(localCurrentUnit);
     if (onUpdateFavorites) onUpdateFavorites(selectedSpecies);
@@ -306,11 +320,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-white">
-                {currentUser ? '환경 설정' : 'ExFish 앵글러 로그인'}
+                {currentUser ? '환경 설정' : 'exfish 소셜 로그인'}
               </h2>
               {!currentUser && (
                 <p className="text-[11px] text-slate-400">
-                  비밀번호 없이 Email과 닉네임만으로 간편 접속
+                  네이버 · 카카오 · 구글 계정으로 1초 간편 로그인
                 </p>
               )}
             </div>
@@ -381,8 +395,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 </label>
                 <input
                   type="text"
-                  value={userId}
-                  onChange={(e) => setUserId(e.target.value)}
+                  value={nickname}
+                  onChange={(e) => setNickname(e.target.value)}
                   placeholder="예: 영흥도감성돔"
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
                 />
@@ -528,10 +542,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               </div>
             </div>
           ) : (
-            /* 미로그인 상태: 소셜 원클릭 로그인 + Email & 닉네임 간편 로그인 폼 */
+            /* 미로그인 상태: 소셜 원클릭 로그인 */
             <div className="space-y-4">
-              {/* 1. 소셜 로그인 버튼 그룹 */}
-              <div className="space-y-2">
+              {/* 소셜 로그인 버튼 그룹 */}
+              <div className="space-y-2.5">
                 {/* 네이버 버튼 */}
                 <button
                   type="button"
@@ -572,63 +586,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 </button>
               </div>
 
-              {/* 구분선 */}
-              <div className="flex items-center my-3 text-slate-500">
-                <div className="flex-1 border-t border-slate-800"></div>
-                <span className="px-3 text-[10.5px] font-medium text-slate-400">또는 이메일 & 닉네임으로 직접 로그인</span>
-                <div className="flex-1 border-t border-slate-800"></div>
+              <div className="p-3.5 bg-slate-950/70 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-cyan-400 font-medium">
+                  <ShieldCheck size={14} />
+                  <span>공식 OAuth2 소셜 로그인 & 30일 세션 유지</span>
+                </div>
+                <p className="leading-relaxed">
+                  별도의 비밀번호 없이 <strong>네이버 · 카카오 · 구글</strong> 공식 계정으로 안전하고 빠르게 로그인할 수 있습니다. 첫 로그인 시에는 소셜 프로필의 이름이 적용되며, 로그인 후 환경 설정에서 언제든지 닉네임과 관심 어종, 기상 단위를 변경할 수 있습니다.
+                </p>
               </div>
-
-              {/* 2. 기존 Email & 닉네임 간편 로그인 폼 */}
-              <form onSubmit={handleSubmit} className="space-y-3">
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1 flex items-center gap-1.5">
-                    <Mail size={13} className="text-cyan-400" />
-                    <span>이메일 (Email)</span>
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="예: fisher@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1 flex items-center gap-1.5">
-                    <Hash size={13} className="text-cyan-400" />
-                    <span>아이디 / 닉네임 (ID)</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="예: 바다의루크"
-                    value={userId}
-                    onChange={(e) => setUserId(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                    required
-                  />
-                </div>
-
-                <div className="p-3 bg-slate-950/70 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                  <div className="flex items-center gap-1.5 text-cyan-400 font-medium">
-                    <ShieldCheck size={14} />
-                    <span>패스워드 없는 간편 로그인 & 30일 세션 유지</span>
-                  </div>
-                  <p className="leading-relaxed">
-                    별도의 복잡한 패스워드 없이 <strong>Email</strong>과 <strong>닉네임</strong>만으로 즉시 로그인되며, 등록하신 포인트 및 조과의 작성자로 연동됩니다. 로그인 상태는 <strong>30일간 유지</strong>됩니다.
-                  </p>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-2.5 px-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded-xl transition shadow-md shadow-cyan-600/20 flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
-                >
-                  <LogIn size={15} />
-                  <span>로그인하기</span>
-                </button>
-              </form>
             </div>
           )}
         </div>

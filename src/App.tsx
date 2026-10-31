@@ -36,7 +36,7 @@ import {
   saveCloudSpot,
 } from './utils/cloudDb';
 import { cacheSpotMetadata, getAllCachedSpots, subscribeNetworkStatus } from './utils/offlineStorage';
-import { setupHardwareBackButtonListener, isNativePlatform } from './utils/nativeBridge';
+import { setupHardwareBackButtonListener, isNativePlatform, getNativeLocation } from './utils/nativeBridge';
 import { parseOAuthCallback, processOAuthCallbackResult } from './services/oauthService';
 import { APP_VERSION } from './version';
 
@@ -69,6 +69,8 @@ export function App() {
       processOAuthCallbackResult(callbackData).then((res) => {
         if (res.user) {
           setCurrentUser(res.user);
+          if (res.user.windUnit) setWindUnit(res.user.windUnit);
+          if (res.user.currentUnit) setCurrentUnit(res.user.currentUnit);
           setIsLoginModalOpen(false);
         }
       });
@@ -233,6 +235,7 @@ export function App() {
         // [요구사항 6] URL Query Parameter에 ?spot=spotId 가 있는 경우 해당 스팟을 우선 선택 및 중심 이동
         let targetSpot = cSpots[0];
         let shouldCenter = false;
+        let hasUrlParam = false;
         if (typeof window !== 'undefined') {
           const params = new URLSearchParams(window.location.search);
           const spotParam = params.get('spot');
@@ -241,9 +244,22 @@ export function App() {
             if (found) {
               targetSpot = found;
               shouldCenter = true;
+              hasUrlParam = true;
               setIsMobileDrawerOpen(true);
             }
           }
+        }
+        // URL 지정 스팟이 없고 사용자 위치가 파악되어 있다면 가장 가까운 포인트로 자동 중심 이동
+        if (!hasUrlParam && userLocation) {
+          let minDist = Infinity;
+          for (const s of cSpots) {
+            const d = getDistanceKm(userLocation.lat, userLocation.lng, s.lat, s.lng);
+            if (d < minDist) {
+              minDist = d;
+              targetSpot = s;
+            }
+          }
+          shouldCenter = true;
         }
         handleSelectSpot(targetSpot, shouldCenter);
       }
@@ -255,29 +271,43 @@ export function App() {
         if (!selectedSpot) handleSelectSpot(cached[0], false);
       }
     }
-  }, [selectedSpot]);
+  }, [selectedSpot, userLocation]);
 
   React.useEffect(() => {
     reloadData();
   }, [reloadData]);
 
-  // 사용자 GPS 현재 위치 백그라운드 확인 및 초기 지도 중심을 내 위치로 이동
+  // 사용자 GPS 현재 위치 백그라운드 확인 및 초기 지도 중심을 내 위치에서 가장 가까운 포인트로 이동
+  const hasAutoNearestSpotRef = React.useRef(false);
+
   React.useEffect(() => {
-    if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          setUserLocation(userPos);
-          // 웹 진입 시 지도를 내 위치로 우선 자동 이동
-          setRecenterTarget({ lat: userPos.lat, lng: userPos.lng, zoom: 14 });
-        },
-        (err) => {
-          console.warn('Geolocation 권한 미허용 또는 에러:', err);
-        },
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
-    }
-  }, []);
+    getNativeLocation()
+      .then((pos) => {
+        const userPos = { lat: pos.lat, lng: pos.lng };
+        setUserLocation(userPos);
+
+        const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+        const hasUrlSpot = Boolean(params && params.get('spot'));
+
+        if (!hasUrlSpot && spots.length > 0 && !hasAutoNearestSpotRef.current) {
+          hasAutoNearestSpotRef.current = true;
+          let nearestSpot = spots[0];
+          let minDist = Infinity;
+          for (const s of spots) {
+            const d = getDistanceKm(userPos.lat, userPos.lng, s.lat, s.lng);
+            if (d < minDist) {
+              minDist = d;
+              nearestSpot = s;
+            }
+          }
+          handleSelectSpot(nearestSpot, true);
+          setRecenterTarget({ lat: nearestSpot.lat, lng: nearestSpot.lng, zoom: 15 });
+        }
+      })
+      .catch((err) => {
+        console.warn('Initial geolocation notice:', err);
+      });
+  }, [spots]);
 
   // 모든 포인트의 실시간 요약 데이터(환경 & 물때 & 입질지수) 백그라운드 병렬 수집
   React.useEffect(() => {

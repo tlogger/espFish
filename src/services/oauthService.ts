@@ -1,5 +1,6 @@
 import type { AuthUser } from '../components/LoginModal';
-import { saveAuthUser } from '../components/LoginModal';
+import { saveAuthUser, getSavedUserPreferences } from '../components/LoginModal';
+import type { WindUnit, CurrentUnit } from '../types';
 import { getSavedCloudConfig } from '../utils/cloudDb';
 import { createClient } from '@supabase/supabase-js';
 
@@ -283,16 +284,34 @@ export async function processOAuthCallbackResult(callbackData: {
     }
   }
 
+  // 1. 기존에 저장된 해당 계정의 사용자 설정 및 변경된 닉네임이 있는지 확인
+  const savedPrefs = getSavedUserPreferences(providerUserId, userEmail);
+
+  // 처음 로그인 시 각 소셜의 닉네임/이름(userName) 적용, 이후 재로그인 시에는 사용자가 임의 변경한 닉네임 유지!
+  const finalName = (savedPrefs && savedPrefs.customNickname) ? savedPrefs.customNickname : userName;
+  const finalFavorites = (savedPrefs && savedPrefs.favoriteSpecies && savedPrefs.favoriteSpecies.length > 0)
+    ? savedPrefs.favoriteSpecies
+    : ['우럭', '광어'];
+  const finalWindUnit = (savedPrefs && savedPrefs.windUnit)
+    ? savedPrefs.windUnit
+    : ((typeof localStorage !== 'undefined' ? localStorage.getItem('exfish_wind_unit') as WindUnit : null) || 'ms');
+  const finalCurrentUnit = (savedPrefs && savedPrefs.currentUnit)
+    ? savedPrefs.currentUnit
+    : ((typeof localStorage !== 'undefined' ? localStorage.getItem('exfish_current_unit') as CurrentUnit : null) || 'knot');
+
   const now = Date.now();
   const isAdmin = isUserAdmin({ email: userEmail });
   const authUser: AuthUser = {
     id: providerUserId,
-    name: userName,
+    name: finalName,
+    customNickname: savedPrefs?.customNickname,
     email: userEmail,
     profile_image: userPhoto,
     provider,
     isAdmin,
-    favoriteSpecies: ['우럭', '광어'],
+    favoriteSpecies: finalFavorites,
+    windUnit: finalWindUnit,
+    currentUnit: finalCurrentUnit,
     loggedInAt: now,
     expiresAt: now + 30 * 24 * 60 * 60 * 1000,
   };
@@ -304,7 +323,7 @@ export async function processOAuthCallbackResult(callbackData: {
     await supabase.from('user_accounts').upsert({
       provider,
       provider_user_id: providerUserId,
-      name: userName,
+      name: finalName,
       email: userEmail,
       profile_image: userPhoto,
       last_login_at: new Date().toISOString(),

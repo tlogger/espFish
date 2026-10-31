@@ -20,6 +20,7 @@ import type {
   WindUnit
 } from '../types';
 import { formatCurrentVelocity, formatWindSpeed, getCompassDirection } from '../utils/weatherApi';
+import { getDistanceKm } from '../utils/tideEngine';
 
 export type SpotSortOption = 'BITESCORE' | 'DISTANCE' | 'NAME' | 'LATEST';
 
@@ -69,7 +70,7 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
 }) => {
   const [filterMethod, setFilterMethod] = React.useState<FishingMethod | 'ALL'>('ALL');
   const [onlyMySpots, setOnlyMySpots] = React.useState(false);
-  const [sortBy, setSortBy] = React.useState<SpotSortOption>('BITESCORE');
+  const [sortBy, setSortBy] = React.useState<SpotSortOption>('DISTANCE');
   const [searchFilter, setSearchFilter] = React.useState('');
 
   if (!isOpen) return null;
@@ -105,8 +106,8 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
       return scoreB - scoreA;
     }
     if (sortBy === 'DISTANCE') {
-      const distA = envA?.distanceKm ?? 999999;
-      const distB = envB?.distanceKm ?? 999999;
+      const distA = envA?.distanceKm ?? (userCoords ? getDistanceKm(userCoords.lat, userCoords.lng, a.lat, a.lng) : 999999);
+      const distB = envB?.distanceKm ?? (userCoords ? getDistanceKm(userCoords.lat, userCoords.lng, b.lat, b.lng) : 999999);
       return distA - distB;
     }
     if (sortBy === 'NAME') {

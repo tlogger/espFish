@@ -708,8 +708,24 @@ export const MapView: React.FC<MapViewProps> = ({
           const userPos = { lat: pos.lat, lng: pos.lng };
           setMyLocation(userPos);
           setGpsAccuracy(pos.accuracy || 12);
-          setCenter(userPos);
-          setLevel(4); // 약 100m~250m 상세 레벨
+          if (spots && spots.length > 0) {
+            let nearest = spots[0];
+            let minDist = Infinity;
+            for (const s of spots) {
+              const dLat = s.lat - pos.lat;
+              const dLng = (s.lng - pos.lng) * Math.cos(pos.lat * Math.PI / 180);
+              const distSq = dLat * dLat + dLng * dLng;
+              if (distSq < minDist) {
+                minDist = distSq;
+                nearest = s;
+              }
+            }
+            setCenter({ lat: nearest.lat, lng: nearest.lng });
+            setLevel(2); // 최근접 포인트 상세 레벨
+          } else {
+            setCenter(userPos);
+            setLevel(4); // 약 100m~250m 상세 레벨
+          }
         })
         .catch((err) => {
           setIsLocating(false);
